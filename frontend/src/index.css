@@ -1,0 +1,205 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Manrope', sans-serif;
+  color: #171412;
+  background:
+    radial-gradient(circle at top, rgba(216, 154, 40, 0.12), transparent 28%),
+    linear-gradient(180deg, #fafaf8 0%, #f7f2eb 48%, #fafaf8 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --color-ink: #171412;
+  --color-paper: #fafaf8;
+  --color-sand: #f4efe8;
+  --color-amber: #d89a28;
+  --color-amber-soft: #fff1d6;
+  --color-success: #0f8a5f;
+  --color-muted: #6b665f;
+  --shadow-panel: 0 30px 90px -42px rgba(23, 20, 18, 0.32);
+  --shadow-float: 0 24px 70px -36px rgba(23, 20, 18, 0.24);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: var(--color-ink);
+  background: transparent;
+}
+
+body.drawer-open {
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+*::selection {
+  background: rgba(216, 154, 40, 0.24);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease,
+    background-color 220ms ease,
+    color 220ms ease,
+    opacity 220ms ease;
+}
+
+button:active,
+a:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(216, 154, 40, 0.72);
+  outline-offset: 2px;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatSoft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.page-enter {
+  animation: pageEnter 520ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 560ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    transform 560ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.float-soft {
+  animation: floatSoft 4.5s ease-in-out infinite;
+}
+
+.marquee-track {
+  width: max-content;
+  animation: marquee 26s linear infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+.skeleton-wave {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(244, 239, 232, 0.85) 0%,
+      rgba(255, 255, 255, 0.95) 50%,
+      rgba(244, 239, 232, 0.85) 100%
+    );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite linear;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: 'Cormorant Garamond', serif;
+    letter-spacing: -0.025em;
+  }
+}
+
+@layer components {
+  .surface-panel {
+    @apply rounded-[32px] border border-stone-200/80 bg-white/90 shadow-[var(--shadow-panel)] backdrop-blur;
+  }
+
+  .surface-soft {
+    @apply rounded-[28px] border border-stone-200/70 bg-[#fcfbf8] shadow-[var(--shadow-float)];
+  }
+
+  .interactive-card {
+    @apply transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_-38px_rgba(23,20,18,0.34)];
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.34em] text-[#b77717];
+  }
+
+  .field-base {
+    @apply w-full rounded-[22px] border border-stone-200 bg-white px-4 py-3.5 text-sm text-stone-900 placeholder:text-stone-400 focus:border-[#d89a28] focus:outline-none focus:ring-4 focus:ring-[#f7dfb1];
+  }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
