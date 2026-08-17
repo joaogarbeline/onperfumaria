@@ -16,6 +16,8 @@ import { ProductCarousel } from '../components/ProductCarousel'
 import { Reveal } from '../components/Reveal'
 import { SectionTitle } from '../components/SectionTitle'
 import { Skeleton } from '../components/Skeleton'
+import { StatCounter } from '../components/StatCounter'
+import { TiltCard } from '../components/TiltCard'
 import { api } from '../services/api'
 import type { Product } from '../types'
 
@@ -105,21 +107,30 @@ export function HomePage() {
               {(data.benefits.length > 0 ? data.benefits : marqueeFallback.slice(0, 4)).slice(0, 4).map((benefit, index) => {
                 const Icon = trustIcons[index] || Sparkles
                 return (
-                  <div key={benefit} className="surface-soft flex items-start gap-3 p-4">
+                  <TiltCard
+                    key={benefit}
+                    intensity={5}
+                    className="surface-soft flex items-start gap-3 p-4 transition-shadow duration-300 hover:shadow-[var(--shadow-3d)]"
+                  >
                     <div className="rounded-[18px] bg-[#fff1d6] p-3 text-[#b77717]">
                       <Icon size={18} />
                     </div>
                     <p className="text-sm leading-6 text-[#6b665f]">{benefit}</p>
-                  </div>
+                  </TiltCard>
                 )
               })}
             </div>
           </div>
 
-          <div className="relative flex min-h-[420px] items-end justify-center overflow-hidden rounded-[32px] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.9),_rgba(244,239,232,0.75)_45%,_rgba(23,20,18,0.12)_130%)] p-5">
+          <TiltCard
+            intensity={5}
+            glare={false}
+            className="relative flex min-h-[420px] items-end justify-center overflow-hidden rounded-[32px] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.9),_rgba(244,239,232,0.75)_45%,_rgba(23,20,18,0.12)_130%)] p-5"
+          >
+            <div className="orbit-ring absolute -right-10 -top-10 h-40 w-40 rounded-full border border-dashed border-[#d89a28]/30" aria-hidden="true" />
             <div className="absolute inset-6 rounded-[28px] border border-white/50 bg-white/20 backdrop-blur-xl" />
             <div className="absolute inset-x-16 bottom-4 h-24 rounded-full bg-[#d89a28]/20 blur-3xl" />
-            <div className="relative z-10 w-full max-w-[360px] rounded-[30px] border border-white/70 bg-white/70 p-4 shadow-[0_35px_80px_-40px_rgba(23,20,18,0.38)] backdrop-blur-md">
+            <div className="tilt-layer relative z-10 w-full max-w-[360px] rounded-[30px] border border-white/70 bg-white/70 p-4 shadow-[0_35px_80px_-40px_rgba(23,20,18,0.38)] backdrop-blur-md">
               <img
                 src={data.hero.imageUrl || 'https://images.unsplash.com/photo-1523293182086-7651a899d37f?auto=format&fit=crop&w=1200&q=80'}
                 alt="Destaque da loja"
@@ -135,12 +146,28 @@ export function HomePage() {
                 </div>
               </div>
             </div>
-          </div>
+            <div className="trust-pulse tilt-layer absolute right-8 top-8 z-20 flex items-center gap-2 rounded-full border border-[#c3d2ea] bg-white/90 px-3.5 py-2 shadow-[0_16px_30px_-16px_rgba(20,45,82,0.5)] backdrop-blur">
+              <ShieldCheck size={14} className="text-[#142d52]" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#142d52]">Original garantido</span>
+            </div>
+          </TiltCard>
         </section>
       </Reveal>
 
       <Reveal delay={80}>
         <BrandMarquee brands={brands} />
+      </Reveal>
+
+      <Reveal delay={100}>
+        <section className="surface-trust relative overflow-hidden px-6 py-8 sm:px-10 sm:py-10">
+          <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#2a4d82]/40 blur-3xl" aria-hidden="true" />
+          <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-[#d89a28]/15 blur-3xl" aria-hidden="true" />
+          <div className="relative grid gap-8 sm:grid-cols-3">
+            <StatCounter value={12500} suffix="+" label="Pedidos entregues com sucesso" />
+            <StatCounter value={4.9} decimals={1} suffix=" / 5" label="Avaliacao media dos clientes" />
+            <StatCounter value={100} suffix="%" label="Produtos com originalidade garantida" />
+          </div>
+        </section>
       </Reveal>
 
       <Reveal delay={120}>

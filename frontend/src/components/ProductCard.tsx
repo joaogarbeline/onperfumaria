@@ -6,6 +6,7 @@ import { useCurrency } from '../hooks/useCurrency'
 import type { Product } from '../types'
 import { Badge } from './Badge'
 import { Button, buttonClassName } from './Button'
+import { TiltCard } from './TiltCard'
 
 export function ProductCard({ product }: { product: Product }) {
   const format = useCurrency()
@@ -19,7 +20,11 @@ export function ProductCard({ product }: { product: Product }) {
   }
 
   return (
-    <article className="surface-soft interactive-card group flex h-full flex-col overflow-hidden">
+    <TiltCard
+      as="article"
+      intensity={6}
+      className="surface-soft group flex h-full flex-col overflow-hidden transition-shadow duration-300 hover:shadow-[var(--shadow-3d)]"
+    >
       <div className="relative overflow-hidden">
         <img
           src={product.imageUrl}
@@ -79,6 +84,6 @@ export function ProductCard({ product }: { product: Product }) {
           </Button>
         </div>
       </div>
-    </article>
+    </TiltCard>
   )
 }

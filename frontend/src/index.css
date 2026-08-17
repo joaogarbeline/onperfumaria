@@ -21,8 +21,17 @@
   --color-amber-soft: #fff1d6;
   --color-success: #0f8a5f;
   --color-muted: #6b665f;
+  /* Confianca e seguranca institucional: azul-marinho profundo, o tom que a
+     psicologia das cores mais associa a solidez, seguranca e credibilidade.
+     Usado ao lado do dourado (luxo/qualidade) para equilibrar premium + confiavel. */
+  --color-trust: #142d52;
+  --color-trust-dark: #0a1a33;
+  --color-trust-soft: #e7edf7;
+  --color-trust-line: #2a4d82;
   --shadow-panel: 0 30px 90px -42px rgba(23, 20, 18, 0.32);
   --shadow-float: 0 24px 70px -36px rgba(23, 20, 18, 0.24);
+  --shadow-3d: 0 2px 4px rgba(20, 45, 82, 0.06), 0 18px 40px -18px rgba(20, 45, 82, 0.28), 0 40px 80px -40px rgba(23, 20, 18, 0.3);
+  --shadow-trust: 0 24px 60px -28px rgba(10, 26, 51, 0.55);
 }
 
 html {
@@ -121,6 +130,60 @@ a:active {
   }
 }
 
+@keyframes meshDrift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-2%, 2%, 0) scale(1.05);
+  }
+}
+
+@keyframes orbitGlow {
+  0% {
+    transform: rotate(0deg) translateX(0);
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: rotate(360deg) translateX(0);
+    opacity: 0.5;
+  }
+}
+
+@keyframes pulseTrust {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(20, 45, 82, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(20, 45, 82, 0);
+  }
+}
+
+@keyframes shineSweep {
+  0% {
+    transform: translateX(-130%) skewX(-12deg);
+  }
+  100% {
+    transform: translateX(160%) skewX(-12deg);
+  }
+}
+
+@keyframes countUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .page-enter {
   animation: pageEnter 520ms cubic-bezier(0.2, 0.9, 0.2, 1);
 }
@@ -149,6 +212,62 @@ a:active {
 
 .marquee-track:hover {
   animation-play-state: paused;
+}
+
+.mesh-field {
+  animation: meshDrift 16s ease-in-out infinite;
+}
+
+.orbit-ring {
+  animation: orbitGlow 22s linear infinite;
+}
+
+.trust-pulse {
+  animation: pulseTrust 2.6s ease-in-out infinite;
+}
+
+/* Cartao com profundidade real: perspectiva + preserve-3d aplicados via
+   componente TiltCard, que injeta rotateX/rotateY conforme o ponteiro. */
+.tilt-card {
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: transform 420ms cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 420ms ease;
+}
+
+.tilt-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: overlay;
+  transition: opacity 280ms ease;
+}
+
+.tilt-layer {
+  transform: translateZ(38px);
+  transform-style: preserve-3d;
+}
+
+.shine-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.shine-sweep::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-130%) skewX(-12deg);
+  pointer-events: none;
+}
+
+.shine-sweep:hover::after {
+  animation: shineSweep 900ms ease forwards;
 }
 
 .skeleton-wave {
@@ -192,6 +311,29 @@ a:active {
 
   .field-base {
     @apply w-full rounded-[22px] border border-stone-200 bg-white px-4 py-3.5 text-sm text-stone-900 placeholder:text-stone-400 focus:border-[#d89a28] focus:outline-none focus:ring-4 focus:ring-[#f7dfb1];
+  }
+
+  .surface-trust {
+    @apply rounded-[28px] border border-[#24457a] bg-[linear-gradient(160deg,#142d52_0%,#0a1a33_100%)] text-[#e7edf7] shadow-[var(--shadow-trust)];
+  }
+
+  .eyebrow-trust {
+    @apply text-[11px] font-bold uppercase tracking-[0.34em] text-[#7fa3d6];
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .tilt-card {
+    transform: none !important;
   }
 }
 

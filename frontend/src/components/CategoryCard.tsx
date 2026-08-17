@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { TiltCard } from './TiltCard'
 
 const categoryIcons: Record<string, string> = {
   arabes: 'Oud',
@@ -17,9 +18,11 @@ export function CategoryCard({
   const slug = name.toLowerCase()
 
   return (
-    <Link
+    <TiltCard
+      as={Link}
       to={`/catalogo?categoria=${encodeURIComponent(name)}`}
-      className="surface-soft interactive-card flex min-h-[220px] flex-col justify-between px-6 py-6"
+      intensity={7}
+      className="surface-soft flex min-h-[220px] flex-col justify-between px-6 py-6 transition-shadow duration-300 hover:shadow-[var(--shadow-3d)]"
     >
       <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-[#fff1d6] text-sm font-bold uppercase tracking-[0.18em] text-[#9b6110]">
         {categoryIcons[slug] || name.slice(0, 3)}
@@ -31,6 +34,6 @@ export function CategoryCard({
           {total} fragrancias ativas com estoque e condicoes atualizadas em tempo real.
         </p>
       </div>
-    </Link>
+    </TiltCard>
   )
 }

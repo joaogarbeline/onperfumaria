@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
 
-type BadgeTone = 'amber' | 'success' | 'neutral' | 'danger'
+type BadgeTone = 'amber' | 'success' | 'neutral' | 'danger' | 'trust'
 
 const toneClasses: Record<BadgeTone, string> = {
   amber: 'bg-[#fff1d6] text-[#9b6110] border-[#f4d08a]',
   success: 'bg-[#eefaf5] text-[#0f8a5f] border-[#bde4d4]',
   neutral: 'bg-[#f6f1ea] text-[#6b665f] border-[#e3dbd0]',
   danger: 'bg-rose-50 text-rose-700 border-rose-200',
+  trust: 'bg-[#e7edf7] text-[#142d52] border-[#c3d2ea]',
 }
 
 export function Badge({

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Menu, ShoppingBag, User } from 'lucide-react'
+import { LayoutDashboard, Menu, ShieldCheck, ShoppingBag, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -58,7 +58,9 @@ export function Header() {
       <header
         className={[
           'sticky top-0 z-30 border-b transition duration-300',
-          scrolled ? 'border-stone-200/80 bg-white/78 backdrop-blur-xl' : 'border-transparent bg-white/40 backdrop-blur-md',
+          scrolled
+            ? 'border-stone-200/80 bg-white/78 shadow-[0_18px_40px_-30px_rgba(10,26,51,0.35)] backdrop-blur-xl'
+            : 'border-transparent bg-white/40 backdrop-blur-md',
         ].join(' ')}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
@@ -72,6 +74,15 @@ export function Header() {
           <nav className="hidden items-center gap-8 md:flex">
             {isAdmin ? adminLinks : customerLinks}
           </nav>
+
+          {!isAdmin ? (
+            <div className="hidden items-center gap-2 rounded-full border border-[#c3d2ea] bg-[#e7edf7] px-3.5 py-1.5 lg:flex">
+              <ShieldCheck size={14} className="text-[#142d52]" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#142d52]">
+                Compra 100% segura
+              </span>
+            </div>
+          ) : null}
 
           <div className="flex items-center gap-2 sm:gap-3">
             {isAdmin ? (
