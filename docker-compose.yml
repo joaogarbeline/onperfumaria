@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: onperfumaria-app
     environment:
       PORT: 8080
       DATABASE_URL: postgres://postgres@127.0.0.1:5432/onperfumaria?sslmode=disable
