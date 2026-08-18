@@ -21,20 +21,22 @@ Base full-stack para ecommerce, painel administrativo e PDV de perfumes importad
 ## Credenciais padrao
 
 - Admin: `admin@onperfumaria.com`
-- Senha: `admin123`
+- Senha: `admin123` (ou o valor de `ADMIN_PASSWORD`, se definido)
 
-## Como rodar em um container so
+## Como rodar com Docker
 
 ```bash
-docker compose up --build
+JWT_SECRET=troque-por-algo-forte POSTGRES_PASSWORD=troque-por-algo-forte docker compose up --build
 ```
 
-Tudo sobe no mesmo container `onperfumaria-app`:
+Sobem dois containers:
 
-- Loja, admin, PDV e API em `http://localhost:8080`
-- PostgreSQL no mesmo container, exposto em `localhost:5432`
+- `app`: backend Go + frontend buildado (estatico), servidos em `http://localhost:8080`
+- `db`: PostgreSQL, acessivel apenas pela rede interna do compose (nao exposto no host)
 
 O frontend ja sai buildado e servido pelo backend, entao nao precisa subir Vite separado para usar o sistema.
+
+Em producao (ex.: EasyPanel), o `app` roda como servico "App" comum (build da `Dockerfile`) e o Postgres roda como servico de banco de dados nativo/gerenciado, apontado via `DATABASE_URL` — sem depender do `docker-compose.yml`, que serve principalmente para rodar tudo localmente.
 
 ## Desenvolvimento separado
 
@@ -42,8 +44,8 @@ Se quiser continuar desenvolvendo frontend e backend em modo local, a estrutura 
 
 ## Variaveis de ambiente
 
-- Backend: [backend/.env.example](/C:/Users/joao.garbeline/Desktop/On%20Perfumaria/backend/.env.example)
-- Frontend: [frontend/.env.example](/C:/Users/joao.garbeline/Desktop/On%20Perfumaria/frontend/.env.example)
+- Backend: [backend/.env.example](backend/.env.example)
+- Frontend: [frontend/.env.example](frontend/.env.example)
 
 ## Endpoints principais
 
@@ -65,4 +67,4 @@ Se quiser continuar desenvolvendo frontend e backend em modo local, a estrutura 
 - Checkout cria cliente automaticamente para futuras compras.
 - Estoque baixa em vendas pagas online e em todas as vendas do PDV.
 - O gateway real ainda nao foi conectado, mas o backend ja separa provider e status de pagamento para evolucao futura.
-- Em Docker, banco + backend + frontend rodam no mesmo container por pedido seu.
+- Uploads (`/api/admin/upload`) salvam em `public/uploads` dentro do container da app — sem volume dedicado, esses arquivos se perdem a cada redeploy. Se for usar upload de imagens em producao, monte um volume persistente nesse caminho.
