@@ -23,6 +23,11 @@ fi
 
 su-exec postgres pg_ctl -D "$PGDATA" -o "-c listen_addresses='127.0.0.1' -p 5432" -w start
 
+# Idempotente: garante que o banco existe mesmo se um boot anterior
+# tiver inicializado o cluster (PG_VERSION) mas falhado antes de criar
+# o database (ex.: createdb travado por falta de senha num deploy antigo).
+su-exec postgres createdb -U "$POSTGRES_USER" "$POSTGRES_DB" 2>/dev/null || true
+
 cleanup() {
   su-exec postgres pg_ctl -D "$PGDATA" -m fast -w stop
 }
