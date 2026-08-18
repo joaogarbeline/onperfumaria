@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -10,7 +11,12 @@ import (
 func Seed(db *pgxpool.Pool) error {
 	ctx := context.Background()
 
-	password, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	adminPassword := os.Getenv("ADMIN_PASSWORD")
+	if adminPassword == "" {
+		adminPassword = "admin123"
+	}
+
+	password, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}

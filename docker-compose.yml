@@ -5,13 +5,15 @@ services:
       dockerfile: Dockerfile
     environment:
       PORT: 8080
-      DATABASE_URL: postgres://postgres@127.0.0.1:5432/onperfumaria?sslmode=disable
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/onperfumaria?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
       FRONTEND_URL: https://perfumes.performancetriade.com.br
       AUTO_SEED: "true"
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       DEFAULT_TAX_FEE: 4.5
       POSTGRES_DB: onperfumaria
       POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data
     expose:
       - "8080"
