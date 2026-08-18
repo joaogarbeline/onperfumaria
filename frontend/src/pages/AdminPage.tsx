@@ -151,7 +151,7 @@ export function AdminPage() {
 
   function exportOrders() {
     if (!token) return
-    window.open(`${import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api'}/admin/export/orders?token=${token}`, '_blank')
+    window.open(`${import.meta.env.VITE_API_URL ?? '/api'}/admin/export/orders?token=${token}`, '_blank')
   }
   const [uploadingImage, setUploadingImage] = useState(false)
   const [productImages, setProductImages] = useState<Array<{ id: string; url: string }>>([])
