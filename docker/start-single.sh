@@ -14,7 +14,7 @@ if [ ! -s "$PGDATA/PG_VERSION" ]; then
   pwfile=$(mktemp)
   printf '%s' "$POSTGRES_PASSWORD" > "$pwfile"
   chown postgres:postgres "$pwfile"
-  su-exec postgres initdb -D "$PGDATA" --username="$POSTGRES_USER" --auth=scram-sha-256 --pwfile="$pwfile"
+  su-exec postgres initdb -D "$PGDATA" --username="$POSTGRES_USER" --auth-local=trust --auth-host=scram-sha-256 --pwfile="$pwfile"
   rm -f "$pwfile"
   su-exec postgres pg_ctl -D "$PGDATA" -o "-c listen_addresses='127.0.0.1' -p 5432" -w start
   su-exec postgres createdb -U "$POSTGRES_USER" "$POSTGRES_DB" || true
