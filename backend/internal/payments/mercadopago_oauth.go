@@ -1,12 +1,12 @@
 package payments
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 type OAuthTokenResponse struct {
@@ -26,35 +26,34 @@ func BuildMPAuthorizationURL(clientID, redirectURI, state string) string {
 	q.Set("platform_id", "mp")
 	q.Set("redirect_uri", redirectURI)
 	q.Set("state", state)
-	return "https://auth.mercadopago.com/authorization?" + q.Encode()
+	return "https://auth.mercadopago.com.br/authorization?" + q.Encode()
 }
 
 func ExchangeMPCode(clientID, clientSecret, code, redirectURI string) (*OAuthTokenResponse, error) {
-	return postMPOAuth(map[string]string{
-		"client_id":     clientID,
-		"client_secret": clientSecret,
-		"grant_type":    "authorization_code",
-		"code":          code,
-		"redirect_uri":  redirectURI,
-	})
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("client_id", clientID)
+	form.Set("client_secret", clientSecret)
+	form.Set("code", code)
+	form.Set("redirect_uri", redirectURI)
+	return postMPOAuth(form)
 }
 
 func RefreshMPToken(clientID, clientSecret, refreshToken string) (*OAuthTokenResponse, error) {
-	return postMPOAuth(map[string]string{
-		"client_id":     clientID,
-		"client_secret": clientSecret,
-		"grant_type":    "refresh_token",
-		"refresh_token": refreshToken,
-	})
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("client_id", clientID)
+	form.Set("client_secret", clientSecret)
+	form.Set("refresh_token", refreshToken)
+	return postMPOAuth(form)
 }
 
-func postMPOAuth(fields map[string]string) (*OAuthTokenResponse, error) {
-	body, _ := json.Marshal(fields)
-	req, err := http.NewRequest("POST", "https://api.mercadopago.com/oauth/token", bytes.NewReader(body))
+func postMPOAuth(form url.Values) (*OAuthTokenResponse, error) {
+	req, err := http.NewRequest("POST", "https://api.mercadopago.com/oauth/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -64,7 +63,7 @@ func postMPOAuth(fields map[string]string) (*OAuthTokenResponse, error) {
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("mercado pago oauth: %s", string(respBody))
 	}
 
