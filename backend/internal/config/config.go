@@ -9,24 +9,28 @@ import (
 )
 
 type Config struct {
-	Port          string
-	DatabaseURL   string
-	JWTSecret     string
-	FrontendURL   string
-	AutoSeed      bool
-	DefaultTaxFee float64
+	Port           string
+	DatabaseURL    string
+	JWTSecret      string
+	FrontendURL    string
+	AutoSeed       bool
+	DefaultTaxFee  float64
+	MPClientID     string
+	MPClientSecret string
 }
 
 func Load() Config {
 	_ = godotenv.Load()
 
 	cfg := Config{
-		Port:          getEnv("PORT", "8080"),
-		DatabaseURL:   getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/onperfumaria?sslmode=disable"),
-		JWTSecret:     getEnv("JWT_SECRET", "change-me-in-production"),
-		FrontendURL:   getEnv("FRONTEND_URL", "http://localhost:5173"),
-		AutoSeed:      getEnv("AUTO_SEED", "true") == "true",
-		DefaultTaxFee: getFloatEnv("DEFAULT_TAX_FEE", 4.5),
+		Port:           getEnv("PORT", "8080"),
+		DatabaseURL:    getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/onperfumaria?sslmode=disable"),
+		JWTSecret:      getEnv("JWT_SECRET", "change-me-in-production"),
+		FrontendURL:    getEnv("FRONTEND_URL", "http://localhost:5173"),
+		AutoSeed:       getEnv("AUTO_SEED", "true") == "true",
+		DefaultTaxFee:  getFloatEnv("DEFAULT_TAX_FEE", 4.5),
+		MPClientID:     getEnv("MP_CLIENT_ID", ""),
+		MPClientSecret: getEnv("MP_CLIENT_SECRET", ""),
 	}
 
 	if cfg.JWTSecret == "" {

@@ -26,6 +26,8 @@ services:
       AUTO_SEED: "true"
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       DEFAULT_TAX_FEE: 4.5
+      MP_CLIENT_ID: ${MP_CLIENT_ID}
+      MP_CLIENT_SECRET: ${MP_CLIENT_SECRET}
     depends_on:
       db:
         condition: service_healthy

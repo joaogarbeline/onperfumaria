@@ -119,6 +119,8 @@ export function AdminPage() {
   const [categoryForm, setCategoryForm] = useState({ id: '', name: '' })
   const [newType, setNewType] = useState('')
   const [mpSettings, setMpSettings] = useState({ mp_access_token: '', mp_public_key: '', mp_webhook_secret: '' })
+  const [mpConnected, setMpConnected] = useState(false)
+  const [mpUserId, setMpUserId] = useState('')
   const [coupons, setCoupons] = useState<CouponItem[]>([])
   const [discountRules, setDiscountRules] = useState<DiscountRuleItem[]>([])
   const [couponForm, setCouponForm] = useState({ id: '', code: '', discountType: 'percent', value: 0, isActive: true })
@@ -217,6 +219,23 @@ export function AdminPage() {
       loadMPSettings()
     }
   }, [token, activeTab])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const mpStatus = params.get('mp')
+    if (!mpStatus) return
+
+    if (mpStatus === 'connected') {
+      notify('Mercado Pago conectado com sucesso.')
+    } else if (mpStatus === 'error') {
+      notify('Nao foi possivel conectar ao Mercado Pago. Tente novamente.', 'error')
+    }
+    setActiveTab('catalog')
+
+    params.delete('mp')
+    const query = params.toString()
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`)
+  }, [])
 
   useEffect(() => {
     if (token && activeTab === 'marketing') {
@@ -490,13 +509,33 @@ export function AdminPage() {
   async function loadMPSettings() {
     if (!token) return
     const settings = await api.get<Record<string, string>>('/admin/mp-settings', token)
-    setMpSettings({ mp_access_token: settings.mp_access_token || '', mp_public_key: settings.mp_public_key || '', mp_webhook_secret: settings.mp_webhook_secret || '' })
+    setMpConnected(settings.mp_connected === 'true')
+    setMpUserId(settings.mp_user_id || '')
+    setMpSettings((s) => ({ ...s, mp_public_key: settings.mp_public_key || '', mp_webhook_secret: settings.mp_webhook_secret || '' }))
   }
 
   async function saveMPSetting(key: string, value: string) {
     if (!token) return
     await api.put('/admin/mp-settings', { key, value }, token)
     setMessage('Configuracao Mercado Pago salva.')
+    await loadMPSettings()
+  }
+
+  async function connectMercadoPago() {
+    if (!token) return
+    try {
+      const result = await api.get<{ url: string }>('/admin/mercadopago/connect', token)
+      window.location.href = result.url
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Erro ao conectar com Mercado Pago.', 'error')
+    }
+  }
+
+  async function disconnectMercadoPago() {
+    if (!token) return
+    await api.post('/admin/mercadopago/disconnect', {}, token)
+    await loadMPSettings()
+    notify('Mercado Pago desconectado.')
   }
 
   async function loadMarketing() {
@@ -885,35 +924,53 @@ export function AdminPage() {
             </div>
             <div className="surface-panel p-6 xl:col-span-3">
               <h2 className="mb-5 text-3xl leading-none text-[#171412]">Mercado Pago</h2>
-              <p className="mb-4 text-sm text-[#6b665f]">Configure suas credenciais do Mercado Pago para ativar pagamentos online. O webhook e automaticamente registrado.</p>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b665f]">Access Token</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={mpSettings.mp_access_token}
-                      onChange={(e) => setMpSettings((s) => ({ ...s, mp_access_token: e.target.value }))}
-                      placeholder="APP_USR-..."
-                      className="field-base flex-1"
-                    />
-                    <Button type="button" size="sm" onClick={() => saveMPSetting('mp_access_token', mpSettings.mp_access_token)}>Salvar</Button>
+              <p className="mb-4 text-sm text-[#6b665f]">Conecte a conta do Mercado Pago da loja para receber os pagamentos direto nela. O webhook e automaticamente registrado.</p>
+
+              {mpConnected ? (
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-[18px] bg-[#f7f2eb] px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Badge tone="success">Conectado</Badge>
+                    {mpUserId ? <span className="text-sm text-[#6b665f]">Conta Mercado Pago #{mpUserId}</span> : null}
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={disconnectMercadoPago}>Desconectar</Button>
+                </div>
+              ) : (
+                <div className="mb-2">
+                  <Button type="button" onClick={connectMercadoPago}>Conectar com Mercado Pago</Button>
+                </div>
+              )}
+
+              <details className="mt-4">
+                <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-[0.18em] text-[#6b665f]">Configuracao manual (avancado)</summary>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b665f]">Access Token</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={mpSettings.mp_access_token}
+                        onChange={(e) => setMpSettings((s) => ({ ...s, mp_access_token: e.target.value }))}
+                        placeholder="APP_USR-..."
+                        className="field-base flex-1"
+                      />
+                      <Button type="button" size="sm" onClick={() => saveMPSetting('mp_access_token', mpSettings.mp_access_token)}>Salvar</Button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b665f]">Public Key</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={mpSettings.mp_public_key}
+                        onChange={(e) => setMpSettings((s) => ({ ...s, mp_public_key: e.target.value }))}
+                        placeholder="APP_USR-..."
+                        className="field-base flex-1"
+                      />
+                      <Button type="button" size="sm" onClick={() => saveMPSetting('mp_public_key', mpSettings.mp_public_key)}>Salvar</Button>
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b665f]">Public Key</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={mpSettings.mp_public_key}
-                      onChange={(e) => setMpSettings((s) => ({ ...s, mp_public_key: e.target.value }))}
-                      placeholder="APP_USR-..."
-                      className="field-base flex-1"
-                    />
-                    <Button type="button" size="sm" onClick={() => saveMPSetting('mp_public_key', mpSettings.mp_public_key)}>Salvar</Button>
-                  </div>
-                </div>
-              </div>
+              </details>
             </div>
           </section>
         ) : null}
