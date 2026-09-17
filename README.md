@@ -63,7 +63,7 @@ Mercado Pago, nao por quem gerou essas credenciais.
 1. Acesse https://www.mercadopago.com.br/developers/panel/app (pode reaproveitar uma
    aplicacao ja criada para outro projeto, ou criar uma nova).
 2. Em "Configuracoes > URIs de redirecionamento", cadastre exatamente:
-   `<FRONTEND_URL>/api/mercadopago/callback` (ex.: `https://perfumes.performancetriade.com.br/api/mercadopago/callback`).
+   `<FRONTEND_URL>/api/mercadopago/callback` (ex.: `https://onperfumaria.com/api/mercadopago/callback`).
 3. Copie o Client ID e o Client Secret da aplicacao e defina `MP_CLIENT_ID` /
    `MP_CLIENT_SECRET` nas variaveis de ambiente do backend (veja
    [backend/.env.example](backend/.env.example)).

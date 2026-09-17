@@ -22,7 +22,7 @@ services:
       PORT: 8080
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/onperfumaria?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
-      FRONTEND_URL: https://perfumes.performancetriade.com.br
+      FRONTEND_URL: https://onperfumaria.com
       AUTO_SEED: "true"
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       DEFAULT_TAX_FEE: 4.5
