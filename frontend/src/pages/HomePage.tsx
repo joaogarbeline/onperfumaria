@@ -164,7 +164,7 @@ export function HomePage() {
           <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-[#d89a28]/15 blur-3xl" aria-hidden="true" />
           <div className="relative grid gap-8 sm:grid-cols-3">
             <StatCounter value={12500} suffix="+" label="Pedidos entregues com sucesso" />
-            <StatCounter value={4.9} decimals={1} suffix=" / 5" label="Avaliacao media dos clientes" />
+            <StatCounter value={5} suffix=" / 5" label="Avaliacao media dos clientes" />
             <StatCounter value={100} suffix="%" label="Produtos com originalidade garantida" />
           </div>
         </section>

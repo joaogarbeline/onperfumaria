@@ -13,6 +13,10 @@ export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart()
   const [adding, setAdding] = useState(false)
 
+  const hasDiscount = product.finalPrice < product.salePrice
+  const discountPercent = hasDiscount ? Math.round((1 - product.finalPrice / product.salePrice) * 100) : 0
+  const isLowStock = product.isAvailable && product.stockCurrent > 0 && product.stockCurrent <= 3
+
   function handleAdd() {
     setAdding(true)
     addItem(product)
@@ -33,10 +37,9 @@ export function ProductCard({ product }: { product: Product }) {
           className="aspect-[3/4] w-full object-cover transition duration-500 group-hover:scale-[1.05]"
         />
         <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-          {product.automaticDiscountAmount > 0 ? <Badge tone="amber">Oferta</Badge> : null}
-          <Badge tone={product.isAvailable ? 'success' : 'neutral'}>
-            {product.isAvailable ? `${product.stockCurrent} em estoque` : 'Indisponivel'}
-          </Badge>
+          {hasDiscount ? <Badge tone="amber">-{discountPercent}%</Badge> : null}
+          {!product.isAvailable ? <Badge tone="neutral">Esgotado</Badge> : null}
+          {isLowStock ? <Badge tone="danger">Ultimas {product.stockCurrent} unidades</Badge> : null}
         </div>
       </div>
       <div className="flex flex-1 flex-col space-y-4 p-5">
@@ -48,21 +51,9 @@ export function ProductCard({ product }: { product: Product }) {
           <p className="line-clamp-2 text-sm leading-6 text-[#6b665f]">{product.description}</p>
         </div>
 
-        <div className="mt-auto flex items-start justify-between gap-4">
-          <div>
-            {product.finalPrice < product.salePrice ? (
-              <p className="text-sm text-stone-400 line-through">{format(product.salePrice)}</p>
-            ) : null}
-            <p className="text-3xl font-semibold text-[#171412]">{format(product.finalPrice)}</p>
-            {product.finalPrice < product.salePrice ? (
-              <p className="mt-1 text-xs font-medium text-[#0f8a5f]">
-                {product.discountLabel || 'Desconto automatico aplicado'}
-              </p>
-            ) : null}
-          </div>
-          <p className="max-w-[110px] text-right text-xs leading-5 text-[#6b665f]">
-            {product.automaticDiscountAmount > 0 ? 'Desconto automatico validado no sistema.' : 'Preco atualizado em tempo real.'}
-          </p>
+        <div className="mt-auto">
+          {hasDiscount ? <p className="text-sm text-stone-400 line-through">{format(product.salePrice)}</p> : null}
+          <p className="text-3xl font-semibold text-[#171412]">{format(product.finalPrice)}</p>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
