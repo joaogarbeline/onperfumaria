@@ -49,29 +49,11 @@ Se quiser continuar desenvolvendo frontend e backend em modo local, a estrutura 
 
 ## Mercado Pago
 
-O admin tem um botao "Conectar com Mercado Pago" (aba Catalogo) que leva o lojista a
-fazer login na propria conta Mercado Pago e autorizar o sistema (fluxo OAuth / Mercado
-Pago Connect). Depois disso os pagamentos caem direto na conta que autorizou — ninguem
-precisa copiar Access Token ou Public Key manualmente.
-
-Para isso funcionar, o backend precisa de credenciais de uma **aplicacao** Mercado Pago
-(`MP_CLIENT_ID` e `MP_CLIENT_SECRET`), que sao diferentes do Access Token de uma conta:
-elas so identificam o sistema perante o Mercado Pago, e podem ser as mesmas em varios
-projetos/lojas — quem recebe o dinheiro e definido por quem faz login na tela do
-Mercado Pago, nao por quem gerou essas credenciais.
-
-1. Acesse https://www.mercadopago.com.br/developers/panel/app (pode reaproveitar uma
-   aplicacao ja criada para outro projeto, ou criar uma nova).
-2. Em "Configuracoes > URIs de redirecionamento", cadastre exatamente:
-   `<FRONTEND_URL>/api/mercadopago/callback` (ex.: `https://onperfumaria.com/api/mercadopago/callback`).
-3. Copie o Client ID e o Client Secret da aplicacao e defina `MP_CLIENT_ID` /
-   `MP_CLIENT_SECRET` nas variaveis de ambiente do backend (veja
-   [backend/.env.example](backend/.env.example)).
-
-Sem essas duas variaveis configuradas no servidor, o botao "Conectar" mostra uma
-mensagem de erro. O campo "Configuracao manual (avancado)" no admin continua disponivel
-como alternativa, caso quiram colar um Access Token/Public Key de uma unica conta fixa
-em vez de usar o login.
+No admin (aba Catalogo) tem um bloco "Mercado Pago" para colar o **Access Token** e a
+**Public Key** da conta que vai receber os pagamentos. Sao encontrados no painel do
+Mercado Pago, em "Suas integracoes" > aplicacao > Credenciais de producao. Depois de
+salvar, o checkout online passa a criar pagamentos de verdade nessa conta; sem token
+configurado, o backend usa um provider mockado.
 
 ## Endpoints principais
 
@@ -92,5 +74,5 @@ em vez de usar o login.
 - Seed automatico cria categorias, marcas, produtos mockados, cupom e admin.
 - Checkout cria cliente automaticamente para futuras compras.
 - Estoque baixa em vendas pagas online e em todas as vendas do PDV.
-- O gateway Mercado Pago e conectado via OAuth pelo proprio admin (veja secao "Mercado Pago" acima); sem conexao, o backend usa um provider mockado.
+- O gateway Mercado Pago e configurado direto no admin (veja secao "Mercado Pago" acima).
 - Uploads (`/api/admin/upload`) salvam em `public/uploads` dentro do container da app — sem volume dedicado, esses arquivos se perdem a cada redeploy. Se for usar upload de imagens em producao, monte um volume persistente nesse caminho.

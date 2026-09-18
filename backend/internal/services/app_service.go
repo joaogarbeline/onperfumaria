@@ -3,8 +3,6 @@ package services
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,9 +24,10 @@ import (
 )
 
 type Service struct {
-	cfg  config.Config
-	db   *pgxpool.Pool
-	repo *repositories.StoreRepository
+	cfg      config.Config
+	db       *pgxpool.Pool
+	repo     *repositories.StoreRepository
+	payments payments.Provider
 }
 
 var ErrInvalidCredentials = errors.New("e-mail ou senha invalidos")
@@ -109,11 +108,22 @@ type CustomerAddressPayload struct {
 }
 
 func NewService(cfg config.Config, db *pgxpool.Pool) *Service {
-	return &Service{
+	svc := &Service{
 		cfg:  cfg,
 		db:   db,
 		repo: repositories.NewStoreRepository(db),
 	}
+
+	var mpToken string
+	_ = db.QueryRow(context.Background(), `SELECT value FROM settings WHERE key = 'mp_access_token'`).Scan(&mpToken)
+
+	if mpToken != "" {
+		svc.payments = payments.NewMercadoPagoProvider(mpToken, cfg.FrontendURL)
+	} else {
+		svc.payments = payments.MockProvider{}
+	}
+
+	return svc
 }
 
 func (s *Service) ListProducts(ctx context.Context) ([]models.Product, error) {
@@ -615,7 +625,7 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	}
 
 	total := subtotal - discount + shippingAmount
-	paymentResult, err := s.resolvePaymentsProvider(ctx).CreatePayment(total, input.PaymentMethod)
+	paymentResult, err := s.payments.CreatePayment(total, input.PaymentMethod)
 	if err != nil {
 		return nil, err
 	}
@@ -1131,29 +1141,28 @@ func (s *Service) updateStockForOrder(ctx context.Context, orderID string) {
 }
 
 func (s *Service) GetMPSettings(ctx context.Context) (map[string]string, error) {
-	rows, err := s.db.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('mp_access_token', 'mp_public_key', 'mp_webhook_secret', 'mp_user_id')`)
+	rows, err := s.db.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('mp_access_token', 'mp_public_key', 'mp_webhook_secret')`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	raw := map[string]string{}
+	settings := map[string]string{}
 	for rows.Next() {
 		var key, value string
 		if err := rows.Scan(&key, &value); err != nil {
 			return nil, err
 		}
-		raw[key] = value
+		settings[key] = value
 	}
-
-	settings := map[string]string{
-		"mp_public_key":     raw["mp_public_key"],
-		"mp_webhook_secret": raw["mp_webhook_secret"],
-		"mp_user_id":        raw["mp_user_id"],
-		"mp_connected":      "false",
+	if _, ok := settings["mp_access_token"]; !ok {
+		settings["mp_access_token"] = ""
 	}
-	if raw["mp_access_token"] != "" {
-		settings["mp_connected"] = "true"
+	if _, ok := settings["mp_public_key"]; !ok {
+		settings["mp_public_key"] = ""
+	}
+	if _, ok := settings["mp_webhook_secret"]; !ok {
+		settings["mp_webhook_secret"] = ""
 	}
 	return settings, nil
 }
@@ -1167,149 +1176,6 @@ func (s *Service) GetMPSetting(ctx context.Context, key string) (string, error) 
 	var value string
 	err := s.db.QueryRow(ctx, `SELECT value FROM settings WHERE key = $1`, key).Scan(&value)
 	return value, err
-}
-
-// GetMPConnectURL builds the "Connect with Mercado Pago" OAuth authorization URL.
-// It uses the platform's own MP_CLIENT_ID/MP_CLIENT_SECRET application credentials
-// (shared across deployments) — the seller who logs in on Mercado Pago's page is the
-// one whose account ends up receiving the payments, not whoever owns those credentials.
-func (s *Service) GetMPConnectURL(ctx context.Context) (map[string]string, error) {
-	if s.cfg.MPClientID == "" || s.cfg.MPClientSecret == "" {
-		return nil, fmt.Errorf("mercado pago nao configurado no servidor (defina MP_CLIENT_ID e MP_CLIENT_SECRET)")
-	}
-
-	state, err := generateRandomState()
-	if err != nil {
-		return nil, err
-	}
-	if err := s.SaveMPSetting(ctx, "mp_oauth_state", state); err != nil {
-		return nil, err
-	}
-	if err := s.SaveMPSetting(ctx, "mp_oauth_state_expires_at", time.Now().Add(10*time.Minute).Format(time.RFC3339)); err != nil {
-		return nil, err
-	}
-
-	return map[string]string{
-		"url": payments.BuildMPAuthorizationURL(s.cfg.MPClientID, s.mpRedirectURI(), state),
-	}, nil
-}
-
-// HandleMPCallback exchanges the OAuth code Mercado Pago redirected back with for
-// an access token tied to whichever account just logged in and authorized the app.
-func (s *Service) HandleMPCallback(ctx context.Context, code, state string) error {
-	if code == "" || state == "" {
-		return fmt.Errorf("parametros invalidos")
-	}
-	if s.cfg.MPClientID == "" || s.cfg.MPClientSecret == "" {
-		return fmt.Errorf("mercado pago nao configurado no servidor")
-	}
-
-	expectedState, _ := s.GetMPSetting(ctx, "mp_oauth_state")
-	expiresAtRaw, _ := s.GetMPSetting(ctx, "mp_oauth_state_expires_at")
-	_ = s.SaveMPSetting(ctx, "mp_oauth_state", "")
-	_ = s.SaveMPSetting(ctx, "mp_oauth_state_expires_at", "")
-
-	if expectedState == "" || state != expectedState {
-		return fmt.Errorf("state invalido")
-	}
-	expiresAt, err := time.Parse(time.RFC3339, expiresAtRaw)
-	if err != nil || time.Now().After(expiresAt) {
-		return fmt.Errorf("solicitacao expirada, tente conectar novamente")
-	}
-
-	result, err := payments.ExchangeMPCode(s.cfg.MPClientID, s.cfg.MPClientSecret, code, s.mpRedirectURI())
-	if err != nil {
-		return err
-	}
-
-	s.saveMPOAuthTokens(ctx, result)
-	return nil
-}
-
-func (s *Service) DisconnectMP(ctx context.Context) error {
-	for _, key := range []string{"mp_access_token", "mp_refresh_token", "mp_public_key", "mp_user_id", "mp_token_expires_at"} {
-		if err := s.SaveMPSetting(ctx, key, ""); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service) mpRedirectURI() string {
-	return strings.TrimRight(s.cfg.FrontendURL, "/") + "/api/mercadopago/callback"
-}
-
-func (s *Service) saveMPOAuthTokens(ctx context.Context, tokens *payments.OAuthTokenResponse) {
-	expiresAt := time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second).Format(time.RFC3339)
-	_ = s.SaveMPSetting(ctx, "mp_access_token", tokens.AccessToken)
-	_ = s.SaveMPSetting(ctx, "mp_refresh_token", tokens.RefreshToken)
-	_ = s.SaveMPSetting(ctx, "mp_token_expires_at", expiresAt)
-	if tokens.PublicKey != "" {
-		_ = s.SaveMPSetting(ctx, "mp_public_key", tokens.PublicKey)
-	}
-	if tokens.UserID != 0 {
-		_ = s.SaveMPSetting(ctx, "mp_user_id", fmt.Sprintf("%d", tokens.UserID))
-	}
-}
-
-// resolvePaymentsProvider always reads the current settings so a token connected or
-// refreshed after startup is picked up immediately, refreshing it first if it is an
-// OAuth-issued token that is close to expiring.
-func (s *Service) resolvePaymentsProvider(ctx context.Context) payments.Provider {
-	accessToken, err := s.getFreshMPAccessToken(ctx)
-	if err != nil || accessToken == "" {
-		return payments.MockProvider{}
-	}
-	return payments.NewMercadoPagoProvider(accessToken, s.cfg.FrontendURL)
-}
-
-func (s *Service) getFreshMPAccessToken(ctx context.Context) (string, error) {
-	rows, err := s.db.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('mp_access_token', 'mp_refresh_token', 'mp_token_expires_at')`)
-	if err != nil {
-		return "", err
-	}
-	values := map[string]string{}
-	for rows.Next() {
-		var key, value string
-		if err := rows.Scan(&key, &value); err != nil {
-			rows.Close()
-			return "", err
-		}
-		values[key] = value
-	}
-	rows.Close()
-
-	accessToken := values["mp_access_token"]
-	if accessToken == "" {
-		return "", nil
-	}
-
-	refreshToken := values["mp_refresh_token"]
-	expiresAtRaw := values["mp_token_expires_at"]
-	if refreshToken == "" || expiresAtRaw == "" || s.cfg.MPClientID == "" || s.cfg.MPClientSecret == "" {
-		return accessToken, nil
-	}
-
-	expiresAt, err := time.Parse(time.RFC3339, expiresAtRaw)
-	if err != nil || time.Until(expiresAt) > 24*time.Hour {
-		return accessToken, nil
-	}
-
-	result, err := payments.RefreshMPToken(s.cfg.MPClientID, s.cfg.MPClientSecret, refreshToken)
-	if err != nil {
-		return accessToken, nil
-	}
-
-	s.saveMPOAuthTokens(ctx, result)
-	return result.AccessToken, nil
-}
-
-func generateRandomState() (string, error) {
-	buf := make([]byte, 24)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf), nil
 }
 
 func slugify(value string) string {

@@ -529,14 +529,6 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			}
 			respond(c, gin.H{"success": true}, nil)
 		})
-		admin.GET("/mercadopago/connect", func(c *gin.Context) {
-			data, err := service.GetMPConnectURL(c.Request.Context())
-			respond(c, data, err)
-		})
-		admin.POST("/mercadopago/disconnect", func(c *gin.Context) {
-			err := service.DisconnectMP(c.Request.Context())
-			respond(c, gin.H{"success": true}, err)
-		})
 	}
 
 	router.Static("/uploads", filepath.Join("public", "uploads"))
@@ -564,23 +556,6 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
-
-	router.GET("/api/mercadopago/callback", func(c *gin.Context) {
-		adminURL := strings.TrimRight(cfg.FrontendURL, "/") + "/admin"
-
-		if c.Query("error") != "" {
-			c.Redirect(http.StatusFound, adminURL+"?mp=error")
-			return
-		}
-
-		err := service.HandleMPCallback(c.Request.Context(), c.Query("code"), c.Query("state"))
-		if err != nil {
-			c.Redirect(http.StatusFound, adminURL+"?mp=error")
-			return
-		}
-
-		c.Redirect(http.StatusFound, adminURL+"?mp=connected")
 	})
 
 	return router
