@@ -6,16 +6,31 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 type PaymentResult struct {
-	ProviderRef string `json:"providerRef"`
-	Status      string `json:"status"`
-	PaymentURL  string `json:"paymentUrl,omitempty"`
+	ProviderRef  string `json:"providerRef"`
+	Status       string `json:"status"`
+	StatusDetail string `json:"statusDetail,omitempty"`
+	QRCode       string `json:"qrCode,omitempty"`
+	QRCodeBase64 string `json:"qrCodeBase64,omitempty"`
+}
+
+type DirectPaymentInput struct {
+	Total           float64
+	Description     string
+	PaymentMethodID string
+	Token           string
+	IssuerID        string
+	Installments    int
+	PayerEmail      string
+	PayerCPF        string
 }
 
 type Provider interface {
-	CreatePayment(total float64, method string) (PaymentResult, error)
+	CreatePayment(input DirectPaymentInput) (PaymentResult, error)
 }
 
 type MercadoPagoProvider struct {
@@ -30,47 +45,40 @@ func NewMercadoPagoProvider(accessToken, frontendURL string) *MercadoPagoProvide
 	}
 }
 
-func (mp *MercadoPagoProvider) CreatePayment(total float64, method string) (PaymentResult, error) {
-	payload := map[string]interface{}{
-		"items": []map[string]interface{}{
-			{
-				"title":      "Compra On Perfumaria",
-				"quantity":   1,
-				"unit_price": total,
-			},
-		},
-		"back_urls": map[string]string{
-			"success": mp.FrontendURL + "/checkout?status=success",
-			"failure": mp.FrontendURL + "/checkout?status=failure",
-			"pending": mp.FrontendURL + "/checkout?status=pending",
-		},
-		"auto_return": "approved",
-		"notification_url": mp.FrontendURL + "/api/webhooks/mercadopago",
-		"payment_methods": map[string]interface{}{
-			"excluded_payment_types": []map[string]string{
-				{"id": "ticket"},
-			},
-		},
+// CreatePayment processes the payment directly (Checkout Transparente / Payment Brick),
+// without redirecting the customer to a Mercado Pago hosted page.
+func (mp *MercadoPagoProvider) CreatePayment(input DirectPaymentInput) (PaymentResult, error) {
+	payer := map[string]interface{}{
+		"email": input.PayerEmail,
+	}
+	if input.PayerCPF != "" {
+		payer["identification"] = map[string]string{"type": "CPF", "number": input.PayerCPF}
 	}
 
-	if method == "pix" {
-		payload["payment_methods"] = map[string]interface{}{
-			"excluded_payment_methods": []map[string]string{
-				{"id": "credit_card"},
-				{"id": "debit_card"},
-				{"id": "ticket"},
-			},
+	payload := map[string]interface{}{
+		"transaction_amount": input.Total,
+		"description":        input.Description,
+		"payment_method_id":  input.PaymentMethodID,
+		"payer":              payer,
+		"notification_url":   mp.FrontendURL + "/api/webhooks/mercadopago",
+	}
+
+	if input.PaymentMethodID != "pix" {
+		payload["token"] = input.Token
+		payload["installments"] = input.Installments
+		if input.IssuerID != "" {
+			payload["issuer_id"] = input.IssuerID
 		}
-		payload["default_installments"] = 1
 	}
 
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequest("POST", "https://api.mercadopago.com/checkout/preferences", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", "https://api.mercadopago.com/v1/payments", bytes.NewReader(body))
 	if err != nil {
 		return PaymentResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+mp.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Idempotency-Key", uuid.New().String())
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -84,26 +92,41 @@ func (mp *MercadoPagoProvider) CreatePayment(total float64, method string) (Paym
 	}
 
 	var result struct {
-		ID        string `json:"id"`
-		InitPoint string `json:"init_point"`
+		ID                 int64  `json:"id"`
+		Status             string `json:"status"`
+		StatusDetail       string `json:"status_detail"`
+		PointOfInteraction struct {
+			TransactionData struct {
+				QRCode       string `json:"qr_code"`
+				QRCodeBase64 string `json:"qr_code_base64"`
+			} `json:"transaction_data"`
+		} `json:"point_of_interaction"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return PaymentResult{}, err
 	}
 
 	return PaymentResult{
-		ProviderRef: result.ID,
-		Status:      "pending",
-		PaymentURL:  result.InitPoint,
+		ProviderRef:  fmt.Sprintf("%d", result.ID),
+		Status:       result.Status,
+		StatusDetail: result.StatusDetail,
+		QRCode:       result.PointOfInteraction.TransactionData.QRCode,
+		QRCodeBase64: result.PointOfInteraction.TransactionData.QRCodeBase64,
 	}, nil
 }
 
 type MockProvider struct{}
 
-func (MockProvider) CreatePayment(total float64, method string) (PaymentResult, error) {
+func (MockProvider) CreatePayment(input DirectPaymentInput) (PaymentResult, error) {
+	if input.PaymentMethodID == "pix" {
+		return PaymentResult{
+			ProviderRef: "MOCK-" + uuid.New().String(),
+			Status:      "pending",
+			QRCode:      "00020126360014BR.GOV.BCB.PIX0114MOCK-NAO-PAGAR5204000053039865802BR5913On Perfumaria6009SAO PAULO62070503***6304MOCK",
+		}, nil
+	}
 	return PaymentResult{
-		ProviderRef: "MOCK-" + method,
-		Status:      "pending",
-		PaymentURL:  "https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=MOCK-" + method,
+		ProviderRef: "MOCK-" + uuid.New().String(),
+		Status:      "approved",
 	}, nil
 }

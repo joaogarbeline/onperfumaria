@@ -62,10 +62,13 @@ type CheckoutInput struct {
 	City            string         `json:"city"`
 	State           string         `json:"state"`
 	DeliveryMode    string         `json:"deliveryMode"`
-	PaymentMethod   string         `json:"paymentMethod"`
 	CouponCode      string         `json:"couponCode"`
 	CorreiosPrice   float64        `json:"correiosPrice"`
 	Items           []CheckoutItem `json:"items"`
+	PaymentMethodID string         `json:"paymentMethodId"`
+	Token           string         `json:"token"`
+	IssuerID        string         `json:"issuerId"`
+	Installments    int            `json:"installments"`
 }
 
 type ProductPayload struct {
@@ -89,10 +92,10 @@ type ProductPayload struct {
 }
 
 type CustomerProfilePayload struct {
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Phone        string `json:"phone"`
-	CPF          string `json:"cpf"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Phone string `json:"phone"`
+	CPF   string `json:"cpf"`
 }
 
 type CustomerAddressPayload struct {
@@ -269,7 +272,9 @@ func (s *Service) StoreConfig(ctx context.Context) (map[string]interface{}, erro
 	}
 	options = append(options, map[string]string{"value": "correios", "label": "Correios (PAC/SEDEX)"})
 
-	return map[string]interface{}{"shippingOptions": options}, nil
+	mpPublicKey, _ := s.GetMPSetting(ctx, "mp_public_key")
+
+	return map[string]interface{}{"shippingOptions": options, "mpPublicKey": mpPublicKey}, nil
 }
 
 func (s *Service) QuoteShipping(ctx context.Context, input shipping.QuoteInput) (shipping.QuoteOutput, error) {
@@ -625,12 +630,24 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	}
 
 	total := subtotal - discount + shippingAmount
-	paymentResult, err := s.payments.CreatePayment(total, input.PaymentMethod)
+	if input.PaymentMethodID == "" {
+		return nil, errors.New("selecione uma forma de pagamento")
+	}
+	paymentResult, err := s.payments.CreatePayment(payments.DirectPaymentInput{
+		Total:           total,
+		Description:     fmt.Sprintf("Pedido On Perfumaria (%d itens)", len(orderItems)),
+		PaymentMethodID: input.PaymentMethodID,
+		Token:           input.Token,
+		IssuerID:        input.IssuerID,
+		Installments:    input.Installments,
+		PayerEmail:      input.CustomerEmail,
+		PayerCPF:        input.CustomerCPF,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	mpPreferenceID := paymentResult.ProviderRef
+	mpPaymentID := paymentResult.ProviderRef
 	orderStatus := mapPaymentToOrderStatus(paymentResult.Status)
 	origin := "online"
 
@@ -639,7 +656,7 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 		INSERT INTO orders (customer_id, address_id, subtotal, shipping_amount, discount_amount, total_amount, payment_method, payment_status, order_status, origin, mp_preference_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id::text`,
-		customerID, addressID, subtotal, shippingAmount, discount, total, input.PaymentMethod, paymentResult.Status, orderStatus, origin, mpPreferenceID,
+		customerID, addressID, subtotal, shippingAmount, discount, total, input.PaymentMethodID, paymentResult.Status, orderStatus, origin, mpPaymentID,
 	).Scan(&orderID)
 	if err != nil {
 		return nil, err
@@ -653,7 +670,7 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	}
 
 	if _, err := tx.Exec(ctx, `INSERT INTO payments (order_id, provider, provider_reference, amount, status) VALUES ($1, 'mercadopago', $2, $3, $4)`,
-		orderID, mpPreferenceID, total, paymentResult.Status); err != nil {
+		orderID, mpPaymentID, total, paymentResult.Status); err != nil {
 		return nil, err
 	}
 
@@ -661,10 +678,16 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 		return nil, err
 	}
 
+	if orderStatus == "pago" {
+		s.updateStockForOrder(ctx, orderID)
+	}
+
 	return map[string]interface{}{
 		"orderId": orderID, "paymentStatus": paymentResult.Status, "orderStatus": orderStatus,
 		"shippingAmount": shippingAmount, "discount": discount, "total": total,
-		"paymentUrl": paymentResult.PaymentURL,
+		"statusDetail": paymentResult.StatusDetail,
+		"qrCode":       paymentResult.QRCode,
+		"qrCodeBase64": paymentResult.QRCodeBase64,
 	}, nil
 }
 
@@ -1091,11 +1114,6 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 	var payment struct {
 		ID     int64  `json:"id"`
 		Status string `json:"status"`
-		Order  struct {
-			Type string `json:"type"`
-			ID   string `json:"id"`
-		} `json:"order"`
-		ExternalReference string `json:"external_reference"`
 	}
 	if err := json.Unmarshal(respBody, &payment); err != nil {
 		return err
@@ -1105,20 +1123,22 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 		return nil
 	}
 
-	result, err := s.db.Exec(ctx, `
+	var orderID string
+	err = s.db.QueryRow(ctx, `
 		UPDATE orders
-		SET payment_status = 'paid', order_status = 'pago', mp_payment_id = $2
-		WHERE payment_status = 'pending' AND mp_preference_id = $3`,
-		paymentID, payment.ExternalReference)
+		SET payment_status = 'paid', order_status = 'pago', mp_payment_id = $1
+		WHERE payment_status = 'pending' AND mp_preference_id = $1
+		RETURNING id::text`,
+		paymentID).Scan(&orderID)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
 		return err
 	}
 
-	if result.RowsAffected() > 0 {
-		s.updateStockForOrder(ctx, payment.ExternalReference)
-	}
-
+	s.updateStockForOrder(ctx, orderID)
 	return nil
 }
 

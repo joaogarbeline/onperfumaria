@@ -1,5 +1,5 @@
-import type { FormEvent } from 'react'
-import { Eye, EyeOff, Minus, Plus, Trash2 } from 'lucide-react'
+import { initMercadoPago, Payment } from '@mercadopago/sdk-react'
+import { Copy, Eye, EyeOff, Minus, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -40,6 +40,23 @@ function formatCPF(value: string): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
 }
 
+function rejectionMessage(detail?: string): string {
+  const reasons: Record<string, string> = {
+    cc_rejected_insufficient_amount: 'Saldo insuficiente no cartao.',
+    cc_rejected_bad_filled_security_code: 'Codigo de seguranca (CVV) invalido.',
+    cc_rejected_bad_filled_date: 'Data de validade invalida.',
+    cc_rejected_bad_filled_card_number: 'Numero do cartao invalido.',
+    cc_rejected_bad_filled_other: 'Confira os dados do cartao e tente novamente.',
+    cc_rejected_call_for_authorize: 'Cartao requer autorizacao. Entre em contato com o banco emissor.',
+    cc_rejected_card_disabled: 'Cartao desabilitado. Entre em contato com o banco emissor.',
+    cc_rejected_duplicated_payment: 'Pagamento duplicado para esse pedido.',
+    cc_rejected_high_risk: 'Pagamento recusado por seguranca.',
+    cc_rejected_max_attempts: 'Numero maximo de tentativas excedido. Tente outro cartao.',
+    cc_rejected_other_reason: 'Pagamento recusado pelo banco emissor.',
+  }
+  return (detail && reasons[detail]) || 'Pagamento recusado. Verifique os dados do cartao ou tente Pix.'
+}
+
 function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
   if (!pw) return { score: 0, label: '', color: '' }
   let score = 0
@@ -56,6 +73,7 @@ function getPasswordStrength(pw: string): { score: number; label: string; color:
 
 type CheckoutConfig = {
   shippingOptions: Array<{ value: string; label: string }>
+  mpPublicKey: string
 }
 
 type CustomerProfile = {
@@ -95,7 +113,6 @@ type CheckoutForm = {
   city: string
   state: string
   deliveryMode: string
-  paymentMethod: string
   couponCode: string
 }
 
@@ -115,8 +132,18 @@ const initialForm: CheckoutForm = {
   city: 'Campo Grande',
   state: 'MS',
   deliveryMode: '',
-  paymentMethod: 'pix',
   couponCode: '',
+}
+
+const paymentMethodsConfig = {
+  creditCard: 'all',
+  bankTransfer: 'all',
+  debitCard: [],
+  ticket: [],
+  mercadoPago: [],
+  atm: [],
+  prepaidCard: [],
+  maxInstallments: 12,
 }
 
 function useFormValidation(form: CheckoutForm, isGuest: boolean) {
@@ -141,7 +168,6 @@ function useFormValidation(form: CheckoutForm, isGuest: boolean) {
   if (!form.city.trim()) errors.push('Cidade obrigatoria')
   if (!form.state.trim()) errors.push('Estado obrigatorio')
   if (!form.deliveryMode) errors.push('Selecione a entrega')
-  if (!form.paymentMethod) errors.push('Selecione o pagamento')
   return { valid: errors.length === 0, errors }
 }
 
@@ -151,7 +177,7 @@ export function CheckoutPage() {
   const format = useCurrency()
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const [config, setConfig] = useState<CheckoutConfig>({ shippingOptions: [] })
+  const [config, setConfig] = useState<CheckoutConfig>({ shippingOptions: [], mpPublicKey: '' })
   const [profile, setProfile] = useState<CustomerProfile | null>(null)
   const [form, setForm] = useState<CheckoutForm>(initialForm)
   const [quote, setQuote] = useState<ShippingQuote | null>(null)
@@ -162,6 +188,12 @@ export function CheckoutPage() {
   const [correiosOptions, setCorreiosOptions] = useState<CorreiosOption[]>([])
   const [selectedCorreios, setSelectedCorreios] = useState<string>('')
   const [searchParams] = useSearchParams()
+  const [pixData, setPixData] = useState<{ orderId: string; qrCode: string; qrCodeBase64: string } | null>(null)
+  const [pixPaid, setPixPaid] = useState(false)
+  const [pixCopied, setPixCopied] = useState(false)
+  const [paymentError, setPaymentError] = useState('')
+  const [brickReady, setBrickReady] = useState(false)
+  const [brickTimedOut, setBrickTimedOut] = useState(false)
 
   useEffect(() => {
     const status = searchParams.get('status')
@@ -169,6 +201,27 @@ export function CheckoutPage() {
     else if (status === 'failure') setMessage('Pagamento recusado. Tente novamente.')
     else if (status === 'pending') setMessage('Pagamento pendente. Aguardando confirmacao.')
   }, [searchParams])
+
+  useEffect(() => {
+    if (config.mpPublicKey) {
+      initMercadoPago(config.mpPublicKey, { locale: 'pt-BR' })
+    }
+  }, [config.mpPublicKey])
+
+  useEffect(() => {
+    if (!pixData || pixPaid) return
+    const interval = window.setInterval(() => {
+      api
+        .get<{ paymentStatus: string }>(`/order/${pixData.orderId}`)
+        .then((order) => {
+          if (order.paymentStatus === 'paid') {
+            setPixPaid(true)
+          }
+        })
+        .catch(() => undefined)
+    }, 5000)
+    return () => window.clearInterval(interval)
+  }, [pixData, pixPaid])
 
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + item.finalPrice * item.quantity, 0), [items])
   const totalWeight = useMemo(() => items.reduce((sum, item) => sum + item.weightGrams * item.quantity, 0), [items])
@@ -267,37 +320,113 @@ export function CheckoutPage() {
   const isGuest = !token || scope !== 'customer'
   const validation = useFormValidation(form, isGuest)
   const missingRequiredFields = !validation.valid
+  const showBrick = !missingRequiredFields && !!config.mpPublicKey
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (missingRequiredFields) {
-      setMessage(validation.errors.join('. '))
-      return
-    }
+  useEffect(() => {
+    if (!showBrick) return
+    setBrickReady(false)
+    setBrickTimedOut(false)
+    const timeout = window.setTimeout(() => setBrickTimedOut(true), 10000)
+    return () => window.clearTimeout(timeout)
+  }, [showBrick, total])
+
+  async function handlePayment(brickData: { formData?: unknown }): Promise<void> {
+    const formData = (brickData.formData ?? {}) as Record<string, unknown>
+    setPaymentError('')
     setLoading(true)
-    setMessage('')
-
     try {
-      const response = await api.post<{ total: number; paymentStatus: string; discount: number; shippingAmount: number; paymentUrl?: string }>(
+      const response = await api.post<{
+        orderId: string
+        total: number
+        paymentStatus: string
+        orderStatus: string
+        discount: number
+        shippingAmount: number
+        statusDetail?: string
+        qrCode?: string
+        qrCodeBase64?: string
+      }>(
         '/checkout',
         {
           ...form,
           correiosPrice: form.deliveryMode === 'correios' ? activeQuote?.amount ?? 0 : 0,
           items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
+          paymentMethodId: formData.payment_method_id,
+          token: formData.token ?? '',
+          issuerId: formData.issuer_id ?? '',
+          installments: Number(formData.installments ?? 1),
         },
         token && scope === 'customer' ? token : undefined,
       )
-      clearCart()
-      if (response.paymentUrl) {
-        window.location.href = response.paymentUrl
-      } else {
-        setMessage(`Pedido criado com sucesso. Total ${format(response.total)} | Pagamento: ${response.paymentStatus}`)
+
+      if (response.qrCode) {
+        setPixData({ orderId: response.orderId, qrCode: response.qrCode, qrCodeBase64: response.qrCodeBase64 ?? '' })
+        clearCart()
+        return
       }
+
+      if (response.paymentStatus === 'rejected' || response.paymentStatus === 'cancelled') {
+        throw new Error(rejectionMessage(response.statusDetail))
+      }
+
+      clearCart()
+      setMessage(
+        response.paymentStatus === 'approved'
+          ? 'Pagamento aprovado! Seu pedido foi confirmado.'
+          : 'Pagamento em analise. Voce recebera a confirmacao em breve.',
+      )
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao finalizar pedido')
+      const msg = error instanceof Error ? error.message : 'Erro ao processar pagamento'
+      setPaymentError(msg)
+      throw error
     } finally {
       setLoading(false)
     }
+  }
+
+  if (pixData) {
+    return (
+      <EmptyState
+        eyebrow="Pix"
+        title={pixPaid ? 'Pagamento confirmado!' : 'Escaneie o QR Code para pagar'}
+        description={
+          pixPaid
+            ? 'Recebemos a confirmacao do seu Pix. Seu pedido ja esta sendo processado.'
+            : 'Abra o app do seu banco, escolha pagar com Pix e escaneie o codigo abaixo, ou copie o codigo e cole no app.'
+        }
+        action={
+          pixPaid ? (
+            <Link to="/catalogo">
+              <Button>Voltar ao catalogo</Button>
+            </Link>
+          ) : (
+            <div className="flex flex-col items-center gap-4">
+              {pixData.qrCodeBase64 ? (
+                <img
+                  src={`data:image/png;base64,${pixData.qrCodeBase64}`}
+                  alt="QR Code Pix"
+                  className="h-56 w-56 rounded-[24px] border border-stone-200 bg-white p-3"
+                />
+              ) : null}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  navigator.clipboard.writeText(pixData.qrCode).then(() => {
+                    setPixCopied(true)
+                    window.setTimeout(() => setPixCopied(false), 2000)
+                  })
+                }}
+              >
+                <Copy size={16} />
+                {pixCopied ? 'Codigo copiado!' : 'Copiar codigo Pix'}
+              </Button>
+              <p className="text-xs text-[#6b665f]">Aguardando confirmacao do pagamento...</p>
+            </div>
+          )
+        }
+      />
+    )
   }
 
   if (items.length === 0) {
@@ -319,7 +448,7 @@ export function CheckoutPage() {
   }
 
   return (
-    <form className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]" onSubmit={handleSubmit}>
+    <form className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]" onSubmit={(event) => event.preventDefault()}>
       <div className="space-y-6">
         <Reveal>
           <section className="surface-panel p-5 sm:p-6">
@@ -555,15 +684,6 @@ export function CheckoutPage() {
                   ))}
                 </SelectField>
               ) : null}
-              <SelectField
-                label="Pagamento"
-                value={form.paymentMethod}
-                onChange={(event) => setForm((current) => ({ ...current, paymentMethod: event.target.value }))}
-              >
-                <option value="pix">Pix (Mercado Pago)</option>
-                <option value="card_credit">Cartao de credito (Mercado Pago)</option>
-                <option value="card_debit">Cartao de debito (Mercado Pago)</option>
-              </SelectField>
               <div className="md:col-span-2">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                   <InputField
@@ -616,9 +736,36 @@ export function CheckoutPage() {
             total={total}
             couponCode={form.couponCode}
           />
-          <Button type="submit" fullWidth size="lg" disabled={loading || missingRequiredFields}>
-            {loading ? 'Finalizando...' : 'Finalizar compra'}
-          </Button>
+          {missingRequiredFields ? (
+            <p className="rounded-[22px] border border-stone-200 bg-[#f7f2eb] px-4 py-3 text-center text-sm text-[#6b665f]">
+              Preencha seus dados e endereco acima para escolher a forma de pagamento.
+            </p>
+          ) : !config.mpPublicKey ? (
+            <p className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-[#6b665f]">
+              Pagamento online indisponivel no momento. Entre em contato para finalizar seu pedido.
+            </p>
+          ) : brickTimedOut && !brickReady ? (
+            <p className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm text-rose-600">
+              Nao foi possivel carregar o formulario de pagamento. Verifique sua conexao e recarregue a pagina.
+            </p>
+          ) : (
+            <div className={`surface-panel overflow-hidden p-2 ${loading ? 'pointer-events-none opacity-60' : ''}`}>
+              {loading ? <p className="px-4 pt-3 text-center text-xs font-medium text-[#6b665f]">Processando pagamento...</p> : null}
+              {!brickReady ? <p className="px-4 pt-3 text-center text-xs font-medium text-[#6b665f]">Carregando formulario de pagamento...</p> : null}
+              <Payment
+                key={total.toFixed(2)}
+                initialization={{ amount: total }}
+                customization={{ paymentMethods: paymentMethodsConfig }}
+                onSubmit={handlePayment}
+                onReady={() => setBrickReady(true)}
+                onError={(error) => setPaymentError(error instanceof Error ? error.message : 'Erro ao carregar o pagamento')}
+                locale="pt-BR"
+              />
+            </div>
+          )}
+          {paymentError ? (
+            <p className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">{paymentError}</p>
+          ) : null}
           {isGuest ? (
             <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-[#6b665f]">
               Ja tem cadastro?{' '}

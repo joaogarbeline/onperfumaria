@@ -55,6 +55,12 @@ Mercado Pago, em "Suas integracoes" > aplicacao > Credenciais de producao. Depoi
 salvar, o checkout online passa a criar pagamentos de verdade nessa conta; sem token
 configurado, o backend usa um provider mockado.
 
+O pagamento e feito com o Payment Brick (Checkout Transparente) embutido na propria
+pagina de checkout — cartao de credito com parcelamento ou Pix, sem redirecionar o
+cliente para o site do Mercado Pago. A Public Key e exposta via `GET /api/store/config`
+(campo `mpPublicKey`) para o frontend inicializar o SDK; o Access Token nunca sai do
+backend.
+
 ## Endpoints principais
 
 - `GET /api/store/home`
