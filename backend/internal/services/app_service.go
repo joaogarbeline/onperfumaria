@@ -776,7 +776,7 @@ func (s *Service) SaveProduct(ctx context.Context, id string, payload ProductPay
 	if id == "" {
 		err := s.db.QueryRow(ctx, `
 			INSERT INTO products (name, sku, slug, brand_id, category_id, description, sale_price, cost_price, profit_margin, stock_current, stock_minimum, weight_grams, volume_ml, gender, product_type, image_url, is_active, is_featured)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $8 = 0 THEN 0 ELSE (($7 - $8) / $8) * 100 END, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $8::numeric = 0 THEN 0 ELSE (($7::numeric - $8::numeric) / $8::numeric) * 100 END, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 			RETURNING id::text`,
 			payload.Name, strings.ToUpper(payload.SKU), payload.Slug, payload.BrandID, payload.CategoryID, payload.Description, payload.SalePrice, payload.CostPrice, payload.StockCurrent,
 			payload.StockMinimum, payload.WeightGrams, payload.VolumeML, payload.Gender, payload.ProductType, payload.ImageURL, payload.IsActive, payload.IsFeatured,
@@ -795,7 +795,7 @@ func (s *Service) SaveProduct(ctx context.Context, id string, payload ProductPay
 				description = $7,
 				sale_price = $8,
 				cost_price = $9,
-				profit_margin = CASE WHEN $9 = 0 THEN 0 ELSE (($8 - $9) / $9) * 100 END,
+				profit_margin = CASE WHEN $9::numeric = 0 THEN 0 ELSE (($8::numeric - $9::numeric) / $9::numeric) * 100 END,
 				stock_current = $10,
 				stock_minimum = $11,
 				weight_grams = $12,
