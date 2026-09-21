@@ -787,13 +787,45 @@ func (s *Service) CatalogOptions(ctx context.Context) (map[string]interface{}, e
 	return result, nil
 }
 
+// uniqueProductSlug returns base unchanged if free, otherwise appends -2, -3, ...
+// until it finds a slug not used by another product, so creating/renaming a
+// product never fails on a slug collision the admin has no reason to care about.
+func (s *Service) uniqueProductSlug(ctx context.Context, base, excludeID string) (string, error) {
+	slug := base
+	for suffix := 2; ; suffix++ {
+		var exists bool
+		if err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM products WHERE slug = $1 AND id::text != $2)`, slug, excludeID).Scan(&exists); err != nil {
+			return "", err
+		}
+		if !exists {
+			return slug, nil
+		}
+		slug = fmt.Sprintf("%s-%d", base, suffix)
+	}
+}
+
 func (s *Service) SaveProduct(ctx context.Context, id string, payload ProductPayload) (map[string]interface{}, error) {
-	if payload.Name == "" || payload.SKU == "" || payload.BrandID == "" || payload.CategoryID == "" {
-		return nil, errors.New("preencha os campos obrigatorios do produto")
+	if payload.Name == "" {
+		return nil, errors.New("informe o nome do produto")
+	}
+	if payload.BrandID == "" {
+		return nil, errors.New("selecione uma marca")
+	}
+	if payload.CategoryID == "" {
+		return nil, errors.New("selecione uma categoria")
 	}
 
 	if payload.Slug == "" {
 		payload.Slug = slugify(payload.Name)
+	}
+	uniqueSlug, err := s.uniqueProductSlug(ctx, payload.Slug, id)
+	if err != nil {
+		return nil, err
+	}
+	payload.Slug = uniqueSlug
+
+	if payload.SKU == "" {
+		payload.SKU = strings.ToUpper(strings.ReplaceAll(payload.Slug, "-", "_"))
 	}
 
 	if id == "" {

@@ -155,6 +155,7 @@ export function AdminPage() {
   }
   const [uploadingImage, setUploadingImage] = useState(false)
   const [productImages, setProductImages] = useState<Array<{ id: string; url: string }>>([])
+  const [productFieldError, setProductFieldError] = useState<{ field: string; message: string } | null>(null)
   const [orderFilter, setOrderFilter] = useState({ search: '', status: '', payment: '', startDate: '', endDate: '' })
   const [orderPage, setOrderPage] = useState(1)
   const [orderTotal, setOrderTotal] = useState(0)
@@ -245,6 +246,35 @@ export function AdminPage() {
 
   function handleProductChange(field: string, value: string | number | boolean) {
     setProductForm((current) => ({ ...current, [field]: value }))
+    setProductFieldError((current) => (current?.field === field ? null : current))
+  }
+
+  // Pre-selects the first brand/category on a fresh "new product" form so the
+  // admin does not have to remember to pick one before saving.
+  useEffect(() => {
+    if (productForm.id) return
+    setProductForm((current) => ({
+      ...current,
+      brandId: current.brandId || catalogData.brands[0]?.id || '',
+      categoryId: current.categoryId || catalogData.categories[0]?.id || '',
+    }))
+  }, [catalogData.brands, catalogData.categories, productForm.id])
+
+  function focusProductField(fieldId: string) {
+    const el = document.getElementById(fieldId)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    ;(el as HTMLElement).focus()
+  }
+
+  function productFieldFromMessage(message: string): { field: string; id: string } | null {
+    const lower = message.toLowerCase()
+    if (lower.includes('nome')) return { field: 'name', id: 'product-field-name' }
+    if (lower.includes('marca')) return { field: 'brandId', id: 'product-field-brand' }
+    if (lower.includes('categoria')) return { field: 'categoryId', id: 'product-field-category' }
+    if (lower.includes('preco') || lower.includes('preço')) return { field: 'salePrice', id: 'product-field-price' }
+    if (lower.includes('sku')) return { field: 'sku', id: 'product-field-sku' }
+    return null
   }
 
   async function handleImageUpload(file: File) {
@@ -287,6 +317,7 @@ export function AdminPage() {
 
   function startEdit(product: Product) {
     setActiveTab('products')
+    setProductFieldError(null)
     loadProductImages(product.id)
     setProductForm({
       id: product.id,
@@ -314,6 +345,22 @@ export function AdminPage() {
     event.preventDefault()
     if (!token) return
 
+    if (!productForm.name.trim()) {
+      setProductFieldError({ field: 'name', message: 'Informe o nome do produto.' })
+      focusProductField('product-field-name')
+      return
+    }
+    if (Number(productForm.salePrice) <= 0) {
+      setProductFieldError({ field: 'salePrice', message: 'Informe um preco de venda maior que zero.' })
+      focusProductField('product-field-price')
+      return
+    }
+    if (!productForm.brandId || !productForm.categoryId) {
+      setProductFieldError({ field: !productForm.brandId ? 'brandId' : 'categoryId', message: 'Cadastre ao menos uma marca e uma categoria antes de criar produtos.' })
+      focusProductField(!productForm.brandId ? 'product-field-brand' : 'product-field-category')
+      return
+    }
+
     const payload = {
       ...productForm,
       salePrice: Number(productForm.salePrice),
@@ -324,16 +371,26 @@ export function AdminPage() {
       volumeMl: Number(productForm.volumeMl),
     }
 
-    if (productForm.id) {
-      await api.put(`/admin/products/${productForm.id}`, payload, token)
-      setMessage('Produto atualizado com sucesso.')
-    } else {
-      await api.post('/admin/products', payload, token)
-      setMessage('Produto criado com sucesso.')
+    try {
+      if (productForm.id) {
+        await api.put(`/admin/products/${productForm.id}`, payload, token)
+        notify('Produto atualizado com sucesso.')
+      } else {
+        await api.post('/admin/products', payload, token)
+        notify('Produto criado com sucesso.')
+      }
+      setProductFieldError(null)
+      setProductForm(emptyProductForm)
+      await loadAdminData()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro ao salvar produto'
+      notify(msg, 'error')
+      const match = productFieldFromMessage(msg)
+      if (match) {
+        setProductFieldError({ field: match.field, message: msg })
+        focusProductField(match.id)
+      }
     }
-
-    setProductForm(emptyProductForm)
-    await loadAdminData()
   }
 
   async function deactivateProduct(id: string) {
@@ -629,7 +686,7 @@ export function AdminPage() {
           <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
             <div className="surface-panel p-6">
               <h2 className="text-4xl leading-none text-[#171412]">{productForm.id ? 'Editar produto' : 'Novo produto'}</h2>
-              <form className="mt-5 space-y-6" onSubmit={handleProductSubmit}>
+              <form className="mt-5 space-y-6" onSubmit={handleProductSubmit} noValidate>
                 <div>
                   <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-[#b77717]">Imagem do produto</p>
                   <div className="flex flex-col gap-4">
@@ -692,22 +749,56 @@ export function AdminPage() {
                 <div>
                   <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-[#b77717]">Informacoes basicas</p>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <InputField value={productForm.name} onChange={(e) => handleProductChange('name', e.target.value)} label="Nome" required />
-                    <InputField value={productForm.sku} onChange={(e) => handleProductChange('sku', e.target.value)} label="SKU" required />
+                    <div>
+                      <InputField
+                        id="product-field-name"
+                        value={productForm.name}
+                        onChange={(e) => handleProductChange('name', e.target.value)}
+                        label="Nome"
+                        required
+                        className={productFieldError?.field === 'name' ? 'ring-2 ring-rose-400' : ''}
+                      />
+                      {productFieldError?.field === 'name' ? <p className="mt-1.5 text-xs text-rose-600">{productFieldError.message}</p> : null}
+                    </div>
+                    <InputField
+                      id="product-field-sku"
+                      value={productForm.sku}
+                      onChange={(e) => handleProductChange('sku', e.target.value)}
+                      label="SKU (gerado automatico)"
+                      placeholder="Deixe em branco para gerar do nome"
+                    />
                     <InputField value={productForm.slug} onChange={(e) => handleProductChange('slug', e.target.value)} label="Slug (gerado automatico)" placeholder="Deixe em branco para gerar do nome" />
                     <div />
-                    <SelectField value={productForm.brandId} onChange={(e) => handleProductChange('brandId', e.target.value)} label="Marca">
-                      <option value="">Selecione</option>
-                      {catalogData.brands.map((brand) => (
-                        <option key={brand.id} value={brand.id}>{brand.name}</option>
-                      ))}
-                    </SelectField>
-                    <SelectField value={productForm.categoryId} onChange={(e) => handleProductChange('categoryId', e.target.value)} label="Categoria">
-                      <option value="">Selecione</option>
-                      {catalogData.categories.map((category) => (
-                        <option key={category.id} value={category.id}>{category.name}</option>
-                      ))}
-                    </SelectField>
+                    <div>
+                      <SelectField
+                        id="product-field-brand"
+                        value={productForm.brandId}
+                        onChange={(e) => handleProductChange('brandId', e.target.value)}
+                        label="Marca"
+                        className={productFieldError?.field === 'brandId' ? 'ring-2 ring-rose-400' : ''}
+                      >
+                        <option value="">Selecione</option>
+                        {catalogData.brands.map((brand) => (
+                          <option key={brand.id} value={brand.id}>{brand.name}</option>
+                        ))}
+                      </SelectField>
+                      {productFieldError?.field === 'brandId' ? <p className="mt-1.5 text-xs text-rose-600">{productFieldError.message}</p> : null}
+                    </div>
+                    <div>
+                      <SelectField
+                        id="product-field-category"
+                        value={productForm.categoryId}
+                        onChange={(e) => handleProductChange('categoryId', e.target.value)}
+                        label="Categoria"
+                        className={productFieldError?.field === 'categoryId' ? 'ring-2 ring-rose-400' : ''}
+                      >
+                        <option value="">Selecione</option>
+                        {catalogData.categories.map((category) => (
+                          <option key={category.id} value={category.id}>{category.name}</option>
+                        ))}
+                      </SelectField>
+                      {productFieldError?.field === 'categoryId' ? <p className="mt-1.5 text-xs text-rose-600">{productFieldError.message}</p> : null}
+                    </div>
                   </div>
                   <div className="mt-4">
                     <TextAreaField value={productForm.description} onChange={(e) => handleProductChange('description', e.target.value)} label="Descricao" />
@@ -717,7 +808,17 @@ export function AdminPage() {
                 <div>
                   <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-[#b77717]">Precificacao</p>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <InputField type="number" value={productForm.salePrice} onChange={(e) => handleProductChange('salePrice', Number(e.target.value))} label="Preco de venda" />
+                    <div>
+                      <InputField
+                        id="product-field-price"
+                        type="number"
+                        value={productForm.salePrice}
+                        onChange={(e) => handleProductChange('salePrice', Number(e.target.value))}
+                        label="Preco de venda"
+                        className={productFieldError?.field === 'salePrice' ? 'ring-2 ring-rose-400' : ''}
+                      />
+                      {productFieldError?.field === 'salePrice' ? <p className="mt-1.5 text-xs text-rose-600">{productFieldError.message}</p> : null}
+                    </div>
                     <InputField type="number" value={productForm.costPrice} onChange={(e) => handleProductChange('costPrice', Number(e.target.value))} label="Custo interno (oculto)" />
                   </div>
                 </div>
@@ -761,7 +862,7 @@ export function AdminPage() {
 
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Button type="submit" fullWidth>{productForm.id ? 'Salvar alteracoes' : 'Criar produto'}</Button>
-                  <Button type="button" variant="secondary" fullWidth onClick={() => setProductForm(emptyProductForm)}>
+                  <Button type="button" variant="secondary" fullWidth onClick={() => { setProductForm(emptyProductForm); setProductFieldError(null) }}>
                     Limpar formulario
                   </Button>
                 </div>
