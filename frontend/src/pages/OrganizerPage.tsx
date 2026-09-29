@@ -660,24 +660,10 @@ export function OrganizerPage() {
 
           <aside
             aria-label="Gaveta de propriedades"
-            aria-hidden={!rightOpen}
-            className={`fixed inset-0 z-40 flex flex-col bg-[#fdfbf7] transition-transform duration-300 ease-in-out lg:hidden ${rightOpen ? 'translate-x-0' : 'pointer-events-none translate-x-full'}`}
+            className={`absolute inset-y-0 right-0 z-30 flex flex-col overflow-hidden bg-[#fdfbf7] shadow-2xl transition-[width,opacity] duration-300 lg:hidden ${rightOpen ? 'w-full opacity-100' : 'pointer-events-none w-0 opacity-0'}`}
           >
-            <header className="flex h-14 shrink-0 items-center justify-between bg-[#122f55] px-3">
-              <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#f5ca74]">
-                Propriedades
-              </span>
-              <button
-                type="button"
-                aria-label="Fechar gaveta de propriedades"
-                onClick={() => setRightOpen(false)}
-                className="flex h-9 w-9 items-center justify-center text-[#f5ca74] hover:text-white"
-              >
-                <X size={20} />
-              </button>
-            </header>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              <div className="h-full overflow-y-auto border-[2px] border-[#cdbfae] bg-[#fffdfa]">
+            <div className="min-h-0 w-full flex-1 overflow-y-auto">
+              <div className="h-full overflow-y-auto bg-[#fffdfa]">
                 <Inspector
                   key={`mobile-${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
                   node={selectedNode}
