@@ -22,7 +22,7 @@ export function MainLayout() {
         className={
           isStandaloneProductPage
             ? 'w-full'
-            : `mx-auto w-full max-w-7xl px-4 pb-10 pt-6 sm:px-6 sm:pt-10 lg:px-8 xl:px-6 ${isMobile ? 'pb-24' : ''}`
+            : `w-full px-4 pb-10 pt-6 sm:px-6 sm:pt-10 lg:px-8 xl:px-6 ${isMobile ? 'pb-24' : ''}`
         }
       >
         <main key={location.pathname} className={isStandaloneProductPage ? '' : 'page-enter'}>

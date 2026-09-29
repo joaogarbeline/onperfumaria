@@ -53,7 +53,7 @@ export function SiteModuleRenderer({
           ariaLabel={module.name}
           items={banners}
           getItemKey={(banner, index) => banner?.id ?? index}
-          fullBleed="mobile"
+          fullBleed
           itemClassName="shrink-0"
           className="gap-4 px-4 pb-2 sm:px-0 lg:gap-6"
           renderItem={(banner) => (
@@ -122,7 +122,7 @@ export function SiteModuleRenderer({
         ariaLabel={module.name}
         items={carouselItems}
         getItemKey={(item, index) => item?.id ?? index}
-        fullBleed="mobile"
+        fullBleed
         itemClassName="shrink-0"
         className="gap-4 px-4 pb-2 sm:px-0 lg:gap-5"
         renderItem={(item) => (
