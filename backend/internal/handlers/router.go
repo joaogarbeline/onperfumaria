@@ -255,7 +255,7 @@ func registerFrontend(router *gin.Engine) {
 	})
 
 	serveIndex := func(c *gin.Context) {
-		c.Header("Cache-Control", "no-cache")
+		c.Header("Cache-Control", "no-store")
 		c.File(indexPath)
 	}
 
