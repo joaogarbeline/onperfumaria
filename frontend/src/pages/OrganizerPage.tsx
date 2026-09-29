@@ -225,9 +225,27 @@ export function OrganizerPage() {
     window.setTimeout(() => setNotice(''), 2800)
   }
 
+  const isMobileViewport = () => window.matchMedia('(max-width: 1023px)').matches
+
+  const toggleLeftDrawer = () => {
+    setLeftOpen((value) => {
+      const next = !value
+      if (next && isMobileViewport()) setRightOpen(false)
+      return next
+    })
+  }
+
+  const toggleRightDrawer = () => {
+    setRightOpen((value) => {
+      const next = !value
+      if (next && isMobileViewport()) setLeftOpen(false)
+      return next
+    })
+  }
+
   const selectItem = (item: DrawerItem) => {
     const closeDrawersOnMobile = () => {
-      if (window.matchMedia('(max-width: 1023px)').matches) {
+      if (isMobileViewport()) {
         setLeftOpen(false)
         setRightOpen(false)
       }
@@ -324,20 +342,20 @@ export function OrganizerPage() {
   ]
 
   return (
-    <main className="min-h-screen bg-[#f7f3eb] p-1 text-[#132f57] sm:p-2">
+    <main className="h-dvh w-full overflow-hidden bg-[#f7f3eb] text-[#132f57]">
       <section
         ref={shellRef}
-        className="flex h-[calc(100vh-0.5rem)] min-h-[480px] flex-col overflow-hidden border-[3px] border-[#183861] bg-[#fdfbf7] sm:h-[calc(100vh-1rem)]"
+        className="flex h-full w-full min-h-0 flex-col overflow-hidden border-[3px] border-[#183861] bg-[#fdfbf7]"
       >
         <header className="flex h-14 shrink-0 items-center justify-between bg-[#122f55] px-3 sm:px-4">
-          <DrawerToggle drawer="left" open={leftOpen} onToggle={() => setLeftOpen((value) => !value)} />
+          <DrawerToggle drawer="left" open={leftOpen} onToggle={toggleLeftDrawer} />
           <div className="flex items-center gap-2 text-[#f5ca74]">
             <Layers3 size={17} />
             <span className="hidden text-xs font-semibold uppercase tracking-[0.22em] sm:inline">
               Organizador do site
             </span>
           </div>
-          <DrawerToggle drawer="right" open={rightOpen} onToggle={() => setRightOpen((value) => !value)} />
+          <DrawerToggle drawer="right" open={rightOpen} onToggle={toggleRightDrawer} />
         </header>
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -554,8 +572,8 @@ export function OrganizerPage() {
             </div>
           </aside>
 
-          <section className="min-w-0 flex-1 bg-[#fbf8f2] p-2">
-            <div className="h-full overflow-y-auto border-[2px] border-[#cdbfae] bg-[#fffdfa]">
+          <section className="min-w-0 flex-1 bg-[#fbf8f2] p-0 lg:p-2">
+            <div className="h-full overflow-y-auto bg-[#fffdfa] lg:border-[2px] lg:border-[#cdbfae]">
               <Workspace
                 selection={selection}
                 selectedNode={selectedNode}
@@ -640,35 +658,54 @@ export function OrganizerPage() {
             </div>
           </aside>
 
-          {rightOpen && (
-            <aside className="absolute inset-y-2 right-2 z-20 w-[min(310px,calc(100%-1rem))] overflow-y-auto border-[2px] border-[#cdbfae] bg-[#fffdfa] shadow-xl lg:hidden">
-              <Inspector
-                key={`mobile-${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
-                node={selectedNode}
-                tag={selectedTag}
-                selection={selection}
-                nodes={store.nodes}
-                tags={store.tags}
-                onUpdateNode={updateNode}
-                onUpdateTag={updateTag}
-                onDuplicate={(id) => {
-                  const copyId = duplicateNode(id)
-                  if (copyId) setSelection({ kind: 'node', id: copyId })
-                }}
-                onMoveNode={moveNode}
-                onTrashNode={(id) => {
-                  moveNodeToTrash(id)
-                  setSelection({ kind: 'node', id: 'home' })
-                }}
-                onTrashTag={(id) => {
-                  moveTagToTrash(id)
-                  setSelection({ kind: 'node', id: 'home' })
-                }}
-                onOpenSchedule={() => setModalMode('schedule')}
-                onSaved={() => showNotice('Alterações salvas.')}
-              />
-            </aside>
-          )}
+          <aside
+            aria-label="Gaveta de propriedades"
+            aria-hidden={!rightOpen}
+            className={`fixed inset-0 z-40 flex flex-col bg-[#fdfbf7] transition-transform duration-300 ease-in-out lg:hidden ${rightOpen ? 'translate-x-0' : 'pointer-events-none translate-x-full'}`}
+          >
+            <header className="flex h-14 shrink-0 items-center justify-between bg-[#122f55] px-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#f5ca74]">
+                Propriedades
+              </span>
+              <button
+                type="button"
+                aria-label="Fechar gaveta de propriedades"
+                onClick={() => setRightOpen(false)}
+                className="flex h-9 w-9 items-center justify-center text-[#f5ca74] hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </header>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              <div className="h-full overflow-y-auto border-[2px] border-[#cdbfae] bg-[#fffdfa]">
+                <Inspector
+                  key={`mobile-${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
+                  node={selectedNode}
+                  tag={selectedTag}
+                  selection={selection}
+                  nodes={store.nodes}
+                  tags={store.tags}
+                  onUpdateNode={updateNode}
+                  onUpdateTag={updateTag}
+                  onDuplicate={(id) => {
+                    const copyId = duplicateNode(id)
+                    if (copyId) setSelection({ kind: 'node', id: copyId })
+                  }}
+                  onMoveNode={moveNode}
+                  onTrashNode={(id) => {
+                    moveNodeToTrash(id)
+                    setSelection({ kind: 'node', id: 'home' })
+                  }}
+                  onTrashTag={(id) => {
+                    moveTagToTrash(id)
+                    setSelection({ kind: 'node', id: 'home' })
+                  }}
+                  onOpenSchedule={() => setModalMode('schedule')}
+                  onSaved={() => showNotice('Alterações salvas.')}
+                />
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
 

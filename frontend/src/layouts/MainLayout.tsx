@@ -7,7 +7,8 @@ import { useIsMobile } from '../hooks/useIsMobile'
 export function MainLayout() {
   const location = useLocation()
   const isMobile = useIsMobile()
-  const isStandaloneProductPage = location.pathname === '/produto-modelo'
+  const isStandaloneProductPage =
+    location.pathname === '/produto-modelo' || location.pathname === '/organizador'
 
   return (
     <div className="min-h-screen overflow-x-clip text-stone-900">

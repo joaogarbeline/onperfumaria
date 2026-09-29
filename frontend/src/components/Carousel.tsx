@@ -79,7 +79,7 @@ export function Carousel<Item>({
       role="region"
       aria-label={ariaLabel}
       className={[
-        'relative flex touch-pan-x overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        'relative flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         widthClassName,
         dragging ? 'cursor-grabbing select-none' : 'cursor-grab',
         className,
