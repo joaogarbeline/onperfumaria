@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "On Perfumaria",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "terminal.integrated.cwd": "${workspaceFolder}",
+    "workbench.startupEditor": "none"
+  }
+}

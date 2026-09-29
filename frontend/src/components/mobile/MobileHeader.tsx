@@ -1,0 +1,276 @@
+import {
+  Bell,
+  CreditCard,
+  FileText,
+  Heart,
+  Home,
+  Menu,
+  Search,
+  ShoppingBag,
+  ShoppingBasket,
+  Tag,
+  Target,
+  ThumbsUp,
+  User,
+  X,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import atendimentoIcon from '../../assets/icons/atendente_d_c.png'
+import favoritoIcon from '../../assets/icons/coracoes_d_c.png'
+import { useOrganizerStore } from '../../hooks/useOrganizerStore'
+import { isOrganizerNodeVisible } from '../../types/organizer'
+import { Carousel } from '../Carousel'
+
+const shortcutLinks: { label: string; icon: LucideIcon }[] = [
+  { label: 'Cupons', icon: Tag },
+  { label: 'Mais vendido', icon: ShoppingBag },
+]
+
+const accountLinks: { label: string; icon: LucideIcon }[] = [
+  { label: 'Minha conta', icon: Home },
+  { label: 'Meus dados', icon: User },
+  { label: 'Meus pedidos', icon: ShoppingBasket },
+  { label: 'Carteira', icon: CreditCard },
+  { label: 'Avaliacao', icon: ThumbsUp },
+  { label: 'Protocolo', icon: FileText },
+  { label: 'Favorito', icon: Heart },
+  { label: 'Notificacoes', icon: Bell },
+]
+
+const discoveryLinks: { label: string; icon: LucideIcon }[] = [
+  { label: 'Mais procurado', icon: Target },
+  { label: 'Acabaram de chegar', icon: Zap },
+]
+
+function DrawerRow({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <div className="flex items-center gap-3 text-[#fafaf8]">
+      <Icon size={20} className="shrink-0" />
+      <span className="text-sm font-medium">{label}</span>
+    </div>
+  )
+}
+
+export function MobileHeader() {
+  const [open, setOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const navigate = useNavigate()
+  const { store } = useOrganizerStore()
+  const categoryLinks = store.nodes
+    .filter(
+      (node) => node.type === 'page' && node.id !== 'home' && node.route && isOrganizerNodeVisible(node),
+    )
+    .map((node) => ({ label: node.name, path: node.route as string }))
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 12)
+    onScroll()
+    window.addEventListener('scroll', onScroll)
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    document.body.classList.toggle('drawer-open', open)
+    return () => document.body.classList.remove('drawer-open')
+  }, [open])
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSearchTerm('')
+    navigate('/')
+  }
+
+  return (
+    <>
+      <header className="sticky top-0 z-30 border-b border-[#0a1a33]/40 bg-[#142d52]">
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-4 px-4 py-3">
+          <div className="flex items-center justify-start">
+            <button
+              aria-label={open ? 'Fechar menu' : 'Abrir menu'}
+              onClick={() => setOpen((value) => !value)}
+              className="flex items-center justify-center text-[#C9A227]"
+            >
+              {open ? <X size={26} /> : <Menu size={26} />}
+            </button>
+          </div>
+
+          <div className="relative flex h-9 items-center justify-center overflow-hidden">
+            <Link
+              to="/"
+              className={[
+                'flex flex-col items-center text-center transition-all duration-300 ease-in-out',
+                scrolled ? 'pointer-events-none -translate-y-3 opacity-0' : 'translate-y-0 opacity-100',
+              ].join(' ')}
+            >
+              <span className="block text-[9px] font-bold uppercase tracking-[0.22em] text-[#d89a28]">
+                Loja Premium
+              </span>
+              <span className="block whitespace-nowrap text-xs font-semibold tracking-[0.16em] text-[#FAF6EF]">
+                ON PERFUMARIA
+              </span>
+            </Link>
+
+            <form
+              onSubmit={handleSearchSubmit}
+              className={[
+                'absolute inset-0 flex w-full items-center gap-1.5 rounded-[16px] bg-[#FAF6EF] py-1.5 pl-3 pr-1 transition-all duration-300 ease-in-out',
+                scrolled ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0',
+              ].join(' ')}
+            >
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Buscar perfumes, marcas..."
+                className="w-full bg-transparent text-xs text-[#171412] outline-none placeholder:text-[#6b665f]"
+              />
+              <button
+                type="submit"
+                aria-label="Buscar"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[12px] bg-white text-[#171412] ring-1 ring-inset ring-[#171412]/10"
+              >
+                <Search size={12} />
+              </button>
+            </form>
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <>
+              <a
+                href="https://wa.me/5567999999999"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Atendimento via WhatsApp"
+                className="flex shrink-0 items-center"
+              >
+                <img
+                  src={atendimentoIcon}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-9 w-9 shrink-0 object-contain"
+                />
+              </a>
+              <button
+                type="button"
+                aria-label="Favoritos (em breve)"
+                className="flex h-9 w-9 shrink-0 items-center justify-center text-[#fafaf8]"
+              >
+                <img src={favoritoIcon} alt="" aria-hidden="true" className="h-9 w-9 object-contain" />
+              </button>
+            </>
+          </div>
+        </div>
+
+        <div
+          className={[
+            'overflow-hidden transition-all duration-300 ease-in-out',
+            scrolled || open ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100',
+          ].join(' ')}
+        >
+          <div className="px-4 pb-3">
+            <form
+              onSubmit={handleSearchSubmit}
+              className="flex items-center gap-2 rounded-[20px] bg-[#FAF6EF] py-2 pl-4 pr-2"
+            >
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Buscar perfumes, marcas..."
+                className="w-full bg-transparent text-sm text-[#171412] outline-none placeholder:text-[#6b665f]"
+              />
+              <button
+                type="submit"
+                aria-label="Buscar"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[20px] bg-white text-[#171412] ring-1 ring-inset ring-[#171412]/10"
+              >
+                <Search size={16} />
+              </button>
+            </form>
+
+            <nav aria-label="Categorias" className="mt-3">
+              <Carousel
+                ariaLabel="Categorias de perfumes"
+                items={categoryLinks}
+                getItemKey={(category) => category.path}
+                itemClassName="min-w-[88px] shrink-0 text-center"
+                className="gap-5 px-4 whitespace-nowrap"
+                renderItem={(category) => (
+                  <Link
+                    to={category.path}
+                    className="block text-sm font-medium text-[#FAF6EF]/70 hover:text-[#FAF6EF]"
+                  >
+                    {category.label}
+                  </Link>
+                )}
+              />
+            </nav>
+          </div>
+        </div>
+
+        <div
+          className={[
+            'fixed inset-x-0 top-[61px] bottom-0 z-20 border-t border-[#0a1a33]/40 bg-[#142d52] transition-opacity duration-300 ease-in-out',
+            open ? 'opacity-100' : 'pointer-events-none opacity-0',
+          ].join(' ')}
+        >
+          <div className="h-full overflow-y-auto px-4 pb-24 pt-5">
+            <>
+              <Link
+                to="/login"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-3 pb-4 text-[#fafaf8]"
+              >
+                <User size={22} className="shrink-0" />
+                <span className="text-sm font-semibold">Ola. Acesse sua conta</span>
+              </Link>
+
+              <div className="flex flex-col gap-4 pb-4">
+                {shortcutLinks.map((item) => (
+                  <DrawerRow key={item.label} {...item} />
+                ))}
+              </div>
+
+              <div className="h-px bg-[#d89a28]" />
+
+              <div className="flex flex-col gap-4 py-4">
+                {accountLinks.map((item) => (
+                  <DrawerRow key={item.label} {...item} />
+                ))}
+              </div>
+
+              <div className="h-px bg-[#d89a28]" />
+
+              <div className="flex flex-col gap-4 pt-4 pb-6">
+                {discoveryLinks.map((item) => (
+                  <DrawerRow key={item.label} {...item} />
+                ))}
+              </div>
+
+              <div className="mt-[5px] flex flex-col items-center gap-3">
+                <Link
+                  to="/login"
+                  onClick={() => setOpen(false)}
+                  className="w-full max-w-[240px] rounded-[20px] bg-[#fff1d6] py-3 text-center text-sm font-semibold text-[#171412]"
+                >
+                  Entre
+                </Link>
+                <Link
+                  to="/cadastro"
+                  onClick={() => setOpen(false)}
+                  className="text-sm font-semibold text-[#fafaf8]"
+                >
+                  Cadastro
+                </Link>
+              </div>
+            </>
+          </div>
+        </div>
+      </header>
+
+      {open ? <div aria-hidden="true" onClick={() => setOpen(false)} className="fixed inset-0 z-20" /> : null}
+    </>
+  )
+}

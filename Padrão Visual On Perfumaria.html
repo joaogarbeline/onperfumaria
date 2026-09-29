@@ -1,0 +1,513 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Padrão Visual On Perfumaria</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root{
+    --bg:#faf9f6;
+    --surface:#ffffff;
+    --surface-2:#f4efe8;
+    --text:#1c1a17;
+    --text-secondary:#6b665f;
+    --text-muted:#948d80;
+    --border:#e5ded2;
+    --accent:#a8721a;
+    --accent-soft:#fdf1da;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --warn-bg:#fdf1da;
+    --warn-border:#eccf8f;
+    --warn-text:#7a5410;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#171412;
+      --surface:#211d19;
+      --surface-2:#2b251e;
+      --text:#f3ede4;
+      --text-secondary:#b7ad9c;
+      --text-muted:#867c6d;
+      --border:#3a332a;
+      --accent:#e0ac4a;
+      --accent-soft:#3a2d15;
+      --warn-bg:#332a13;
+      --warn-border:#5c4a1e;
+      --warn-text:#f0c975;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#171412;
+    --surface:#211d19;
+    --surface-2:#2b251e;
+    --text:#f3ede4;
+    --text-secondary:#b7ad9c;
+    --text-muted:#867c6d;
+    --border:#3a332a;
+    --accent:#e0ac4a;
+    --accent-soft:#3a2d15;
+    --warn-bg:#332a13;
+    --warn-border:#5c4a1e;
+    --warn-text:#f0c975;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Manrope',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-inline:20px;
+  }
+  h1,h2,h3{font-family:'Cormorant Garamond',serif; text-wrap:balance; margin:0}
+  code, .mono{font-family:var(--mono)}
+
+  .wrap{max-width:920px;margin:0 auto;padding-block:28px 80px}
+
+  header.page{
+    display:flex; flex-direction:column; gap:14px;
+    padding-block:6px 22px; border-bottom:1px solid var(--border); margin-bottom:22px;
+  }
+  .eyebrow{
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.22em; color:var(--accent);
+  }
+  header.page h1{font-size:clamp(30px,5vw,44px); font-weight:600; color:var(--text)}
+  header.page p{margin:0; color:var(--text-secondary); font-size:14.5px; max-width:60ch; line-height:1.6}
+
+  nav.jump{
+    display:flex; flex-wrap:wrap; gap:6px 4px; margin-top:4px;
+  }
+  nav.jump a{
+    font-size:12.5px; font-weight:600; color:var(--text-secondary); text-decoration:none;
+    padding:6px 12px; border-radius:999px; border:1px solid var(--border); background:var(--surface);
+    white-space:nowrap;
+  }
+  nav.jump a:hover{color:var(--text); border-color:var(--accent)}
+
+  section{margin-block:44px}
+  section h2{font-size:24px; font-weight:600; margin-bottom:4px}
+  section > p.lede{color:var(--text-secondary); font-size:14px; margin:0 0 20px; max-width:65ch; line-height:1.65}
+
+  .grid{display:grid; gap:12px}
+  .cols-2{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .cols-3{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+  .cols-4{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px;
+  }
+
+  .swatch{
+    border-radius:14px; overflow:hidden; border:1px solid var(--border); background:var(--surface);
+  }
+  .swatch .fill{height:64px}
+  .swatch .meta{padding:10px 12px 12px}
+  .swatch .meta .name{font-size:13px; font-weight:700; margin:0}
+  .swatch .meta .hex{font-family:var(--mono); font-size:12px; color:var(--text-secondary); margin:2px 0 0}
+  .swatch .meta .use{font-size:11.5px; color:var(--text-muted); margin:6px 0 0; line-height:1.4}
+  .swatch .meta .token{font-family:var(--mono); font-size:10.5px; color:var(--accent); margin-top:6px; display:block}
+
+  table.spec{width:100%; border-collapse:collapse; font-size:13px}
+  table.spec th, table.spec td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--border)}
+  table.spec th{color:var(--text-secondary); font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.08em}
+  table.spec td.mono{font-family:var(--mono); font-size:12px; color:var(--text-secondary)}
+  .tbl-wrap{overflow-x:auto}
+
+  .radius-row{display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end}
+  .radius-item{display:flex; flex-direction:column; align-items:center; gap:8px}
+  .radius-box{width:64px; height:64px; background:var(--accent-soft); border:1.5px solid var(--accent)}
+  .radius-label{font-family:var(--mono); font-size:11px; color:var(--text-secondary)}
+
+  .shadow-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:22px; margin-top:6px}
+  .shadow-box{
+    height:74px; border-radius:16px; background:var(--surface);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:11px; color:var(--text-secondary);
+  }
+
+  .callout{
+    border:1px solid var(--warn-border); background:var(--warn-bg); color:var(--warn-text);
+    border-radius:14px; padding:14px 16px; font-size:13.5px; line-height:1.6;
+  }
+  .callout strong{display:block; font-size:13px; margin-bottom:4px; color:var(--warn-text)}
+
+  .stack{display:flex; flex-direction:column; gap:10px}
+  .row{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+
+  .kw{
+    display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px;
+    background:var(--surface-2); border:1px solid var(--border); padding:3px 9px; border-radius:8px; color:var(--text-secondary);
+  }
+
+  @keyframes floatSoftDemo{0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)}}
+  @keyframes shimmerDemo{0%{background-position:200% 0} 100%{background-position:-200% 0}}
+  @keyframes shineSweepDemo{0%{transform:translateX(-130%) skewX(-12deg)} 100%{transform:translateX(160%) skewX(-12deg)}}
+  .demo-float{animation:floatSoftDemo 4.5s ease-in-out infinite}
+  .demo-skeleton{
+    background:linear-gradient(90deg, var(--surface-2) 0%, var(--surface) 50%, var(--surface-2) 100%);
+    background-size:200% 100%; animation:shimmerDemo 1.8s infinite linear;
+  }
+  .demo-shine{position:relative; overflow:hidden}
+  .demo-shine::after{
+    content:''; position:absolute; top:0; left:0; height:100%; width:40%;
+    background:linear-gradient(120deg, transparent, rgba(255,255,255,.55), transparent);
+    transform:translateX(-130%) skewX(-12deg); animation:shineSweepDemo 1.8s ease infinite;
+  }
+
+  footer.page{border-top:1px solid var(--border); padding-top:16px; margin-top:60px; font-size:12px; color:var(--text-muted)}
+</style>
+
+<div class="wrap">
+
+  <header class="page">
+    <span class="eyebrow">Referência de design · On Perfumaria</span>
+    <h1>Padrão visual do site</h1>
+    <p>Levantamento do que já está implementado no código do frontend (tailwind.config.js, index.css e components/) — não existia nenhum guia de estilo formal no repositório antes deste documento.</p>
+    <nav class="jump">
+      <a href="#cores">Cores</a>
+      <a href="#tipografia">Tipografia</a>
+      <a href="#raios">Raios &amp; sombras</a>
+      <a href="#componentes">Componentes</a>
+      <a href="#icones">Ícones</a>
+      <a href="#layout">Layout</a>
+      <a href="#motion">Motion</a>
+      <a href="#inconsistencias">Inconsistências</a>
+    </nav>
+  </header>
+
+  <section id="cores">
+    <h2>Cores</h2>
+    <p class="lede">Definidas em dois lugares: <span class="kw">tailwind.config.js</span> (tokens de classe, ex. <span class="kw">bg-gold</span>) e <span class="kw">index.css</span> (variáveis CSS, ex. <span class="kw">var(--color-amber)</span>). Os dois conjuntos coexistem e nem sempre batem — ver seção de inconsistências.</p>
+
+    <div class="grid cols-3">
+      <div class="swatch">
+        <div class="fill" style="background:#171412"></div>
+        <div class="meta">
+          <p class="name">Ink</p>
+          <p class="hex">#171412</p>
+          <p class="use">Texto principal do site</p>
+          <span class="token">--color-ink</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#fafaf8; border-bottom:1px solid var(--border)"></div>
+        <div class="meta">
+          <p class="name">Paper</p>
+          <p class="hex">#fafaf8</p>
+          <p class="use">Fundo geral da página</p>
+          <span class="token">--color-paper</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#f4efe8"></div>
+        <div class="meta">
+          <p class="name">Sand</p>
+          <p class="hex">#f4efe8</p>
+          <p class="use">Superfícies suaves, cartões claros</p>
+          <span class="token">--color-sand</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#d89a28"></div>
+        <div class="meta">
+          <p class="name">Amber (dourado)</p>
+          <p class="hex">#d89a28</p>
+          <p class="use">Cor de destaque principal — CTAs, ícones, sublinhados</p>
+          <span class="token">--color-amber</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#fff1d6"></div>
+        <div class="meta">
+          <p class="name">Amber soft</p>
+          <p class="hex">#fff1d6</p>
+          <p class="use">Fundo de badges e chips dourados</p>
+          <span class="token">--color-amber-soft</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#0f8a5f"></div>
+        <div class="meta">
+          <p class="name">Success</p>
+          <p class="hex">#0f8a5f</p>
+          <p class="use">Confirmações, estoque disponível</p>
+          <span class="token">--color-success</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#6b665f"></div>
+        <div class="meta">
+          <p class="name">Muted</p>
+          <p class="hex">#6b665f</p>
+          <p class="use">Texto secundário, rótulos, legendas</p>
+          <span class="token">--color-muted</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#142d52"></div>
+        <div class="meta">
+          <p class="name">Trust</p>
+          <p class="hex">#142d52</p>
+          <p class="use">Azul institucional — banner, selos de confiança</p>
+          <span class="token">--color-trust</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#0a1a33"></div>
+        <div class="meta">
+          <p class="name">Trust dark</p>
+          <p class="hex">#0a1a33</p>
+          <p class="use">Gradiente/hover do azul institucional</p>
+          <span class="token">--color-trust-dark</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#e7edf7"></div>
+        <div class="meta">
+          <p class="name">Trust soft</p>
+          <p class="hex">#e7edf7</p>
+          <p class="use">Fundo de badges/seções institucionais claras</p>
+          <span class="token">--color-trust-soft</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#2a4d82"></div>
+        <div class="meta">
+          <p class="name">Trust line</p>
+          <p class="hex">#2a4d82</p>
+          <p class="use">Bordas e divisores sobre fundo navy</p>
+          <span class="token">--color-trust-line</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#FAF6EF"></div>
+        <div class="meta">
+          <p class="name">Cream (banner)</p>
+          <p class="hex">#FAF6EF</p>
+          <p class="use">Texto do banner e fundo do campo de busca — usado só no Header.tsx, ainda não é token</p>
+          <span class="token">sem variável — hardcoded</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tipografia">
+    <h2>Tipografia</h2>
+    <p class="lede">Duas famílias do Google Fonts, carregadas em <span class="kw">index.css</span>: uma serifada para títulos, uma sem serifa para o resto.</p>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <p style="font-family:'Cormorant Garamond',serif; font-size:34px; font-weight:600; letter-spacing:-0.025em; margin:0 0 6px">Cormorant Garamond</p>
+        <p style="margin:0; font-size:13px; color:var(--text-secondary)">Pesos 500/600/700 · usada em h1–h4 · <span class="mono">letter-spacing:-0.025em</span></p>
+      </div>
+      <div class="card">
+        <p style="font-family:'Manrope',sans-serif; font-size:22px; font-weight:600; margin:0 0 6px">Manrope</p>
+        <p style="margin:0; font-size:13px; color:var(--text-secondary)">Pesos 400/500/600/700/800 · fonte base do corpo do texto e da UI</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="stack">
+        <div class="row" style="justify-content:space-between">
+          <span style="font-family:'Cormorant Garamond',serif; font-size:44px; font-weight:600; letter-spacing:-0.025em; line-height:1">Perfumes importados</span>
+          <span class="mono" style="font-size:11.5px; color:var(--text-secondary)">text-4xl md:text-5xl · leading-none</span>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <span style="font-family:'Cormorant Garamond',serif; font-size:30px; font-weight:600">Importados e arabes</span>
+          <span class="mono" style="font-size:11.5px; color:var(--text-secondary)">text-3xl</span>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <span style="font-size:14px; color:var(--text-secondary); line-height:1.6; max-width:56ch">Curadoria premium, estoque em tempo real e experiencia elegante da loja ao checkout.</span>
+          <span class="mono" style="font-size:11.5px; color:var(--text-secondary)">text-sm leading-6 · 78 ocorrências</span>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.22em; color:var(--text-secondary)">Rótulo micro (eyebrow)</span>
+          <span class="mono" style="font-size:11.5px; color:var(--text-secondary)">text-xs font-bold uppercase tracking-[0.22em]</span>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.22em; color:#b77717">.eyebrow (dourado)</span>
+          <span class="mono" style="font-size:11.5px; color:var(--text-secondary)">classe utilitária em index.css</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="raios">
+    <h2>Raios &amp; sombras</h2>
+    <p class="lede">Não existe uma escala formal de <span class="kw">border-radius</span> — os valores em uso variam de 18 a 36px, escolhidos caso a caso, mais <span class="kw">rounded-full</span> para pílulas e ícones.</p>
+
+    <div class="radius-row">
+      <div class="radius-item"><div class="radius-box" style="border-radius:18px"></div><span class="radius-label">18px</span></div>
+      <div class="radius-item"><div class="radius-box" style="border-radius:20px"></div><span class="radius-label">20px</span></div>
+      <div class="radius-item"><div class="radius-box" style="border-radius:22px"></div><span class="radius-label">22px</span></div>
+      <div class="radius-item"><div class="radius-box" style="border-radius:24px"></div><span class="radius-label">24px</span></div>
+      <div class="radius-item"><div class="radius-box" style="border-radius:28px"></div><span class="radius-label">28px</span></div>
+      <div class="radius-item"><div class="radius-box" style="border-radius:32px"></div><span class="radius-label">32px</span></div>
+      <div class="radius-item"><div class="radius-box" style="border-radius:36px"></div><span class="radius-label">36px</span></div>
+      <div class="radius-item"><div class="radius-box" style="border-radius:999px"></div><span class="radius-label">full</span></div>
+    </div>
+
+    <div class="shadow-row">
+      <div class="shadow-box" style="box-shadow:0 30px 90px -42px rgba(23,20,18,0.32)">shadow-panel</div>
+      <div class="shadow-box" style="box-shadow:0 24px 70px -36px rgba(23,20,18,0.24)">shadow-float</div>
+      <div class="shadow-box" style="box-shadow:0 2px 4px rgba(20,45,82,0.06), 0 18px 40px -18px rgba(20,45,82,0.28), 0 40px 80px -40px rgba(23,20,18,0.3)">shadow-3d</div>
+      <div class="shadow-box" style="box-shadow:0 24px 60px -28px rgba(10,26,51,0.55)">shadow-trust</div>
+    </div>
+  </section>
+
+  <section id="componentes">
+    <h2>Componentes</h2>
+    <p class="lede">Reproduções fiéis usando as mesmas classes do código-fonte (Button.tsx, Badge.tsx, index.css).</p>
+
+    <div class="card stack">
+      <p class="mono" style="font-size:11.5px; color:var(--text-secondary); margin:0">Button.tsx — 3 variantes × 3 tamanhos</p>
+      <div class="row">
+        <button class="inline-flex items-center justify-center gap-2 rounded-full font-semibold transition duration-300 px-5 py-3 text-sm shine-sweep" style="background:#171412;color:#fafaf8;box-shadow:0 24px 48px -26px rgba(23,20,18,0.58)">Primary</button>
+        <button class="inline-flex items-center justify-center gap-2 rounded-full font-semibold transition duration-300 px-5 py-3 text-sm" style="border:1px solid #d9d0c4; background:#fff; color:#171412">Secondary</button>
+        <button class="inline-flex items-center justify-center gap-2 rounded-full font-semibold transition duration-300 px-5 py-3 text-sm" style="background:transparent; color:#171412">Ghost</button>
+      </div>
+      <div class="row" style="font-size:11.5px; color:var(--text-secondary)">
+        <span class="kw">sizes: sm px-4 py-2.5 · md px-5 py-3 · lg px-6 py-4</span>
+      </div>
+    </div>
+
+    <div class="card stack" style="margin-top:12px">
+      <p class="mono" style="font-size:11.5px; color:var(--text-secondary); margin:0">Badge.tsx — 5 tons, sempre rounded-full</p>
+      <div class="row">
+        <span style="display:inline-flex; align-items:center; border-radius:999px; border:1px solid #f4d08a; background:#fff1d6; color:#9b6110; padding:4px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.18em">amber</span>
+        <span style="display:inline-flex; align-items:center; border-radius:999px; border:1px solid #bde4d4; background:#eefaf5; color:#0f8a5f; padding:4px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.18em">success</span>
+        <span style="display:inline-flex; align-items:center; border-radius:999px; border:1px solid #e3dbd0; background:#f6f1ea; color:#6b665f; padding:4px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.18em">neutral</span>
+        <span style="display:inline-flex; align-items:center; border-radius:999px; border:1px solid #fecdd3; background:#fff1f2; color:#be123c; padding:4px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.18em">danger</span>
+        <span style="display:inline-flex; align-items:center; border-radius:999px; border:1px solid #c3d2ea; background:#e7edf7; color:#142d52; padding:4px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.18em">trust</span>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:12px">
+      <div class="card">
+        <p class="mono" style="font-size:11.5px; color:var(--text-secondary); margin:0 0 10px">.field-base (input)</p>
+        <div style="border-radius:22px; border:1px solid #e7e2d8; background:#fff; padding:14px 16px; font-size:14px; color:#948d80">Buscar por nome, marca ou SKU</div>
+      </div>
+      <div class="card">
+        <p class="mono" style="font-size:11.5px; color:var(--text-secondary); margin:0 0 10px">.surface-trust (painel institucional)</p>
+        <div style="border-radius:28px; border:1px solid #24457a; background:linear-gradient(160deg,#142d52 0%,#0a1a33 100%); color:#e7edf7; padding:16px 18px; font-size:13px">Confiança e segurança institucional</div>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:12px">
+      <div class="card">
+        <p class="mono" style="font-size:11.5px; color:var(--text-secondary); margin:0 0 10px">Skeleton.tsx — .skeleton-wave</p>
+        <div class="demo-skeleton" style="height:16px; border-radius:22px"></div>
+      </div>
+      <div class="card">
+        <p class="mono" style="font-size:11.5px; color:var(--text-secondary); margin:0 0 10px">.shine-sweep (hover em botões primary)</p>
+        <div class="demo-shine" style="border-radius:999px; background:#171412; color:#fafaf8; padding:10px 20px; font-size:13px; font-weight:600; text-align:center">Explorar catalogo</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <p class="mono" style="font-size:11.5px; color:var(--text-secondary); margin:0 0 10px">DataTable.tsx — cabeçalho</p>
+      <div class="tbl-wrap">
+        <table class="spec">
+          <thead><tr><th>Produto</th><th>SKU</th><th>Estoque</th><th>Preço</th></tr></thead>
+          <tbody>
+            <tr><td>Bleu de Chanel</td><td class="mono">BDC-100</td><td>24</td><td>R$ 489,90</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="icones">
+    <h2>Ícones</h2>
+    <p class="lede">Biblioteca <span class="kw">lucide-react</span>. Quatro tamanhos cobrem praticamente todo o site — não há uma escala maior definida.</p>
+    <div class="grid cols-4">
+      <div class="card" style="text-align:center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin:0 auto 8px; display:block; color:var(--accent)"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="mono" style="font-size:11.5px">size=14</span>
+        <p style="font-size:11px; color:var(--text-muted); margin:4px 0 0">botões de fechar/dispensar</p>
+      </div>
+      <div class="card" style="text-align:center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin:0 auto 8px; display:block; color:var(--accent)"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="mono" style="font-size:11.5px">size=16</span>
+        <p style="font-size:11px; color:var(--text-muted); margin:4px 0 0">mais comum · botões e campos</p>
+      </div>
+      <div class="card" style="text-align:center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin:0 auto 8px; display:block; color:var(--accent)"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="mono" style="font-size:11.5px">size=18</span>
+        <p style="font-size:11px; color:var(--text-muted); margin:4px 0 0">menu mobile, cards</p>
+      </div>
+      <div class="card" style="text-align:center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin:0 auto 8px; display:block; color:var(--accent)"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="mono" style="font-size:11.5px">size=20</span>
+        <p style="font-size:11px; color:var(--text-muted); margin:4px 0 0">ênfase, ex. modais de confirmação</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="layout">
+    <h2>Layout &amp; breakpoints</h2>
+    <p class="lede">Um único container de página, repetido em Header, Footer e MainLayout.</p>
+    <div class="tbl-wrap">
+      <table class="spec">
+        <thead><tr><th>Padrão</th><th>Classe</th><th>Uso</th></tr></thead>
+        <tbody>
+          <tr><td>Container padrão</td><td class="mono">mx-auto max-w-7xl px-4 sm:px-6</td><td>Header, Footer, MainLayout — largura máxima do site inteiro</td></tr>
+          <tr><td>Conteúdo estreito</td><td class="mono">max-w-2xl</td><td>Formulários e páginas de rastreio de pedido</td></tr>
+          <tr><td><span class="mono">sm:</span></td><td class="mono">hidden sm:inline-flex</td><td>Revela botões de texto (Entrar, Atendimento) a partir de ~640px</td></tr>
+          <tr><td><span class="mono">md:</span></td><td class="mono">hidden md:flex / md:hidden</td><td>Troca entre menu hambúrguer (mobile) e nav/busca completos (desktop) a partir de ~768px</td></tr>
+          <tr><td><span class="mono">lg:</span></td><td class="mono">lg:grid-cols-[...]</td><td>Layout de duas colunas nas páginas de login/cadastro</td></tr>
+          <tr><td><span class="mono">xl:</span></td><td class="mono">xl:grid-cols-[290px_minmax(0,1fr)]</td><td>Sidebar de filtros fixa no catálogo</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="motion">
+    <h2>Motion</h2>
+    <p class="lede">Nove keyframes em <span class="kw">index.css</span>, a maioria para entrada de página e efeitos ambiente sutis.</p>
+    <div class="tbl-wrap">
+      <table class="spec">
+        <thead><tr><th>Classe</th><th>Efeito</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">.page-enter</td><td>Fade + subida de 18px na troca de rota</td></tr>
+          <tr><td class="mono">.reveal / .reveal-visible</td><td>Entrada ao rolar a página (usado por Reveal.tsx)</td></tr>
+          <tr><td class="mono">.float-soft</td><td>Flutuação vertical contínua e suave</td></tr>
+          <tr><td class="mono">.marquee-track</td><td>Faixa de marcas rolando (BrandMarquee.tsx)</td></tr>
+          <tr><td class="mono">.mesh-field / .orbit-ring</td><td>Fundo ambiente decorativo no MainLayout</td></tr>
+          <tr><td class="mono">.trust-pulse</td><td>Pulso de sombra azul institucional</td></tr>
+          <tr><td class="mono">.shine-sweep</td><td>Brilho diagonal ao passar o mouse em botões primary</td></tr>
+          <tr><td class="mono">.skeleton-wave</td><td>Shimmer de carregamento</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="inconsistencias">
+    <h2>Inconsistências encontradas</h2>
+    <p class="lede">Coisas que já existem no código mas divergem entre si — vale decidir qual valor é o "certo" antes de crescer mais.</p>
+    <div class="stack">
+      <div class="callout">
+        <strong>ink tem dois valores opostos</strong>
+        tailwind.config.js define <span class="mono">ink: #fafaf9</span> (quase branco), mas index.css define <span class="mono">--color-ink: #171412</span> (quase preto) — o site inteiro usa o da variável CSS; o token do Tailwind parece não ser usado em lugar nenhum.
+      </div>
+      <div class="callout">
+        <strong>gold vs amber</strong>
+        tailwind.config.js define <span class="mono">gold: #d4af37</span>, mas todo o resto do código (index.css e componentes) usa <span class="mono">#d89a28</span> via <span class="mono">--color-amber</span>. São dois dourados ligeiramente diferentes coexistindo.
+      </div>
+      <div class="callout">
+        <strong>Toast de sucesso não usa o token --color-success</strong>
+        Toast.tsx escreve as cores do estado de sucesso direto em hexadecimal (<span class="mono">#bde4d4 / #eefaf5 / #0f8a5f</span>) em vez de referenciar a variável já existente.
+      </div>
+      <div class="callout">
+        <strong>#FAF6EF ainda não é um token</strong>
+        Usado no Header.tsx (texto do banner e fundo do campo de busca) mas não está declarado em index.css nem em tailwind.config.js — se for usado de novo em outro componente, vale formalizar.
+      </div>
+    </div>
+  </section>
+
+  <footer class="page">Gerado a partir do código em <span class="mono">frontend/</span> — tailwind.config.js, index.css e components/*.tsx.</footer>
+
+</div>
+
+</body></html>

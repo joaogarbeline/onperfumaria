@@ -1,0 +1,533 @@
+import { useEffect, useRef, useState } from 'react'
+import { api } from '../services/api'
+import {
+  createOrganizerId,
+  initialOrganizerStore,
+  type OrganizerActivity,
+  type OrganizerContentType,
+  type OrganizerNode,
+  type OrganizerStatus,
+  type OrganizerStore,
+  type OrganizerTag,
+  type OrganizerTrashEntry,
+  type OrganizerVariant,
+} from '../types/organizer'
+
+const STORAGE_KEY = 'on-perfumaria-organizer-v1'
+const SYNC_EVENT = 'on-perfumaria-organizer-sync'
+const VISIBLE_RECENT_LIMIT = 7
+
+function storesAreEqual(left: OrganizerStore, right: OrganizerStore) {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function dedupeStoredActivities(entries: OrganizerActivity[]) {
+  const result: OrganizerActivity[] = []
+  entries.forEach((entry) => {
+    const repeatedWhileVisible = result
+      .slice(0, VISIBLE_RECENT_LIMIT)
+      .some((visibleEntry) => visibleEntry.label === entry.label && visibleEntry.detail === entry.detail)
+    if (!repeatedWhileVisible) result.push(entry)
+  })
+  return result.slice(0, 50)
+}
+
+function loadOrganizerStore(): OrganizerStore {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (!saved) return initialOrganizerStore
+
+    const parsed = JSON.parse(saved) as Partial<OrganizerStore>
+    const savedNodes = Array.isArray(parsed.nodes) ? parsed.nodes : []
+    const hasOrganizerStructure = savedNodes.some((node) => node.id === 'home')
+    const sourceNodes = hasOrganizerStructure
+      ? savedNodes
+      : [
+          ...initialOrganizerStore.nodes.map((defaultNode) => ({
+            ...defaultNode,
+            ...savedNodes.find((node) => node.id === defaultNode.id),
+            route: defaultNode.route,
+            variant: defaultNode.variant,
+            builtin: defaultNode.builtin,
+            immutable: defaultNode.immutable,
+          })),
+          ...savedNodes.filter(
+            (node) => !initialOrganizerStore.nodes.some((defaultNode) => defaultNode.id === node.id),
+          ),
+        ]
+
+    const normalizedNodes = sourceNodes.map((node) => {
+      const defaults = initialOrganizerStore.nodes.find((candidate) => candidate.id === node.id)
+      const variant =
+        defaults?.variant === 'product-grid'
+          ? 'product-grid'
+          : (node.variant ?? defaults?.variant ?? 'standard')
+      return {
+        ...defaults,
+        ...node,
+        description: node.description ?? defaults?.description ?? '',
+        status: node.status ?? defaults?.status ?? 'draft',
+        scheduledAt: node.scheduledAt ?? '',
+        imageUrl: node.imageUrl ?? '',
+        price: Number(node.price) || 0,
+        size: node.size ?? defaults?.size ?? 'medium',
+        tagIds: Array.isArray(node.tagIds) ? node.tagIds : [],
+        itemIds: Array.isArray(node.itemIds) ? node.itemIds : [],
+        createdAt: node.createdAt ?? new Date().toISOString(),
+        updatedAt: node.updatedAt ?? new Date().toISOString(),
+        builtin: defaults?.builtin ?? node.builtin,
+        immutable: defaults ? Boolean(defaults.immutable) : Boolean(node.immutable),
+        variant,
+        type: variant === 'product-grid' ? 'catalog' : (node.type ?? defaults?.type ?? 'item'),
+      } as OrganizerNode
+    })
+
+    const duplicateRootIds = new Set(
+      normalizedNodes
+        .filter((node) => node.type === 'page' && node.route === '/' && node.id !== 'home')
+        .map((node) => node.id),
+    )
+    const nodes = normalizedNodes
+      .filter((node) => !duplicateRootIds.has(node.id))
+      .map((node) =>
+        node.parentId && duplicateRootIds.has(node.parentId) ? { ...node, parentId: 'home' } : node,
+      )
+
+    return {
+      nodes,
+      tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+      activities: Array.isArray(parsed.activities)
+        ? dedupeStoredActivities(parsed.activities).map((entry) =>
+            entry.targetId && duplicateRootIds.has(entry.targetId) ? { ...entry, targetId: 'home' } : entry,
+          )
+        : [],
+      trash: Array.isArray(parsed.trash) ? parsed.trash : [],
+    }
+  } catch {
+    return initialOrganizerStore
+  }
+}
+
+function activity(label: string, detail: string, targetId: string | null): OrganizerActivity {
+  return {
+    id: createOrganizerId('activity'),
+    label,
+    detail,
+    targetId,
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function withActivity(store: OrganizerStore, nextActivity: OrganizerActivity): OrganizerStore {
+  const visibleDuplicate = store.activities
+    .slice(0, VISIBLE_RECENT_LIMIT)
+    .find((entry) => entry.label === nextActivity.label && entry.detail === nextActivity.detail)
+  const activities = visibleDuplicate
+    ? store.activities.filter((entry) => entry.id !== visibleDuplicate.id)
+    : store.activities
+
+  return { ...store, activities: [nextActivity, ...activities].slice(0, 50) }
+}
+
+export type CreateOrganizerNodeInput = {
+  name: string
+  type: OrganizerContentType
+  parentId: string | null
+  description?: string
+  imageUrl?: string
+  price?: number
+  size?: OrganizerNode['size']
+  tagIds?: string[]
+  itemIds?: string[]
+  variant?: OrganizerVariant
+  route?: string
+  status?: OrganizerStatus
+}
+
+export function useOrganizerStore() {
+  const [store, setStore] = useState<OrganizerStore>(loadOrganizerStore)
+  const storeRef = useRef(store)
+  const remoteReady = useRef(false)
+  const isOrganizerRoute = window.location.pathname === '/organizador'
+
+  useEffect(() => {
+    storeRef.current = store
+  }, [store])
+
+  useEffect(() => {
+    const handleSync = (event: Event) => {
+      const nextStore = (event as CustomEvent<OrganizerStore>).detail
+      if (!nextStore) return
+      setStore((current) => (storesAreEqual(current, nextStore) ? current : nextStore))
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY || !event.newValue) return
+      const nextStore = loadOrganizerStore()
+      setStore((current) => (storesAreEqual(current, nextStore) ? current : nextStore))
+    }
+
+    window.addEventListener(SYNC_EVENT, handleSync)
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      window.removeEventListener(SYNC_EVENT, handleSync)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isOrganizerRoute) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
+    }
+    window.dispatchEvent(new CustomEvent<OrganizerStore>(SYNC_EVENT, { detail: store }))
+  }, [isOrganizerRoute, store])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const applyRemoteStore = (remoteStore: OrganizerStore) => {
+      if (isOrganizerRoute) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteStore))
+        const normalizedStore = loadOrganizerStore()
+        setStore((current) => (storesAreEqual(current, normalizedStore) ? current : normalizedStore))
+        return
+      }
+      setStore((current) => (storesAreEqual(current, remoteStore) ? current : remoteStore))
+    }
+
+    const syncFromServer = async (allowInitialize: boolean) => {
+      try {
+        const remoteStore = await api.get<OrganizerStore | null>('/organizer')
+        if (cancelled) return
+
+        if (remoteStore && Array.isArray(remoteStore.nodes)) {
+          applyRemoteStore(remoteStore)
+        } else if (allowInitialize && isOrganizerRoute) {
+          await api.put<OrganizerStore>('/organizer', storeRef.current)
+        }
+      } catch {
+        // O armazenamento local continua sendo usado quando o backend estiver indisponível.
+      } finally {
+        if (!cancelled) remoteReady.current = true
+      }
+    }
+
+    void syncFromServer(true)
+    const interval = isOrganizerRoute
+      ? undefined
+      : window.setInterval(() => void syncFromServer(false), 2_000)
+
+    return () => {
+      cancelled = true
+      if (interval) window.clearInterval(interval)
+    }
+  }, [isOrganizerRoute])
+
+  useEffect(() => {
+    if (!isOrganizerRoute || !remoteReady.current) return
+
+    const timeout = window.setTimeout(() => {
+      void api.put<OrganizerStore>('/organizer', store).catch(() => undefined)
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [isOrganizerRoute, store])
+
+  function createNode(input: CreateOrganizerNodeInput) {
+    const timestamp = new Date().toISOString()
+    const baseSlug = input.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('pt-BR')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    const requestedRoute = input.route?.trim()
+    const requestedSlug = requestedRoute
+      ?.split('/')
+      .filter(Boolean)
+      .at(-1)
+      ?.normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('pt-BR')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    const baseRoute = `/pagina/${requestedSlug || baseSlug || 'nova-pagina'}`
+    let pageRoute = baseRoute
+    let routeSuffix = 2
+    while (input.type === 'page' && store.nodes.some((existing) => existing.route === pageRoute)) {
+      pageRoute = `${baseRoute}-${routeSuffix}`
+      routeSuffix += 1
+    }
+    const node: OrganizerNode = {
+      id: createOrganizerId(input.type),
+      name: input.name.trim(),
+      type: input.type,
+      parentId: input.type === 'page' ? null : input.parentId,
+      description: input.description?.trim() ?? '',
+      status: input.status ?? (input.type === 'page' ? 'published' : 'draft'),
+      scheduledAt: '',
+      imageUrl: input.imageUrl?.trim() ?? '',
+      price: input.price ?? 0,
+      size: input.size ?? 'medium',
+      tagIds: input.tagIds ?? [],
+      itemIds: input.itemIds ?? [],
+      variant:
+        input.variant ??
+        (input.type === 'carousel'
+          ? 'product-carousel'
+          : input.type === 'catalog'
+            ? 'product-grid'
+            : input.type === 'highlight'
+              ? 'banner'
+              : 'standard'),
+      route: input.type === 'page' ? pageRoute : undefined,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    setStore((current) =>
+      withActivity(
+        { ...current, nodes: [...current.nodes, node] },
+        activity(`${node.name} criado`, 'Novo conteúdo adicionado', node.id),
+      ),
+    )
+    return node.id
+  }
+
+  function createTag(name: string, color: string) {
+    const timestamp = new Date().toISOString()
+    const tag: OrganizerTag = {
+      id: createOrganizerId('tag'),
+      name: name.trim(),
+      color,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    setStore((current) =>
+      withActivity(
+        { ...current, tags: [...current.tags, tag] },
+        activity(`${tag.name} criada`, 'Nova tag adicionada', tag.id),
+      ),
+    )
+    return tag.id
+  }
+
+  function updateNode(id: string, updates: Partial<OrganizerNode>, log = true) {
+    setStore((current) => {
+      const existing = current.nodes.find((node) => node.id === id)
+      if (!existing) return current
+
+      const nodes = current.nodes.map((node) =>
+        node.id === id ? { ...node, ...updates, id: node.id, updatedAt: new Date().toISOString() } : node,
+      )
+      const next = { ...current, nodes }
+      return log ? withActivity(next, activity(`${existing.name} atualizado`, 'Alterações salvas', id)) : next
+    })
+  }
+
+  function updateTag(id: string, updates: Partial<OrganizerTag>) {
+    setStore((current) => {
+      const existing = current.tags.find((tag) => tag.id === id)
+      if (!existing) return current
+
+      return withActivity(
+        {
+          ...current,
+          tags: current.tags.map((tag) =>
+            tag.id === id ? { ...tag, ...updates, id: tag.id, updatedAt: new Date().toISOString() } : tag,
+          ),
+        },
+        activity(`${existing.name} atualizada`, 'Tag modificada', id),
+      )
+    })
+  }
+
+  function scheduleNode(id: string, scheduledAt: string) {
+    const existing = store.nodes.find((node) => node.id === id)
+    if (!existing) return
+    updateNode(id, { scheduledAt, status: 'scheduled' }, false)
+    setStore((current) =>
+      withActivity(current, activity(`${existing.name} agendado`, 'Publicação programada', id)),
+    )
+  }
+
+  function setNodeStatus(id: string, status: OrganizerStatus) {
+    const existing = store.nodes.find((node) => node.id === id)
+    if (!existing) return
+    updateNode(id, { status, scheduledAt: status === 'scheduled' ? existing.scheduledAt : '' }, false)
+    setStore((current) =>
+      withActivity(current, activity(`${existing.name}: ${status}`, 'Situação alterada', id)),
+    )
+  }
+
+  function recordAccess(id: string, label: string) {
+    setStore((current) => withActivity(current, activity(label, 'Aberto no organizador', id)))
+  }
+
+  function duplicateNode(id: string) {
+    const existing = store.nodes.find((node) => node.id === id)
+    if (!existing) return null
+    return createNode({
+      name: `${existing.name} - cópia`,
+      type: existing.type,
+      parentId: existing.parentId,
+      description: existing.description,
+      imageUrl: existing.imageUrl,
+      price: existing.price,
+      size: existing.size,
+      tagIds: existing.tagIds,
+      itemIds: existing.itemIds,
+      variant: existing.variant,
+    })
+  }
+
+  function moveNode(id: string, direction: 'up' | 'down') {
+    setStore((current) => {
+      const currentNode = current.nodes.find((node) => node.id === id)
+      if (!currentNode || currentNode.immutable) return current
+
+      const siblings = current.nodes.filter((node) => node.parentId === currentNode.parentId)
+      const siblingIndex = siblings.findIndex((node) => node.id === id)
+      const targetSibling = siblings[siblingIndex + (direction === 'up' ? -1 : 1)]
+      if (!targetSibling || targetSibling.immutable) return current
+
+      const sourceIndex = current.nodes.findIndex((node) => node.id === currentNode.id)
+      const targetIndex = current.nodes.findIndex((node) => node.id === targetSibling.id)
+      const nodes = [...current.nodes]
+      ;[nodes[sourceIndex], nodes[targetIndex]] = [nodes[targetIndex], nodes[sourceIndex]]
+
+      return withActivity(
+        { ...current, nodes },
+        activity(
+          `${currentNode.name} reorganizado`,
+          direction === 'up' ? 'Movido para cima' : 'Movido para baixo',
+          id,
+        ),
+      )
+    })
+  }
+
+  function moveNodeToTrash(id: string) {
+    setStore((current) => {
+      const ids = new Set<string>([id])
+      let foundNew = true
+      while (foundNew) {
+        foundNew = false
+        current.nodes.forEach((node) => {
+          if (node.parentId && ids.has(node.parentId) && !ids.has(node.id)) {
+            ids.add(node.id)
+            foundNew = true
+          }
+        })
+      }
+
+      const deleted = current.nodes.filter((node) => ids.has(node.id) && !node.immutable)
+      if (deleted.length === 0) return current
+      const deletedIds = new Set(deleted.map((node) => node.id))
+      const deletedAt = new Date().toISOString()
+      const trash: OrganizerTrashEntry[] = deleted.map((node) => ({
+        id: createOrganizerId('trash'),
+        kind: 'node',
+        label: node.name,
+        deletedAt,
+        payload: node,
+      }))
+
+      return withActivity(
+        {
+          ...current,
+          nodes: current.nodes
+            .filter((node) => !deletedIds.has(node.id))
+            .map((node) => ({
+              ...node,
+              itemIds: node.itemIds.filter((itemId) => !deletedIds.has(itemId)),
+            })),
+          trash: [...trash, ...current.trash],
+        },
+        activity(
+          `${deleted[0].name} movido para a lixeira`,
+          `${deleted.length} registro(s) removido(s)`,
+          null,
+        ),
+      )
+    })
+  }
+
+  function moveTagToTrash(id: string) {
+    setStore((current) => {
+      const tag = current.tags.find((item) => item.id === id)
+      if (!tag) return current
+      const trashEntry: OrganizerTrashEntry = {
+        id: createOrganizerId('trash'),
+        kind: 'tag',
+        label: tag.name,
+        deletedAt: new Date().toISOString(),
+        payload: tag,
+      }
+      return withActivity(
+        {
+          ...current,
+          tags: current.tags.filter((item) => item.id !== id),
+          nodes: current.nodes.map((node) => ({
+            ...node,
+            tagIds: node.tagIds.filter((tagId) => tagId !== id),
+          })),
+          trash: [trashEntry, ...current.trash],
+        },
+        activity(`${tag.name} movida para a lixeira`, 'Tag removida', null),
+      )
+    })
+  }
+
+  function restoreTrash(id: string) {
+    setStore((current) => {
+      const entry = current.trash.find((item) => item.id === id)
+      if (!entry) return current
+      const next = { ...current, trash: current.trash.filter((item) => item.id !== id) }
+      if (entry.kind === 'node') next.nodes = [...next.nodes, entry.payload as OrganizerNode]
+      else next.tags = [...next.tags, entry.payload as OrganizerTag]
+      return withActivity(next, activity(`${entry.label} restaurado`, 'Item recuperado da lixeira', null))
+    })
+  }
+
+  function deleteTrashPermanently(id: string) {
+    setStore((current) => {
+      const entry = current.trash.find((item) => item.id === id)
+      if (!entry) return current
+      const payloadId = entry.payload.id
+      return {
+        ...current,
+        trash: current.trash.filter((item) => item.id !== id),
+        activities: current.activities.filter(
+          (item) => item.targetId !== payloadId && !item.label.startsWith(entry.label),
+        ),
+      }
+    })
+  }
+
+  function clearActivities() {
+    setStore((current) => ({ ...current, activities: [] }))
+  }
+
+  function resetWorkspace() {
+    setStore(initialOrganizerStore)
+  }
+
+  return {
+    store,
+    createNode,
+    createTag,
+    updateNode,
+    updateTag,
+    scheduleNode,
+    setNodeStatus,
+    recordAccess,
+    duplicateNode,
+    moveNode,
+    moveNodeToTrash,
+    moveTagToTrash,
+    restoreTrash,
+    deleteTrashPermanently,
+    clearActivities,
+    resetWorkspace,
+  }
+}

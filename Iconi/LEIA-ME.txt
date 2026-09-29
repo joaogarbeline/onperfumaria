@@ -1,0 +1,3 @@
+Pacote de ícones em contorno com fundo transparente.
+Pastas: Branco, Preto e D89A28 (#D89A28).
+Ícones: atendente, sacola, casa, corações, perfume, perfumes, WhatsApp, Gmail e perfil.
