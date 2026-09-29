@@ -241,13 +241,31 @@ func registerFrontend(router *gin.Engine) {
 	if _, err := os.Stat(indexPath); err != nil {
 		return
 	}
+
+	// Os arquivos em /assets têm hash no nome (ex: index-AbC123.js) e mudam a
+	// cada build, então podem ser cacheados para sempre. Já o index.html
+	// referencia esses hashes e é sobrescrito a cada deploy: sem
+	// no-cache aqui, o navegador podia guardar uma versão antiga da página
+	// apontando para arquivos que o deploy seguinte já apagou.
+	router.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/assets/") {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		c.Next()
+	})
+
+	serveIndex := func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache")
+		c.File(indexPath)
+	}
+
 	router.Static("/assets", filepath.Join(publicDir, "assets"))
-	router.StaticFile("/", indexPath)
+	router.GET("/", serveIndex)
 	router.NoRoute(func(c *gin.Context) {
 		if c.Request.Method != http.MethodGet || strings.HasPrefix(c.Request.URL.Path, "/api") || c.Request.URL.Path == "/health" {
 			c.JSON(http.StatusNotFound, gin.H{"message": "not found"})
 			return
 		}
-		c.File(indexPath)
+		serveIndex(c)
 	})
 }
