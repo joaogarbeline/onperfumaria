@@ -17,18 +17,16 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import atendimentoIcon from '../../assets/icons/atendente_d_c.png'
-import favoritoIcon from '../../assets/icons/coracoes_d_c.png'
-import { Carousel } from '../Carousel'
-
-const categoryLinks = [
-  { label: 'Arabes', path: '/arabes' },
-  { label: 'Feminino', path: '/feminino' },
-  { label: 'Masculino', path: '/masculino' },
-  { label: 'Importados', path: '/importados' },
-  { label: 'Unisex', path: '/unisex' },
-]
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import atendimentoIcon from '../../../assets/icons/atendente_d_c.png'
+import favoritoIcon from '../../../assets/icons/coracoes_d_c.png'
+import { useOrganizerStore } from '../../../hooks/useOrganizerStore'
+import {
+  isOrganizerNodeAvailable,
+  isOrganizerPreviewMode,
+  withOrganizerPreview,
+} from '../../../types/organizer'
+import { Carousel } from '../../../components/Carousel'
 
 const shortcutLinks: { label: string; icon: LucideIcon }[] = [
   { label: 'Cupons', icon: Tag },
@@ -65,6 +63,24 @@ export function MobileHeader() {
   const [scrolled, setScrolled] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const navigate = useNavigate()
+  const location = useLocation()
+  const { store } = useOrganizerStore()
+  const previewMode = isOrganizerPreviewMode(location.search)
+  const homePath = withOrganizerPreview('/', previewMode)
+  const currentPath = location.pathname.length > 1 ? location.pathname.replace(/\/+$/, '') : '/'
+  const categoryLinks = store.nodes
+    .filter(
+      (node) =>
+        node.type === 'page' &&
+        node.id !== 'home' &&
+        node.route &&
+        isOrganizerNodeAvailable(node, previewMode) &&
+        (node.route.length > 1 ? node.route.replace(/\/+$/, '') : '/') !== currentPath,
+    )
+    .map((node) => ({
+      label: node.name,
+      path: withOrganizerPreview(node.route as string, previewMode),
+    }))
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12)
@@ -81,18 +97,18 @@ export function MobileHeader() {
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSearchTerm('')
-    navigate('/')
+    navigate(homePath)
   }
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-[#0a1a33]/40 bg-[#142d52]">
+      <header className="sticky top-0 z-30 border-b border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)]">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-4 px-4 py-3">
           <div className="flex items-center justify-start">
             <button
               aria-label={open ? 'Fechar menu' : 'Abrir menu'}
               onClick={() => setOpen((value) => !value)}
-              className="flex items-center justify-center text-[#C9A227]"
+              className="flex items-center justify-center text-[#d89a28]"
             >
               {open ? <X size={26} /> : <Menu size={26} />}
             </button>
@@ -100,7 +116,7 @@ export function MobileHeader() {
 
           <div className="relative flex h-9 items-center justify-center overflow-hidden">
             <Link
-              to="/"
+              to={homePath}
               className={[
                 'flex flex-col items-center text-center transition-all duration-300 ease-in-out',
                 scrolled ? 'pointer-events-none -translate-y-3 opacity-0' : 'translate-y-0 opacity-100',
@@ -125,12 +141,12 @@ export function MobileHeader() {
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Buscar perfumes, marcas..."
-                className="w-full bg-transparent text-xs text-[#171412] outline-none placeholder:text-[#6b665f]"
+                className="w-full bg-transparent text-xs text-[#2a0f3d] outline-none placeholder:text-[#6b665f]"
               />
               <button
                 type="submit"
                 aria-label="Buscar"
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[12px] bg-white text-[#171412] ring-1 ring-inset ring-[#171412]/10"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[12px] bg-white text-[#2a0f3d] ring-1 ring-inset ring-[#2a0f3d]/10"
               >
                 <Search size={12} />
               </button>
@@ -140,7 +156,7 @@ export function MobileHeader() {
           <div className="flex items-center justify-end gap-2">
             <>
               <a
-                href="https://wa.me/5567991194532"
+                href="https://wa.me/5567999999999"
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Atendimento via WhatsApp"
@@ -179,12 +195,12 @@ export function MobileHeader() {
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Buscar perfumes, marcas..."
-                className="w-full bg-transparent text-sm text-[#171412] outline-none placeholder:text-[#6b665f]"
+                className="w-full bg-transparent text-sm text-[#2a0f3d] outline-none placeholder:text-[#6b665f]"
               />
               <button
                 type="submit"
                 aria-label="Buscar"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[20px] bg-white text-[#171412] ring-1 ring-inset ring-[#171412]/10"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[20px] bg-white text-[#2a0f3d] ring-1 ring-inset ring-[#2a0f3d]/10"
               >
                 <Search size={16} />
               </button>
@@ -212,7 +228,7 @@ export function MobileHeader() {
 
         <div
           className={[
-            'fixed inset-x-0 top-[61px] bottom-0 z-20 border-t border-[#0a1a33]/40 bg-[#142d52] transition-opacity duration-300 ease-in-out',
+            'fixed inset-x-0 top-[61px] bottom-0 z-20 border-t border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] transition-opacity duration-300 ease-in-out',
             open ? 'opacity-100' : 'pointer-events-none opacity-0',
           ].join(' ')}
         >
@@ -253,7 +269,7 @@ export function MobileHeader() {
                 <Link
                   to="/login"
                   onClick={() => setOpen(false)}
-                  className="w-full max-w-[240px] rounded-[20px] bg-[#fff1d6] py-3 text-center text-sm font-semibold text-[#171412]"
+                  className="w-full max-w-[240px] rounded-[20px] bg-[#fff1d6] py-3 text-center text-sm font-semibold text-[#2a0f3d]"
                 >
                   Entre
                 </Link>

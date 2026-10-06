@@ -1,10 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import pedidosIcon from '../../assets/icons/catalogo_d_c.png'
-import homeIcon from '../../assets/icons/home_d_c.png'
-import perfilIcon from '../../assets/icons/perfil_d_c.png'
-import sacolaIcon from '../../assets/icons/sacola_d_c.png'
-import { useAuth } from '../../contexts/AuthContext'
-import { useCart } from '../../contexts/CartContext'
+import pedidosIcon from '../../../assets/icons/catalogo_d_c.png'
+import homeIcon from '../../../assets/icons/home_d_c.png'
+import perfilIcon from '../../../assets/icons/perfil_d_c.png'
+import sacolaIcon from '../../../assets/icons/sacola_d_c.png'
+import { useAuth } from '../../../contexts/AuthContext'
+import { useCart } from '../../../contexts/CartContext'
 
 export function MobileBottomNav() {
   const { scope } = useAuth()
@@ -18,7 +18,7 @@ export function MobileBottomNav() {
     }`
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 flex items-stretch border-t border-[#0a1a33]/40 bg-[#142d52]">
+    <nav className="fixed inset-x-0 bottom-0 z-30 flex items-stretch border-t border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)]">
       <NavLink to="/" end className={itemClassName}>
         <img src={homeIcon} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
         Home
@@ -30,7 +30,7 @@ export function MobileBottomNav() {
       <NavLink to="/checkout" className={itemClassName}>
         <span className="relative flex items-center justify-center">
           <img src={sacolaIcon} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
-          <span className="absolute -right-1.5 -top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#d89a28] text-[8px] font-bold text-[#142d52]">
+          <span className="absolute -right-1.5 -top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#d89a28] text-[8px] font-bold text-[#3a164f]">
             {count}
           </span>
         </span>

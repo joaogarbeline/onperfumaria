@@ -321,7 +321,7 @@ export function CheckoutPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="eyebrow">Checkout</p>
-                <h1 className="mt-2 text-5xl leading-none text-[#171412]">Finalize com seguranca</h1>
+                <h1 className="mt-2 text-5xl leading-none text-[#2a0f3d]">Finalize com seguranca</h1>
               </div>
               {profile ? (
                 <p className="text-sm text-[#6b665f]">Cliente identificado: {profile.name}</p>
@@ -340,7 +340,7 @@ export function CheckoutPage() {
                     className="h-28 w-full rounded-[24px] object-cover sm:h-24 sm:w-24"
                   />
                   <div className="flex-1">
-                    <p className="text-xl font-semibold text-[#171412]">{item.name}</p>
+                    <p className="text-xl font-semibold text-[#2a0f3d]">{item.name}</p>
                     <p className="mt-1 text-sm text-[#6b665f]">
                       {item.brand} • {format(item.finalPrice)}
                     </p>
@@ -645,7 +645,7 @@ export function CheckoutPage() {
             </div>
 
             {displayMessage ? (
-              <p className="mt-5 rounded-[22px] border border-stone-200 bg-[#f7f2eb] px-4 py-3 text-sm text-[#6b665f]">
+              <p className="mt-5 rounded-[22px] border border-stone-200 bg-[#eadcf0] px-4 py-3 text-sm text-[#6b665f]">
                 {displayMessage}
               </p>
             ) : null}
@@ -664,7 +664,7 @@ export function CheckoutPage() {
             couponCode={form.couponCode}
           />
           {missingRequiredFields ? (
-            <p className="rounded-[22px] border border-stone-200 bg-[#f7f2eb] px-4 py-3 text-center text-sm text-[#6b665f]">
+            <p className="rounded-[22px] border border-stone-200 bg-[#eadcf0] px-4 py-3 text-center text-sm text-[#6b665f]">
               Preencha seus dados e endereco acima para escolher a forma de pagamento.
             </p>
           ) : !config.mpPublicKey ? (

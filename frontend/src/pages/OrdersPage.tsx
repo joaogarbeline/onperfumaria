@@ -51,12 +51,12 @@ export function OrdersPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="eyebrow">Minha conta</p>
-              <h1 className="mt-3 text-5xl leading-none text-[#171412]">Pedidos</h1>
+              <h1 className="mt-3 text-5xl leading-none text-[#2a0f3d]">Pedidos</h1>
               <p className="mt-3 max-w-xl text-sm leading-7 text-[#6b665f]">
                 Consulte os itens, pagamento, entrega e o andamento de cada compra.
               </p>
             </div>
-            <Link to="/" className="text-sm font-semibold text-[#b77717] hover:text-[#8b560b]">
+            <Link to="/" className="text-sm font-semibold text-[#b77717] hover:text-[#b77717]">
               Voltar ao início
             </Link>
           </div>
@@ -85,7 +85,7 @@ export function OrdersPage() {
                         {index === 0 ? 'Resumo do seu último pedido' : 'Pedido'}
                       </p>
                       <p className="mt-1 text-sm text-[#6b665f]">
-                        Pedido <span className="font-semibold text-[#171412]">#{order.id.slice(0, 8)}</span> ·{' '}
+                        Pedido <span className="font-semibold text-[#2a0f3d]">#{order.id.slice(0, 8)}</span> ·{' '}
                         {formatOrderDate(order.createdAt)}
                       </p>
                     </div>
@@ -95,7 +95,7 @@ export function OrdersPage() {
                   </div>
 
                   <div className="flex gap-4 p-5 sm:items-center sm:p-6">
-                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[18px] bg-[#f4efe8] text-[#d89a28] sm:h-24 sm:w-24">
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[18px] bg-[#eadcf0] text-[#d89a28] sm:h-24 sm:w-24">
                       {order.previewImageUrl ? (
                         <img src={order.previewImageUrl} alt="" className="h-full w-full object-cover" />
                       ) : (
@@ -112,9 +112,9 @@ export function OrdersPage() {
                         >
                           {status.label}
                         </span>
-                        <p className="text-lg font-bold text-[#171412]">{format(order.total)}</p>
+                        <p className="text-lg font-bold text-[#2a0f3d]">{format(order.total)}</p>
                       </div>
-                      <p className="mt-3 truncate text-sm font-semibold text-[#171412]">
+                      <p className="mt-3 truncate text-sm font-semibold text-[#2a0f3d]">
                         {order.previewName || 'Itens do pedido'}
                       </p>
                       <p className="mt-1 text-sm text-[#6b665f]">

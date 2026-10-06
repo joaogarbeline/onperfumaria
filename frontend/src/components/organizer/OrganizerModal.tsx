@@ -1,17 +1,8 @@
-import {
-  CalendarClock,
-  Eye,
-  FolderOpen,
-  Layers3,
-  LayoutGrid,
-  Package,
-  Settings,
-  Sparkles,
-  X,
-} from 'lucide-react'
+import { CalendarClock, Eye, FolderOpen, Layers3, LayoutGrid, Package, Sparkles, X } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { CreateOrganizerNodeInput } from '../../hooks/useOrganizerStore'
 import {
+  organizerDiscountOptions,
   organizerSizeLabels,
   organizerStatusLabels,
   organizerTypeLabels,
@@ -28,7 +19,6 @@ export type OrganizerModalMode =
   | 'tag'
   | 'schedule'
   | 'preview'
-  | 'settings'
   | 'module-picker'
   | null
 
@@ -39,15 +29,14 @@ type OrganizerModalProps = {
   selectedId: string | null
   onClose: () => void
   onCreateNode: (input: CreateOrganizerNodeInput) => string
-  onCreateTag: (name: string, color: string) => string
+  onCreateTag: (name: string, color: string, discountPercent?: number) => string
   onSchedule: (id: string, date: string) => void
   onCreated: (kind: 'node' | 'tag', id: string) => void
-  onClearActivities: () => void
   onChooseModule: (type: 'folder' | 'carousel' | 'highlight' | 'catalog' | 'item') => void
 }
 
 const fieldClass =
-  'w-full rounded-lg border border-[#d9d0c4] bg-white px-3 py-2.5 text-sm text-[#171412] outline-none focus:border-[#b77717] focus:ring-2 focus:ring-[#fff1d6]'
+  'w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-[#2a0f3d] outline-none focus:border-[#b77717] focus:ring-2 focus:ring-[#fff1d6]'
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
@@ -75,7 +64,6 @@ export function OrganizerModal({
   onCreateTag,
   onSchedule,
   onCreated,
-  onClearActivities,
   onChooseModule,
 }: OrganizerModalProps) {
   const containers = store.nodes.filter((node) => node.type === 'page' || node.type === 'folder')
@@ -86,12 +74,18 @@ export function OrganizerModal({
   const [route, setRoute] = useState('')
   const [publicationStatus, setPublicationStatus] = useState<OrganizerNode['status']>('published')
   const [selectedParent, setSelectedParent] = useState(parentId || 'home')
+  const [lastParentId, setLastParentId] = useState(parentId)
+  if (parentId !== lastParentId) {
+    setLastParentId(parentId)
+    setSelectedParent(parentId || 'home')
+  }
   const [imageUrl, setImageUrl] = useState('')
   const [price, setPrice] = useState('')
   const [size, setSize] = useState<OrganizerNode['size']>('medium')
   const [tagIds, setTagIds] = useState<string[]>([])
   const [itemIds, setItemIds] = useState<string[]>([])
   const [color, setColor] = useState('#d89a28')
+  const [discountPercent, setDiscountPercent] = useState('')
   const [scheduleTarget, setScheduleTarget] = useState(
     schedulableNodes.some((node) => node.id === selectedId)
       ? (selectedId ?? '')
@@ -114,11 +108,9 @@ export function OrganizerModal({
         ? 'Agendar publicação'
         : mode === 'preview'
           ? 'Pré-visualização do site'
-          : mode === 'settings'
-            ? 'Configurações do organizador'
-            : mode === 'module-picker'
-              ? 'Escolha o primeiro módulo'
-              : `Criar ${organizerTypeLabels[mode].toLocaleLowerCase('pt-BR')}`
+          : mode === 'module-picker'
+            ? 'Escolha o primeiro módulo'
+            : `Criar ${organizerTypeLabels[mode].toLocaleLowerCase('pt-BR')}`
 
   function toggleValue(values: string[], value: string, setter: (next: string[]) => void) {
     setter(values.includes(value) ? values.filter((item) => item !== value) : [...values, value])
@@ -126,11 +118,11 @@ export function OrganizerModal({
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    if (mode === 'preview' || mode === 'settings' || mode === 'module-picker') return
+    if (mode === 'preview' || mode === 'module-picker') return
 
     if (mode === 'tag') {
       if (!name.trim()) return
-      const id = onCreateTag(name, color)
+      const id = onCreateTag(name, color, discountPercent ? Number(discountPercent) : undefined)
       onClose()
       onCreated('tag', id)
       return
@@ -180,22 +172,21 @@ export function OrganizerModal({
       <button
         type="button"
         aria-label="Fechar janela"
-        className="absolute inset-0 bg-[#0a1a33]/35 backdrop-blur-sm"
+        className="absolute inset-0 bg-[#3a164f]/35 backdrop-blur-sm"
         onClick={onClose}
       />
-      <section className="relative flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#24457a] bg-[#fafaf8] shadow-2xl">
-        <header className="flex items-center justify-between bg-[linear-gradient(135deg,#142d52,#0a1a33)] px-5 py-4 text-[#fafaf8]">
+      <section className="relative flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#5b247f]/40 bg-[#fafaf8] shadow-[var(--shadow-panel)]">
+        <header className="flex items-center justify-between bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-5 py-4 text-[#fafaf8]">
           <div className="flex items-center gap-3">
-            {mode === 'preview' ? <Eye size={19} className="text-[#f0c977]" /> : null}
-            {mode === 'schedule' ? <CalendarClock size={19} className="text-[#f0c977]" /> : null}
-            {mode === 'settings' ? <Settings size={19} className="text-[#f0c977]" /> : null}
+            {mode === 'preview' ? <Eye size={19} className="text-[#e2b04f]" /> : null}
+            {mode === 'schedule' ? <CalendarClock size={19} className="text-[#e2b04f]" /> : null}
             <h2 className="font-sans text-base font-semibold tracking-normal">{title}</h2>
           </div>
           <button
             type="button"
             aria-label="Fechar"
             onClick={onClose}
-            className="rounded-md p-1.5 hover:bg-white/10"
+            className="rounded-full p-1.5 hover:bg-white/10"
           >
             <X size={20} />
           </button>
@@ -203,31 +194,6 @@ export function OrganizerModal({
 
         {mode === 'preview' ? (
           <PreviewContent store={store} selectedId={selectedId} />
-        ) : mode === 'settings' ? (
-          <div className="space-y-5 overflow-y-auto p-5">
-            <div className="rounded-xl border border-[#d9d0c4] bg-white p-4">
-              <h3 className="font-sans text-sm font-semibold text-[#142d52]">Salvamento automático</h3>
-              <p className="mt-1 text-xs leading-5 text-[#6b665f]">
-                Páginas, itens, tags, agendamentos e lixeira ficam salvos neste navegador.
-              </p>
-            </div>
-            <div className="rounded-xl border border-[#d9d0c4] bg-white p-4">
-              <h3 className="font-sans text-sm font-semibold text-[#142d52]">Histórico de recentes</h3>
-              <p className="mt-1 text-xs leading-5 text-[#6b665f]">
-                {store.activities.length} registro(s) armazenado(s).
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  onClearActivities()
-                  onClose()
-                }}
-                className="mt-3 rounded-lg border border-[#d9d0c4] px-3 py-2 text-xs font-semibold text-[#142d52] hover:border-[#b77717] hover:bg-[#fff1d6]"
-              >
-                Limpar recentes
-              </button>
-            </div>
-          </div>
         ) : mode === 'module-picker' ? (
           <div className="grid gap-3 overflow-y-auto p-5 sm:grid-cols-2 lg:grid-cols-5">
             <ModuleChoice
@@ -278,7 +244,7 @@ export function OrganizerModal({
             <button
               type="button"
               onClick={onClose}
-              className="mt-2 px-4 py-2 text-sm text-[#6b665f] hover:bg-[#f4efe8] sm:col-span-2 lg:col-span-5"
+              className="mt-2 px-4 py-2 text-sm text-[#6b665f] hover:bg-[#fff8ea] sm:col-span-2 lg:col-span-5"
             >
               Criar apenas a página
             </button>
@@ -349,7 +315,7 @@ export function OrganizerModal({
                           placeholder="/pagina/nome-da-pagina"
                           required
                         />
-                        <span className="mt-1 block text-[10px] text-[#777067]">
+                        <span className="mt-1 block text-[10px] text-[#6b665f]">
                           A página será aberta neste endereço dentro do site existente.
                         </span>
                       </label>
@@ -362,11 +328,13 @@ export function OrganizerModal({
                           }
                           className={fieldClass}
                         >
-                          <option value="published">Publicar e adicionar ao carrossel</option>
-                          <option value="draft">Salvar como rascunho oculto</option>
+                          <option value="published">Publicar</option>
+                          <option value="draft">Rascunho</option>
                         </select>
-                        <span className="mt-1 block text-[10px] text-[#777067]">
-                          Páginas publicadas entram automaticamente na navegação do site.
+                        <span className="mt-1 block text-[10px] text-[#6b665f]">
+                          {publicationStatus === 'draft'
+                            ? 'O rascunho aparece somente na visualização aberta pelo Modo visitante.'
+                            : 'Páginas publicadas entram automaticamente na navegação do site.'}
                         </span>
                       </label>
                     </>
@@ -405,7 +373,7 @@ export function OrganizerModal({
                           </select>
                         </label>
                       ) : (
-                        <p className="rounded-lg border border-[#d9d0c4] bg-[#fff9ee] px-3 py-2.5 text-xs leading-5 text-[#6b665f]">
+                        <p className="rounded-xl border border-stone-200 bg-[#fff8ea] px-3 py-2.5 text-xs leading-5 text-[#6b665f]">
                           A subpasta serve somente para organização. Ela não cria endereço nem aparece na
                           navegação do site.
                         </p>
@@ -414,15 +382,35 @@ export function OrganizerModal({
                   ) : null}
 
                   {mode === 'tag' ? (
-                    <label>
-                      <FieldLabel>Cor</FieldLabel>
-                      <input
-                        type="color"
-                        value={color}
-                        onChange={(event) => setColor(event.target.value)}
-                        className="h-11 w-full rounded-lg border border-[#d9d0c4] bg-white p-1"
-                      />
-                    </label>
+                    <>
+                      <label>
+                        <FieldLabel>Cor</FieldLabel>
+                        <input
+                          type="color"
+                          value={color}
+                          onChange={(event) => setColor(event.target.value)}
+                          className="h-11 w-full rounded-xl border border-stone-200 bg-white p-1"
+                        />
+                      </label>
+                      <label>
+                        <FieldLabel>Desconto</FieldLabel>
+                        <select
+                          value={discountPercent}
+                          onChange={(event) => setDiscountPercent(event.target.value)}
+                          className={fieldClass}
+                        >
+                          <option value="">Nenhum (tag comum)</option>
+                          {organizerDiscountOptions.map((percent) => (
+                            <option key={percent} value={percent}>
+                              {percent}% de desconto
+                            </option>
+                          ))}
+                        </select>
+                        <span className="mt-1 block text-[10px] text-[#6b665f]">
+                          Tags de desconto podem ser usadas na etapa final do cadastro de itens.
+                        </span>
+                      </label>
+                    </>
                   ) : null}
 
                   {mode === 'highlight' || mode === 'item' ? (
@@ -437,7 +425,7 @@ export function OrganizerModal({
                           placeholder="https://..."
                         />
                       </label>
-                      <label className="cursor-pointer rounded-lg border border-[#d9d0c4] bg-white px-4 py-2.5 text-center text-xs font-semibold text-[#142d52] hover:border-[#b77717] hover:bg-[#fff1d6]">
+                      <label className="cursor-pointer rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-center text-xs font-semibold text-[#3a164f] hover:border-[#b77717] hover:bg-[#fff1d6]">
                         Enviar arquivo
                         <input
                           type="file"
@@ -450,7 +438,7 @@ export function OrganizerModal({
                         <img
                           src={imageUrl}
                           alt="Prévia"
-                          className="h-24 w-full rounded-lg object-cover sm:col-span-2"
+                          className="h-24 w-full rounded-xl object-cover sm:col-span-2"
                         />
                       ) : null}
                     </div>
@@ -509,17 +497,17 @@ export function OrganizerModal({
               )}
             </div>
 
-            <div className="mt-6 flex justify-end gap-2 border-t border-[#e9e2d9] pt-4">
+            <div className="mt-6 flex justify-end gap-2 border-t border-stone-200/80 pt-4">
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg px-4 py-2.5 text-sm font-semibold text-[#6b665f] hover:bg-[#f4efe8]"
+                className="rounded-full px-4 py-2.5 text-sm font-semibold text-[#6b665f] hover:bg-[#fff8ea]"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="rounded-lg bg-[#142d52] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#24457a]"
+                className="rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
               >
                 {mode === 'schedule' ? 'Agendar' : 'Criar'}
               </button>
@@ -546,10 +534,10 @@ function ModuleChoice({
     <button
       type="button"
       onClick={onClick}
-      className="border border-[#d9d0c4] bg-white p-5 text-left hover:border-[#b77717] hover:bg-[#fff9ee]"
+      className="border border-stone-200 bg-white p-5 text-left hover:border-[#b77717] hover:bg-[#fff8ea]"
     >
-      <span className="mb-3 inline-flex rounded-full bg-[#f4e9d7] p-3 text-[#b77717]">{icon}</span>
-      <span className="block text-sm font-semibold text-[#142d52]">{title}</span>
+      <span className="mb-3 inline-flex rounded-full bg-[#fff1d6] p-3 text-[#b77717]">{icon}</span>
+      <span className="block text-sm font-semibold text-[#3a164f]">{title}</span>
       <span className="mt-1 block text-xs leading-5 text-[#6b665f]">{detail}</span>
     </button>
   )
@@ -580,7 +568,7 @@ function CheckboxGrid({
           {entries.map((entry) => (
             <label
               key={entry.id}
-              className="flex items-center gap-2 rounded-lg border border-[#d9d0c4] bg-white px-3 py-2 text-sm"
+              className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"
             >
               <input
                 type="checkbox"
@@ -627,11 +615,11 @@ function ProductCheckboxGrid({
                 key={item.id}
                 className={`flex cursor-pointer gap-3 border p-2.5 transition ${
                   checked
-                    ? 'border-[#b77717] bg-[#fff7e8] shadow-sm'
-                    : 'border-[#d9d0c4] bg-white hover:border-[#cfad76]'
+                    ? 'border-[#b77717] bg-[#fff8ea] shadow-sm'
+                    : 'border-stone-200 bg-white hover:border-[#d89a28]'
                 }`}
               >
-                <span className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden bg-[#f4efe8] text-[#b77717]">
+                <span className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden bg-[#fff8ea] text-[#b77717]">
                   {item.imageUrl ? (
                     <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
@@ -639,7 +627,7 @@ function ProductCheckboxGrid({
                   )}
                 </span>
                 <span className="min-w-0 flex-1 py-1">
-                  <span className="block truncate text-sm font-semibold text-[#142d52]">{item.name}</span>
+                  <span className="block truncate text-sm font-semibold text-[#3a164f]">{item.name}</span>
                   <span className="mt-1 block text-xs text-[#6b665f]">
                     {item.price > 0
                       ? item.price.toLocaleString('pt-BR', {
@@ -648,7 +636,7 @@ function ProductCheckboxGrid({
                         })
                       : 'Preço não informado'}
                   </span>
-                  <span className="mt-2 flex items-center gap-2 text-[10px] font-semibold text-[#9a6109]">
+                  <span className="mt-2 flex items-center gap-2 text-[10px] font-semibold text-[#b77717]">
                     <input
                       type="checkbox"
                       checked={checked}
@@ -675,17 +663,17 @@ function PreviewContent({ store, selectedId }: { store: OrganizerStore; selected
     : []
 
   return (
-    <div className="min-h-0 overflow-y-auto bg-[#f7f2eb] p-5">
-      <div className="mx-auto max-w-xl rounded-2xl border border-[#d9d0c4] bg-white p-5 shadow-sm">
+    <div className="min-h-0 overflow-y-auto bg-[#eadcf0] p-5">
+      <div className="mx-auto max-w-xl rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#b77717]">
           Visualização do visitante
         </p>
-        <h3 className="mt-2 text-3xl font-semibold text-[#171412]">{page?.name ?? 'Home'}</h3>
+        <h3 className="mt-2 text-3xl font-semibold text-[#2a0f3d]">{page?.name ?? 'Home'}</h3>
         <p className="mt-1 text-sm text-[#6b665f]">{page?.description || 'Página do site'}</p>
 
         <div className="mt-6 grid gap-4">
           {contents.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[#d9d0c4] p-8 text-center text-sm text-[#6b665f]">
+            <div className="rounded-xl border border-dashed border-stone-200 p-8 text-center text-sm text-[#6b665f]">
               Nenhum conteúdo publicado nesta página.
             </div>
           ) : (
@@ -696,9 +684,9 @@ function PreviewContent({ store, selectedId }: { store: OrganizerStore; selected
                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#b77717]">
                       {organizerTypeLabels[node.type]}
                     </p>
-                    <h4 className="font-sans text-base font-semibold text-[#142d52]">{node.name}</h4>
+                    <h4 className="font-sans text-base font-semibold text-[#3a164f]">{node.name}</h4>
                   </div>
-                  <span className="rounded-full bg-[#e7edf7] px-2 py-1 text-[10px] font-semibold text-[#142d52]">
+                  <span className="rounded-full bg-[#eadcf0] px-2 py-1 text-[10px] font-semibold text-[#3a164f]">
                     {organizerStatusLabels[node.status]}
                   </span>
                 </div>

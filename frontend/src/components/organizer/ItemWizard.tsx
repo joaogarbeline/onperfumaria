@@ -1,0 +1,401 @@
+import { Camera, ChevronLeft, Package, Plus, X } from 'lucide-react'
+import { useRef } from 'react'
+import {
+  getOrganizerDiscountedPrice,
+  organizerAvailabilityLabels,
+  type ItemWizardDraft,
+  type ItemWizardStep,
+  type OrganizerAvailability,
+  type OrganizerNode,
+  type OrganizerTag,
+} from '../../types/organizer'
+
+interface ItemWizardProps {
+  step: ItemWizardStep
+  draft: ItemWizardDraft
+  onDraftChange: (changes: Partial<ItemWizardDraft>) => void
+  onStepChange: (step: ItemWizardStep) => void
+  pages: OrganizerNode[]
+  discountTags: OrganizerTag[]
+  onCancel: () => void
+  onFinish: () => void
+}
+
+function readFilesAsDataUrls(files: FileList): Promise<string[]> {
+  return Promise.all(
+    Array.from(files).map(
+      (file) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.addEventListener('load', () => resolve(String(reader.result)))
+          reader.addEventListener('error', () => reject(reader.error))
+          reader.readAsDataURL(file)
+        }),
+    ),
+  )
+}
+
+export function ItemWizard({
+  step,
+  draft,
+  onDraftChange,
+  onStepChange,
+  pages,
+  discountTags,
+  onCancel,
+  onFinish,
+}: ItemWizardProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const newPhotos = await readFilesAsDataUrls(files)
+    onDraftChange({ photos: [...draft.photos, ...newPhotos] })
+  }
+
+  const removePhoto = (index: number) => {
+    onDraftChange({ photos: draft.photos.filter((_, photoIndex) => photoIndex !== index) })
+  }
+
+  const progress = (step / 4) * 100
+
+  return (
+    <div className="flex w-full flex-col p-5">
+      <div className="mb-6 overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-[var(--shadow-float)]">
+        <div className="flex items-center justify-between bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-5 py-3">
+          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-white">
+            Cadastrar item · etapa {step}/4
+          </h1>
+          <button
+            type="button"
+            aria-label="Cancelar cadastro"
+            onClick={onCancel}
+            className="rounded-full p-1 text-white/90 hover:bg-white/15 hover:text-white"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-6">
+          {step === 1 && (
+            <div className="flex min-h-64 flex-col items-center justify-center text-center">
+              <p className="mb-4 text-lg font-semibold text-[#3a164f]">Como chama o perfume?</p>
+              <input
+                autoFocus
+                value={draft.name}
+                onChange={(event) => onDraftChange({ name: event.target.value })}
+                placeholder="Nome do item"
+                className="organizer-input max-w-xs text-center"
+              />
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="flex min-h-64 flex-col items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Adicionar fotos"
+                className="flex h-20 w-20 items-center justify-center rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
+              >
+                <Camera size={30} />
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 rounded-full border border-[#5b247f] px-4 py-2 text-xs font-semibold text-[#3a164f] hover:bg-[#eadcf0]"
+              >
+                <Plus size={14} /> Adicionar fotos
+              </button>
+              {draft.photos.length > 0 && (
+                <p className="text-[11px] text-[#6b665f]">{draft.photos.length} foto(s) selecionada(s)</p>
+              )}
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="mx-auto w-full max-w-xl">
+              {draft.photos.length === 0 ? (
+                <p className="py-10 text-center text-xs text-[#6b665f]">Nenhuma foto adicionada ainda.</p>
+              ) : (
+                <div className="grid gap-2">
+                  <PhotoPreview
+                    src={draft.photos[0]}
+                    onRemove={() => removePhoto(0)}
+                    className="h-56 w-full"
+                  />
+                  {draft.photos.length > 1 && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {draft.photos.slice(1).map((photo, index) => (
+                        <PhotoPreview
+                          key={index}
+                          src={photo}
+                          onRemove={() => removePhoto(index + 1)}
+                          className="h-28 w-full"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#5b247f] px-4 py-2.5 text-xs font-semibold text-[#3a164f] hover:bg-[#eadcf0]"
+              >
+                <Plus size={14} /> Adicionar mais
+              </button>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="mx-auto grid w-full max-w-xl gap-4">
+              <div className="flex gap-2">
+                <div className="flex h-24 w-20 shrink-0 flex-col gap-2 overflow-y-auto">
+                  {draft.photos.slice(1).map((photo, index) => (
+                    <img
+                      key={index}
+                      src={photo}
+                      alt=""
+                      className="h-11 w-full shrink-0 rounded-lg border-2 border-[#d89a28] object-cover"
+                    />
+                  ))}
+                </div>
+                <div className="h-24 flex-1 overflow-hidden rounded-xl border-2 border-[#d89a28] bg-[#fff1d6]">
+                  {draft.photos[0] ? (
+                    <img src={draft.photos[0]} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-[#b77717]">
+                      <Camera size={24} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <label>
+                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                  Nome
+                </span>
+                <input
+                  value={draft.name}
+                  onChange={(event) => onDraftChange({ name: event.target.value })}
+                  className="organizer-input"
+                />
+              </label>
+
+              <label>
+                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                  Descrição
+                </span>
+                <textarea
+                  value={draft.description}
+                  onChange={(event) => {
+                    onDraftChange({ description: event.target.value })
+                    event.currentTarget.style.height = 'auto'
+                    event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`
+                  }}
+                  rows={3}
+                  className="organizer-input resize-none overflow-hidden"
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label>
+                  <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                    Status
+                  </span>
+                  <select
+                    value={draft.availability}
+                    onChange={(event) =>
+                      onDraftChange({ availability: event.target.value as OrganizerAvailability })
+                    }
+                    className="organizer-input"
+                  >
+                    {Object.entries(organizerAvailabilityLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                    Página
+                  </span>
+                  <select
+                    value={draft.parentId}
+                    onChange={(event) => onDraftChange({ parentId: event.target.value })}
+                    className="organizer-input"
+                  >
+                    {pages.map((page) => (
+                      <option key={page.id} value={page.id}>
+                        {page.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label>
+                  <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                    Valor
+                  </span>
+                  <div className="flex items-center rounded-xl border border-stone-200 bg-white px-3 focus-within:border-[#d89a28] focus-within:ring-4 focus-within:ring-[#f7dfb1]">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={draft.price}
+                      onChange={(event) => onDraftChange({ price: event.target.value })}
+                      placeholder="0,00"
+                      className="w-full bg-transparent py-2 text-xs text-[#2a0f3d] outline-none"
+                    />
+                    <span className="text-[10px] text-[#6b665f]">R$</span>
+                  </div>
+                </label>
+                <label>
+                  <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                    Tag
+                  </span>
+                  <select
+                    value={draft.tagId}
+                    onChange={(event) => onDraftChange({ tagId: event.target.value })}
+                    className="organizer-input"
+                  >
+                    <option value="">Sem desconto</option>
+                    {discountTags.map((tag) => (
+                      <option key={tag.id} value={tag.id}>
+                        {tag.name} · {tag.discountPercent}%
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        onChange={(event) => {
+          void handleFiles(event.target.files)
+          event.target.value = ''
+        }}
+      />
+
+      <div className="mb-4 h-1.5 w-full rounded-full bg-[#ababab]">
+        <div
+          className="h-full rounded-full bg-[#d89a28] transition-[width]"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => (step === 1 ? onCancel() : onStepChange((step - 1) as ItemWizardStep))}
+          className="flex items-center gap-1 rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold text-[#3a164f] hover:border-[#d89a28] hover:bg-[#fff8ea]"
+        >
+          <ChevronLeft size={15} /> Voltar
+        </button>
+        {step < 4 ? (
+          <button
+            type="button"
+            disabled={
+              (step === 1 && !draft.name.trim()) || ((step === 2 || step === 3) && draft.photos.length === 0)
+            }
+            onClick={() => onStepChange((step + 1) as ItemWizardStep)}
+            className="rounded-full bg-[#d89a28] px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#c28a1f] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Continuar
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={!draft.name.trim()}
+            onClick={onFinish}
+            className="rounded-full bg-[#d89a28] px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#c28a1f] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Finalizar
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function ItemWizardPreviewCard({ draft, tag }: { draft: ItemWizardDraft; tag: OrganizerTag | null }) {
+  const price = Number(draft.price) || 0
+  const discountedPrice = getOrganizerDiscountedPrice(price, tag?.discountPercent)
+  const hasDiscount = Boolean(tag?.discountPercent) && price > 0
+
+  return (
+    <div className="p-4">
+      <p className="organizer-eyebrow mb-3">Prévia do item</p>
+      <article className="organizer-surface overflow-hidden">
+        <div className="flex h-32 w-full items-center justify-center overflow-hidden bg-[#fff1d6] text-[#b77717]">
+          {draft.photos[0] ? (
+            <img src={draft.photos[0]} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <Package size={28} />
+          )}
+        </div>
+        <div className="p-3">
+          <p className="truncate text-xs font-semibold">{draft.name || 'Nome do item'}</p>
+          {draft.description && (
+            <p className="mt-1 line-clamp-2 text-[10px] text-[#6b665f]">{draft.description}</p>
+          )}
+          <div className="mt-2 flex items-center gap-2">
+            {hasDiscount ? (
+              <>
+                <span className="text-[10px] text-[#9b8f7f] line-through">
+                  {price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </span>
+                <span className="text-xs font-semibold text-[#a0382f]">
+                  {discountedPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </span>
+              </>
+            ) : (
+              <span className="text-xs font-semibold text-[#3a164f]">
+                {price > 0
+                  ? price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                  : 'Preço não informado'}
+              </span>
+            )}
+          </div>
+        </div>
+      </article>
+    </div>
+  )
+}
+
+function PhotoPreview({
+  src,
+  onRemove,
+  className = '',
+}: {
+  src: string
+  onRemove: () => void
+  className?: string
+}) {
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-xl border-2 border-[#d89a28] bg-[#fff1d6] ${className}`}
+    >
+      <img src={src} alt="" className="h-full w-full object-cover" />
+      <button
+        type="button"
+        aria-label="Remover foto"
+        onClick={onRemove}
+        className="absolute right-1.5 top-1.5 rounded-full bg-white/90 p-1 text-[#a0382f] shadow hover:bg-white"
+      >
+        <X size={13} />
+      </button>
+    </div>
+  )
+}

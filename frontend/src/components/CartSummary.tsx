@@ -25,7 +25,7 @@ export function CartSummary({
     <section className={compact ? 'surface-soft p-5' : 'surface-panel p-6 sm:p-7'}>
       <div className="space-y-1">
         <p className="eyebrow">Resumo</p>
-        <h2 className="text-3xl text-[#171412]">Pedido premium</h2>
+        <h2 className="text-3xl text-[#2a0f3d]">Pedido premium</h2>
       </div>
 
       <div className="mt-6 space-y-4 text-sm">
@@ -39,8 +39,8 @@ export function CartSummary({
         {couponCode ? <SummaryRow label="Cupom informado" value={couponCode.toUpperCase()} /> : null}
       </div>
 
-      <div className="mt-5 rounded-[26px] bg-[#171412] px-5 py-5 text-[#fafaf8]">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#f6dba5]">Total estimado</p>
+      <div className="mt-5 rounded-[26px] bg-[#2a0f3d] px-5 py-5 text-[#fafaf8]">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#e2b04f]">Total estimado</p>
         <p className="mt-2 text-4xl">{format(total)}</p>
       </div>
 
@@ -68,7 +68,7 @@ function SummaryRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="text-[#6b665f]">{label}</span>
-      <span className={highlight ? 'font-semibold text-[#0f8a5f]' : 'font-semibold text-[#171412]'}>
+      <span className={highlight ? 'font-semibold text-[#0f8a5f]' : 'font-semibold text-[#2a0f3d]'}>
         {value}
       </span>
     </div>

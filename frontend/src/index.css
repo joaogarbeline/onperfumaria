@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,40 +6,70 @@
 
 @layer components {
   .organizer-input {
-    @apply w-full border border-[#d8cdbc] bg-white px-3 py-2 text-xs text-[#132f57] outline-none focus:border-[#b86b00] focus:ring-1 focus:ring-[#e4b45d];
+    @apply w-full rounded-xl border border-[#ddc7ea] bg-white px-3 py-2 text-xs text-[#3a164f] outline-none placeholder:text-[#9b86a8] focus:border-[#d89a28] focus:outline-none focus:ring-4 focus:ring-[#f3e3c2];
+  }
+
+  .organizer-surface {
+    @apply rounded-2xl border border-[#e3cfee] bg-[#eadcf0] shadow-[var(--shadow-organizer)];
+  }
+
+  .organizer-surface-trust {
+    @apply rounded-2xl border border-[#5b247f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-[#eadcf0] shadow-[var(--shadow-organizer)];
+  }
+
+  .organizer-eyebrow {
+    @apply text-[10px] font-bold uppercase tracking-[0.2em] text-[#5b247f];
+  }
+
+  .organizer-font {
+    font-family: 'Montserrat', sans-serif;
+  }
+
+  .organizer-font h1,
+  .organizer-font h2,
+  .organizer-font h3,
+  .organizer-font h4 {
+    font-family: 'Cormorant Garamond', serif;
   }
 }
 
 :root {
-  font-family: 'Manrope', sans-serif;
-  color: #171412;
+  font-family: 'Montserrat', sans-serif;
+  color: #3a164f;
   background:
-    radial-gradient(circle at top, rgba(216, 154, 40, 0.12), transparent 28%),
-    linear-gradient(180deg, #fafaf8 0%, #f7f2eb 48%, #fafaf8 100%);
+    radial-gradient(circle at top, rgba(216, 154, 40, 0.1), transparent 28%),
+    linear-gradient(180deg, #f8f5f9 0%, #eadcf0 48%, #f8f5f9 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --color-ink: #171412;
-  --color-paper: #fafaf8;
-  --color-sand: #f4efe8;
+  --color-ink: #2a0f3d;
+  --color-paper: #f8f5f9;
+  --color-sand: #eadcf0;
   --color-amber: #d89a28;
   --color-amber-soft: #fff1d6;
   --color-success: #0f8a5f;
   --color-muted: #6b665f;
-  /* Confianca e seguranca institucional: azul-marinho profundo, o tom que a
-     psicologia das cores mais associa a solidez, seguranca e credibilidade.
-     Usado ao lado do dourado (luxo/qualidade) para equilibrar premium + confiavel. */
-  --color-trust: #142d52;
-  --color-trust-dark: #0a1a33;
-  --color-trust-soft: #e7edf7;
-  --color-trust-line: #2a4d82;
-  --shadow-panel: 0 30px 90px -42px rgba(23, 20, 18, 0.32);
-  --shadow-float: 0 24px 70px -36px rgba(23, 20, 18, 0.24);
+  /* Identidade ON Perfumaria (guia_paleta_tipografia_on_perfumaria.pdf):
+     roxo profundo como cor principal/marca, dourado reservado a icones e acoes. */
+  --color-trust: #5b247f;
+  --color-trust-dark: #3a164f;
+  --color-trust-soft: #eadcf0;
+  --color-trust-line: #5b247f;
+  --shadow-panel: 0 30px 90px -42px rgba(58, 22, 79, 0.28);
+  --shadow-float: 0 24px 70px -36px rgba(58, 22, 79, 0.2);
   --shadow-3d:
-    0 2px 4px rgba(20, 45, 82, 0.06), 0 18px 40px -18px rgba(20, 45, 82, 0.28),
-    0 40px 80px -40px rgba(23, 20, 18, 0.3);
-  --shadow-trust: 0 24px 60px -28px rgba(10, 26, 51, 0.55);
+    0 2px 4px rgba(91, 36, 127, 0.06), 0 18px 40px -18px rgba(91, 36, 127, 0.24),
+    0 40px 80px -40px rgba(58, 22, 79, 0.3);
+  --shadow-trust: 0 24px 60px -28px rgba(58, 22, 79, 0.45);
+  /* Identidade visual proposta para o organizador (guia_paleta_tipografia_on_perfumaria.pdf):
+     roxo profundo como cor principal/marca, dourado reservado a icones e acoes. */
+  --color-organizer-primary: #5b247f;
+  --color-organizer-primary-dark: #3a164f;
+  --color-organizer-window: #eadcf0;
+  --color-organizer-icon: #d89a28;
+  --color-organizer-bg: #f8f5f9;
+  --shadow-organizer: 0 24px 60px -28px rgba(58, 22, 79, 0.45);
 }
 
 html {
@@ -104,11 +134,9 @@ a:active {
 @keyframes pageEnter {
   from {
     opacity: 0;
-    transform: translateY(18px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -296,31 +324,31 @@ a:active {
 
 @layer components {
   .surface-panel {
-    @apply rounded-[32px] border border-stone-200/80 bg-white/90 shadow-[var(--shadow-panel)] backdrop-blur;
+    @apply rounded-[32px] border border-[#e3cfee] bg-[#f3e9f7]/90 shadow-[var(--shadow-panel)] backdrop-blur;
   }
 
   .surface-soft {
-    @apply rounded-[28px] border border-stone-200/70 bg-[#fcfbf8] shadow-[var(--shadow-float)];
+    @apply rounded-[28px] border border-[#e3cfee] bg-[#eadcf0] shadow-[var(--shadow-float)];
   }
 
   .interactive-card {
-    @apply transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_-38px_rgba(23,20,18,0.34)];
+    @apply transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_-38px_rgba(58,22,79,0.34)];
   }
 
   .eyebrow {
-    @apply text-[11px] font-bold uppercase tracking-[0.34em] text-[#b77717];
+    @apply text-[11px] font-bold uppercase tracking-[0.34em] text-[#5b247f];
   }
 
   .field-base {
-    @apply w-full rounded-[22px] border border-stone-200 bg-white px-4 py-3.5 text-sm text-stone-900 placeholder:text-stone-400 focus:border-[#d89a28] focus:outline-none focus:ring-4 focus:ring-[#f7dfb1];
+    @apply w-full rounded-[22px] border border-[#ddc7ea] bg-white px-4 py-3.5 text-sm text-[#2a0f3d] placeholder:text-[#9b86a8] focus:border-[#d89a28] focus:outline-none focus:ring-4 focus:ring-[#f7dfb1];
   }
 
   .surface-trust {
-    @apply rounded-[28px] border border-[#24457a] bg-[linear-gradient(160deg,#142d52_0%,#0a1a33_100%)] text-[#e7edf7] shadow-[var(--shadow-trust)];
+    @apply rounded-[28px] border border-[#5b247f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-[#eadcf0] shadow-[var(--shadow-trust)];
   }
 
   .eyebrow-trust {
-    @apply text-[11px] font-bold uppercase tracking-[0.34em] text-[#7fa3d6];
+    @apply text-[11px] font-bold uppercase tracking-[0.34em] text-[#e2b04f];
   }
 }
 
@@ -352,4 +380,48 @@ a:active {
 
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
+}
+
+/* Painel do organizador: o mesmo grid de conteudo aparece tanto no centro
+   quanto na gaveta direita (com larguras bem diferentes e variaveis por
+   arrasto), entao as colunas reagem a largura real do contêiner
+   (container query) em vez do breakpoint da janela inteira. */
+.organizer-container {
+  container-type: inline-size;
+  container-name: organizer;
+}
+
+.organizer-grid-actions,
+.organizer-grid-content {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@container organizer (min-width: 420px) {
+  .organizer-grid-content {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container organizer (min-width: 560px) {
+  .organizer-grid-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container organizer (min-width: 760px) {
+  .organizer-grid-content {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container organizer (min-width: 900px) {
+  .organizer-grid-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container organizer (min-width: 1100px) {
+  .organizer-grid-actions {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }

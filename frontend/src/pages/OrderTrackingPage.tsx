@@ -52,7 +52,7 @@ export function OrderTrackingPage() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-24 text-center">
         <Package size={48} className="mx-auto text-stone-300" />
-        <h1 className="mt-6 text-3xl font-semibold text-[#171412]">Pedido nao encontrado</h1>
+        <h1 className="mt-6 text-3xl font-semibold text-[#2a0f3d]">Pedido nao encontrado</h1>
         <p className="mt-3 text-sm text-[#6b665f]">
           {error || 'Verifique o numero do pedido e tente novamente.'}
         </p>
@@ -79,7 +79,7 @@ export function OrderTrackingPage() {
       <Reveal>
         <div className="text-center">
           <p className="eyebrow">Acompanhe seu pedido</p>
-          <h1 className="mt-2 text-4xl text-[#171412]">Pedido #{order.id.slice(0, 8)}</h1>
+          <h1 className="mt-2 text-4xl text-[#2a0f3d]">Pedido #{order.id.slice(0, 8)}</h1>
           <p className="mt-2 text-sm text-[#6b665f]">
             {new Date(order.createdAt).toLocaleDateString('pt-BR', {
               day: 'numeric',
@@ -121,15 +121,15 @@ export function OrderTrackingPage() {
 
       <Reveal delay={90}>
         <div className="surface-panel p-6">
-          <h2 className="text-2xl text-[#171412]">Resumo</h2>
+          <h2 className="text-2xl text-[#2a0f3d]">Resumo</h2>
           <div className="mt-4 space-y-3">
             {order.items.map((item, i) => (
               <div key={i} className="flex items-center justify-between border-b border-stone-100 pb-3">
                 <div>
-                  <p className="font-semibold text-[#171412]">{item.name}</p>
+                  <p className="font-semibold text-[#2a0f3d]">{item.name}</p>
                   <p className="text-sm text-[#6b665f]">Qtd: {item.quantity}</p>
                 </div>
-                <p className="font-semibold text-[#171412]">{format(item.price * item.quantity)}</p>
+                <p className="font-semibold text-[#2a0f3d]">{format(item.price * item.quantity)}</p>
               </div>
             ))}
             {order.discount > 0 ? (
@@ -142,7 +142,7 @@ export function OrderTrackingPage() {
               <span>Frete</span>
               <span>{format(order.shipping)}</span>
             </div>
-            <div className="flex justify-between pt-3 text-xl font-bold text-[#171412]">
+            <div className="flex justify-between pt-3 text-xl font-bold text-[#2a0f3d]">
               <span>Total</span>
               <span>{format(order.total)}</span>
             </div>

@@ -1,13 +1,14 @@
 import { FileText } from 'lucide-react'
-import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useOrganizerStore } from '../../hooks/useOrganizerStore'
 import {
   getOrganizerPageModules,
-  isOrganizerNodeVisible,
+  isOrganizerNodeAvailable,
+  isOrganizerPreviewMode,
   normalizeOrganizerSearch,
 } from '../../types/organizer'
+import { isSiteModuleRenderable } from '../site/moduleContent'
 import { SiteModuleRenderer } from '../site/SiteModuleRenderer'
-import { CategoryFilterDrawer } from './CategoryFilterDrawer'
 
 const pageIds: Record<string, string> = {
   comercial: 'comercial',
@@ -19,13 +20,18 @@ const pageIds: Record<string, string> = {
 }
 
 export function CategoryWindow({ title }: { title: string }) {
-  const [filterOpen, setFilterOpen] = useState(false)
+  const location = useLocation()
   const { store } = useOrganizerStore()
+  const previewMode = isOrganizerPreviewMode(location.search)
   const pageId = pageIds[normalizeOrganizerSearch(title)] ?? normalizeOrganizerSearch(title)
   const page = store.nodes.find((node) => node.id === pageId && node.type === 'page')
-  const modules = getOrganizerPageModules(store.nodes, pageId).filter((node) => isOrganizerNodeVisible(node))
+  const modules = getOrganizerPageModules(store.nodes, pageId).filter(
+    (node) =>
+      isOrganizerNodeAvailable(node, previewMode) &&
+      isSiteModuleRenderable(node, store.nodes, [], previewMode),
+  )
 
-  if (!page || !isOrganizerNodeVisible(page)) {
+  if (!page || !isOrganizerNodeAvailable(page, previewMode)) {
     return (
       <section className="surface-panel mx-auto max-w-2xl p-8 text-center">
         <FileText size={34} className="mx-auto text-[#d89a28]" />
@@ -45,11 +51,9 @@ export function CategoryWindow({ title }: { title: string }) {
           module={module}
           nodes={store.nodes}
           tags={store.tags}
-          onOpenFilters={module.variant === 'product-grid' ? () => setFilterOpen(true) : undefined}
+          previewMode={previewMode}
         />
       ))}
-
-      <CategoryFilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} />
     </div>
   )
 }

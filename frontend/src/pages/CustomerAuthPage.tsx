@@ -57,12 +57,12 @@ export function CustomerAuthPage({ mode }: { mode: 'login' | 'register' }) {
   return (
     <section className="mx-auto max-w-5xl">
       <div className="surface-panel grid overflow-hidden lg:grid-cols-[0.92fr_1.08fr]">
-        <div className="bg-[#171412] px-6 py-10 text-[#fafaf8] sm:px-8">
-          <p className="text-xs font-bold uppercase tracking-[0.34em] text-[#f6dba5]">Experiencia premium</p>
+        <div className="bg-[#2a0f3d] px-6 py-10 text-[#f8f5f9] sm:px-8">
+          <p className="text-xs font-bold uppercase tracking-[0.34em] text-[#e2b04f]">Experiencia premium</p>
           <h1 className="mt-4 text-5xl leading-none">
             {mode === 'login' ? 'Acesse sua conta' : 'Crie seu cadastro'}
           </h1>
-          <p className="mt-4 max-w-md text-sm leading-7 text-[#d9d0c4]">
+          <p className="mt-4 max-w-md text-sm leading-7 text-[#ddc7ea]">
             Seu perfil de cliente centraliza pedidos, enderecos e deixa o checkout mais rapido.
           </p>
         </div>

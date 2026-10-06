@@ -1,16 +1,19 @@
 import { FileText } from 'lucide-react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
+import { isSiteModuleRenderable } from '../components/site/moduleContent'
 import { SiteModuleRenderer } from '../components/site/SiteModuleRenderer'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
-import { getOrganizerPageModules, isOrganizerNodeVisible } from '../types/organizer'
+import { getOrganizerPageModules, isOrganizerNodeAvailable, isOrganizerPreviewMode } from '../types/organizer'
 
 export function ManagedPage() {
   const { slug = '' } = useParams()
+  const location = useLocation()
   const { store } = useOrganizerStore()
+  const previewMode = isOrganizerPreviewMode(location.search)
   const route = `/pagina/${slug}`
   const page = store.nodes.find((node) => node.type === 'page' && node.route === route)
 
-  if (!page || !isOrganizerNodeVisible(page)) {
+  if (!page || !isOrganizerNodeAvailable(page, previewMode)) {
     return (
       <section className="surface-panel mx-auto max-w-2xl p-8 text-center">
         <FileText size={34} className="mx-auto text-[#d89a28]" />
@@ -22,13 +25,16 @@ export function ManagedPage() {
     )
   }
 
-  const modules = getOrganizerPageModules(store.nodes, page.id).filter((node) => isOrganizerNodeVisible(node))
+  const modules = getOrganizerPageModules(store.nodes, page.id).filter(
+    (node) =>
+      isOrganizerNodeAvailable(node, previewMode) &&
+      isSiteModuleRenderable(node, store.nodes, [], previewMode),
+  )
 
   return (
     <div className="space-y-8 sm:space-y-10 lg:space-y-12">
-      <header className="border-b border-[#e4d9ca] pb-5 sm:pb-6 lg:pb-8">
-        <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#b77717]">Página do site</p>
-        <h1 className="mt-2 font-serif text-3xl font-semibold text-[#142d52] sm:text-4xl lg:text-5xl">
+      <header className="border-b border-[#e3cfee] pb-5 sm:pb-6 lg:pb-8">
+        <h1 className="font-serif text-3xl font-semibold text-[#3a164f] sm:text-4xl lg:text-5xl">
           {page.name}
         </h1>
         {page.description ? (
@@ -39,12 +45,18 @@ export function ManagedPage() {
       </header>
 
       {modules.length === 0 ? (
-        <div className="rounded-[24px] border border-dashed border-[#d9d0c4] bg-white/60 p-10 text-center text-sm text-[#6b665f]">
+        <div className="rounded-[24px] border border-dashed border-[#ddc7ea] bg-white/60 p-10 text-center text-sm text-[#6b665f]">
           Esta página foi criada. Adicione e publique módulos pelo organizador.
         </div>
       ) : (
         modules.map((module) => (
-          <SiteModuleRenderer key={module.id} module={module} nodes={store.nodes} tags={store.tags} />
+          <SiteModuleRenderer
+            key={module.id}
+            module={module}
+            nodes={store.nodes}
+            tags={store.tags}
+            previewMode={previewMode}
+          />
         ))
       )}
     </div>

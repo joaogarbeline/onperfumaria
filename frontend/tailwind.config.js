@@ -4,13 +4,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: '#fafaf9',
-        gold: '#d4af37',
+        ink: '#2a0f3d',
+        gold: '#d89a28',
         trust: {
-          DEFAULT: '#142d52',
-          dark: '#0a1a33',
-          soft: '#e7edf7',
-          line: '#2a4d82',
+          DEFAULT: '#5b247f',
+          dark: '#3a164f',
+          soft: '#eadcf0',
+          line: '#5b247f',
         },
       },
     },

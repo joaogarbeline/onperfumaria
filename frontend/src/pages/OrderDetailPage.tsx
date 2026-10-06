@@ -55,7 +55,7 @@ export function OrderDetailPage() {
     return (
       <section className="surface-panel mx-auto max-w-2xl p-8 text-center">
         <Package size={44} className="mx-auto text-stone-300" />
-        <h1 className="mt-5 text-4xl text-[#171412]">Pedido não encontrado</h1>
+        <h1 className="mt-5 text-4xl text-[#2a0f3d]">Pedido não encontrado</h1>
         <p className="mt-3 text-sm text-[#6b665f]">{message}</p>
         <Link to="/pedidos" className="mt-6 inline-block">
           <Button variant="secondary">Voltar aos pedidos</Button>
@@ -88,11 +88,11 @@ export function OrderDetailPage() {
           <div>
             <p className="text-sm text-[#6b665f]">
               Minha conta / Pedidos /{' '}
-              <span className="font-semibold text-[#171412]">#{order.id.slice(0, 8)}</span>
+              <span className="font-semibold text-[#2a0f3d]">#{order.id.slice(0, 8)}</span>
             </p>
-            <h1 className="mt-2 text-4xl leading-none text-[#171412] sm:text-5xl">Detalhes do pedido</h1>
+            <h1 className="mt-2 text-4xl leading-none text-[#2a0f3d] sm:text-5xl">Detalhes do pedido</h1>
           </div>
-          <Link to="/pedidos" className="text-sm font-semibold text-[#b77717] hover:text-[#8b560b]">
+          <Link to="/pedidos" className="text-sm font-semibold text-[#b77717] hover:text-[#b77717]">
             Voltar aos pedidos
           </Link>
         </div>
@@ -111,7 +111,7 @@ export function OrderDetailPage() {
                     Realizado em {formatOrderDate(order.createdAt)}
                   </p>
                 </div>
-                <span className="rounded-full bg-[#fff1d6] px-3 py-1 text-xs font-bold text-[#9b6110]">
+                <span className="rounded-full bg-[#fff1d6] px-3 py-1 text-xs font-bold text-[#b77717]">
                   {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}
                 </span>
               </div>
@@ -119,7 +119,7 @@ export function OrderDetailPage() {
               <div className="divide-y divide-stone-100">
                 {order.items.map((item, index) => (
                   <div key={`${item.name}-${index}`} className="flex gap-4 py-5">
-                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[18px] bg-[#f4efe8] text-[#d89a28]">
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[18px] bg-[#eadcf0] text-[#d89a28]">
                       {item.imageUrl ? (
                         <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
                       ) : (
@@ -127,10 +127,10 @@ export function OrderDetailPage() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-[#171412]">{item.name}</p>
+                      <p className="font-semibold text-[#2a0f3d]">{item.name}</p>
                       <p className="mt-2 text-sm text-[#6b665f]">Quantidade: {item.quantity}</p>
                     </div>
-                    <p className="shrink-0 text-sm font-bold text-[#171412]">
+                    <p className="shrink-0 text-sm font-bold text-[#2a0f3d]">
                       {format(item.price * item.quantity)}
                     </p>
                   </div>
@@ -192,13 +192,13 @@ export function OrderDetailPage() {
                     <span>-{format(order.discount)}</span>
                   </div>
                 ) : null}
-                <div className="flex justify-between gap-4 border-t border-stone-200 pt-4 text-base font-bold text-[#171412]">
+                <div className="flex justify-between gap-4 border-t border-stone-200 pt-4 text-base font-bold text-[#2a0f3d]">
                   <span>Total do pedido</span>
                   <span>{format(order.total)}</span>
                 </div>
               </div>
-              <div className="mt-5 rounded-[18px] bg-[#f7f2eb] p-4">
-                <p className="flex items-center gap-2 text-sm font-semibold text-[#171412]">
+              <div className="mt-5 rounded-[18px] bg-[#eadcf0] p-4">
+                <p className="flex items-center gap-2 text-sm font-semibold text-[#2a0f3d]">
                   <CircleDollarSign size={17} className="text-[#d89a28]" /> Pagamento
                 </p>
                 <p className="mt-2 text-sm text-[#6b665f]">
@@ -210,10 +210,10 @@ export function OrderDetailPage() {
 
           <Reveal delay={120}>
             <aside className="surface-panel p-5 sm:p-6">
-              <p className="flex items-center gap-2 text-sm font-semibold text-[#171412]">
+              <p className="flex items-center gap-2 text-sm font-semibold text-[#2a0f3d]">
                 <MapPin size={17} className="text-[#d89a28]" /> Entrega
               </p>
-              <p className="mt-3 text-sm font-semibold text-[#171412]">
+              <p className="mt-3 text-sm font-semibold text-[#2a0f3d]">
                 {order.address.label || 'Endereço de entrega'}
               </p>
               <p className="mt-1 text-sm leading-6 text-[#6b665f]">

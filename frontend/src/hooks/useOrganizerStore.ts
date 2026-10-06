@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { SetStateAction } from 'react'
 import { api } from '../services/api'
 import {
   createOrganizerId,
@@ -142,13 +143,32 @@ export type CreateOrganizerNodeInput = {
   variant?: OrganizerVariant
   route?: string
   status?: OrganizerStatus
+  availability?: OrganizerNode['availability']
 }
 
 export function useOrganizerStore() {
   const [store, setStore] = useState<OrganizerStore>(loadOrganizerStore)
+  const [remoteReady, setRemoteReady] = useState(false)
   const storeRef = useRef(store)
-  const remoteReady = useRef(false)
+  const pendingLocalSave = useRef(false)
+  const localRevision = useRef(0)
+  const hasSyncedWithServer = useRef(false)
   const isOrganizerRoute = window.location.pathname === '/organizador'
+
+  const setLocalStore = (updater: SetStateAction<OrganizerStore>) => {
+    setStore((current) => {
+      const next =
+        typeof updater === 'function'
+          ? (updater as (value: OrganizerStore) => OrganizerStore)(current)
+          : updater
+
+      if (!storesAreEqual(current, next)) {
+        pendingLocalSave.current = true
+        localRevision.current += 1
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     storeRef.current = store
@@ -157,11 +177,11 @@ export function useOrganizerStore() {
   useEffect(() => {
     const handleSync = (event: Event) => {
       const nextStore = (event as CustomEvent<OrganizerStore>).detail
-      if (!nextStore) return
+      if (!nextStore || pendingLocalSave.current) return
       setStore((current) => (storesAreEqual(current, nextStore) ? current : nextStore))
     }
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== STORAGE_KEY || !event.newValue) return
+      if (event.key !== STORAGE_KEY || !event.newValue || pendingLocalSave.current) return
       const nextStore = loadOrganizerStore()
       setStore((current) => (storesAreEqual(current, nextStore) ? current : nextStore))
     }
@@ -185,6 +205,13 @@ export function useOrganizerStore() {
     let cancelled = false
 
     const applyRemoteStore = (remoteStore: OrganizerStore) => {
+      // Antes da primeira sincronizacao, o estado local e so o esqueleto padrao
+      // (loadOrganizerStore ainda nao confirmou os dados reais) - uma edicao feita
+      // nesse instante nao pode bloquear a chegada dos dados reais do servidor,
+      // senao esse esqueleto acaba sendo salvo por cima deles.
+      if (pendingLocalSave.current && hasSyncedWithServer.current) return
+      hasSyncedWithServer.current = true
+
       if (isOrganizerRoute) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteStore))
         const normalizedStore = loadOrganizerStore()
@@ -195,26 +222,27 @@ export function useOrganizerStore() {
     }
 
     const syncFromServer = async (allowInitialize: boolean) => {
+      const revisionAtStart = localRevision.current
       try {
         const remoteStore = await api.get<OrganizerStore | null>('/organizer')
         if (cancelled) return
+        if (revisionAtStart !== localRevision.current) return
 
         if (remoteStore && Array.isArray(remoteStore.nodes)) {
           applyRemoteStore(remoteStore)
         } else if (allowInitialize && isOrganizerRoute) {
           await api.put<OrganizerStore>('/organizer', storeRef.current)
+          hasSyncedWithServer.current = true
         }
       } catch {
         // O armazenamento local continua sendo usado quando o backend estiver indisponível.
       } finally {
-        if (!cancelled) remoteReady.current = true
+        if (!cancelled) setRemoteReady(true)
       }
     }
 
     void syncFromServer(true)
-    const interval = isOrganizerRoute
-      ? undefined
-      : window.setInterval(() => void syncFromServer(false), 2_000)
+    const interval = window.setInterval(() => void syncFromServer(false), 2_000)
 
     return () => {
       cancelled = true
@@ -223,13 +251,19 @@ export function useOrganizerStore() {
   }, [isOrganizerRoute])
 
   useEffect(() => {
-    if (!isOrganizerRoute || !remoteReady.current) return
+    if (!isOrganizerRoute || !remoteReady || !pendingLocalSave.current || !hasSyncedWithServer.current) return
 
+    const snapshot = store
     const timeout = window.setTimeout(() => {
-      void api.put<OrganizerStore>('/organizer', store).catch(() => undefined)
+      void api
+        .put<OrganizerStore>('/organizer', snapshot)
+        .then(() => {
+          if (storesAreEqual(storeRef.current, snapshot)) pendingLocalSave.current = false
+        })
+        .catch(() => undefined)
     }, 250)
     return () => window.clearTimeout(timeout)
-  }, [isOrganizerRoute, store])
+  }, [isOrganizerRoute, remoteReady, store])
 
   function createNode(input: CreateOrganizerNodeInput) {
     const timestamp = new Date().toISOString()
@@ -279,11 +313,12 @@ export function useOrganizerStore() {
               ? 'banner'
               : 'standard'),
       route: input.type === 'page' ? pageRoute : undefined,
+      availability: input.availability,
       createdAt: timestamp,
       updatedAt: timestamp,
     }
 
-    setStore((current) =>
+    setLocalStore((current) =>
       withActivity(
         { ...current, nodes: [...current.nodes, node] },
         activity(`${node.name} criado`, 'Novo conteúdo adicionado', node.id),
@@ -292,17 +327,18 @@ export function useOrganizerStore() {
     return node.id
   }
 
-  function createTag(name: string, color: string) {
+  function createTag(name: string, color: string, discountPercent?: number) {
     const timestamp = new Date().toISOString()
     const tag: OrganizerTag = {
       id: createOrganizerId('tag'),
       name: name.trim(),
       color,
+      discountPercent,
       createdAt: timestamp,
       updatedAt: timestamp,
     }
 
-    setStore((current) =>
+    setLocalStore((current) =>
       withActivity(
         { ...current, tags: [...current.tags, tag] },
         activity(`${tag.name} criada`, 'Nova tag adicionada', tag.id),
@@ -312,7 +348,7 @@ export function useOrganizerStore() {
   }
 
   function updateNode(id: string, updates: Partial<OrganizerNode>, log = true) {
-    setStore((current) => {
+    setLocalStore((current) => {
       const existing = current.nodes.find((node) => node.id === id)
       if (!existing) return current
 
@@ -325,7 +361,7 @@ export function useOrganizerStore() {
   }
 
   function updateTag(id: string, updates: Partial<OrganizerTag>) {
-    setStore((current) => {
+    setLocalStore((current) => {
       const existing = current.tags.find((tag) => tag.id === id)
       if (!existing) return current
 
@@ -345,7 +381,7 @@ export function useOrganizerStore() {
     const existing = store.nodes.find((node) => node.id === id)
     if (!existing) return
     updateNode(id, { scheduledAt, status: 'scheduled' }, false)
-    setStore((current) =>
+    setLocalStore((current) =>
       withActivity(current, activity(`${existing.name} agendado`, 'Publicação programada', id)),
     )
   }
@@ -354,13 +390,13 @@ export function useOrganizerStore() {
     const existing = store.nodes.find((node) => node.id === id)
     if (!existing) return
     updateNode(id, { status, scheduledAt: status === 'scheduled' ? existing.scheduledAt : '' }, false)
-    setStore((current) =>
+    setLocalStore((current) =>
       withActivity(current, activity(`${existing.name}: ${status}`, 'Situação alterada', id)),
     )
   }
 
   function recordAccess(id: string, label: string) {
-    setStore((current) => withActivity(current, activity(label, 'Aberto no organizador', id)))
+    setLocalStore((current) => withActivity(current, activity(label, 'Aberto no organizador', id)))
   }
 
   function duplicateNode(id: string) {
@@ -381,7 +417,7 @@ export function useOrganizerStore() {
   }
 
   function moveNode(id: string, direction: 'up' | 'down') {
-    setStore((current) => {
+    setLocalStore((current) => {
       const currentNode = current.nodes.find((node) => node.id === id)
       if (!currentNode || currentNode.immutable) return current
 
@@ -407,7 +443,7 @@ export function useOrganizerStore() {
   }
 
   function moveNodeToTrash(id: string) {
-    setStore((current) => {
+    setLocalStore((current) => {
       const ids = new Set<string>([id])
       let foundNew = true
       while (foundNew) {
@@ -453,7 +489,7 @@ export function useOrganizerStore() {
   }
 
   function moveTagToTrash(id: string) {
-    setStore((current) => {
+    setLocalStore((current) => {
       const tag = current.tags.find((item) => item.id === id)
       if (!tag) return current
       const trashEntry: OrganizerTrashEntry = {
@@ -479,7 +515,7 @@ export function useOrganizerStore() {
   }
 
   function restoreTrash(id: string) {
-    setStore((current) => {
+    setLocalStore((current) => {
       const entry = current.trash.find((item) => item.id === id)
       if (!entry) return current
       const next = { ...current, trash: current.trash.filter((item) => item.id !== id) }
@@ -490,7 +526,7 @@ export function useOrganizerStore() {
   }
 
   function deleteTrashPermanently(id: string) {
-    setStore((current) => {
+    setLocalStore((current) => {
       const entry = current.trash.find((item) => item.id === id)
       if (!entry) return current
       const payloadId = entry.payload.id
@@ -505,11 +541,11 @@ export function useOrganizerStore() {
   }
 
   function clearActivities() {
-    setStore((current) => ({ ...current, activities: [] }))
+    setLocalStore((current) => ({ ...current, activities: [] }))
   }
 
   function resetWorkspace() {
-    setStore(initialOrganizerStore)
+    setLocalStore(initialOrganizerStore)
   }
 
   return {

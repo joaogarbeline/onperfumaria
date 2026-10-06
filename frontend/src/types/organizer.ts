@@ -9,6 +9,8 @@ export type OrganizerVariant =
   | 'product-grid'
   | 'brand-marquee'
 
+export type OrganizerAvailability = 'publish' | 'coming-soon' | 'out-of-stock' | 'low-stock'
+
 export type OrganizerNode = {
   id: string
   name: string
@@ -26,6 +28,7 @@ export type OrganizerNode = {
   variant?: OrganizerVariant
   builtin?: boolean
   immutable?: boolean
+  availability?: OrganizerAvailability
   createdAt: string
   updatedAt: string
 }
@@ -34,6 +37,7 @@ export type OrganizerTag = {
   id: string
   name: string
   color: string
+  discountPercent?: number
   createdAt: string
   updatedAt: string
 }
@@ -80,6 +84,44 @@ export const organizerSizeLabels: Record<OrganizerSize, string> = {
   small: 'Pequeno',
   medium: 'Médio',
   large: 'Grande',
+}
+
+export const organizerAvailabilityLabels: Record<OrganizerAvailability, string> = {
+  publish: 'Publicar',
+  'coming-soon': 'Em breve',
+  'out-of-stock': 'Esgotado',
+  'low-stock': 'Pouco no estoque',
+}
+
+export const organizerDiscountOptions = [10, 20, 30, 40, 50, 60] as const
+
+export function getOrganizerDiscountedPrice(price: number, percent?: number) {
+  if (!percent) return price
+  return price - (price * percent) / 100
+}
+
+export type ItemWizardStep = 1 | 2 | 3 | 4
+
+export type ItemWizardDraft = {
+  name: string
+  photos: string[]
+  description: string
+  availability: OrganizerAvailability
+  parentId: string
+  price: string
+  tagId: string
+}
+
+export function emptyItemWizardDraft(parentId: string): ItemWizardDraft {
+  return {
+    name: '',
+    photos: [],
+    description: '',
+    availability: 'publish',
+    parentId,
+    price: '',
+    tagId: '',
+  }
 }
 
 const now = new Date().toISOString()
@@ -263,6 +305,21 @@ export function isOrganizerNodeVisible(node: OrganizerNode, referenceDate = new 
   if (node.status === 'published') return true
   if (node.status !== 'scheduled' || !node.scheduledAt) return false
   return new Date(node.scheduledAt).getTime() <= referenceDate.getTime()
+}
+
+export function isOrganizerPreviewMode(search: string) {
+  return new URLSearchParams(search).get('preview') === 'organizer'
+}
+
+export function withOrganizerPreview(path: string, previewMode: boolean) {
+  if (!previewMode) return path
+  const url = new URL(path, 'https://organizer.local')
+  url.searchParams.set('preview', 'organizer')
+  return `${url.pathname}${url.search}${url.hash}`
+}
+
+export function isOrganizerNodeAvailable(node: OrganizerNode, previewMode: boolean) {
+  return previewMode || isOrganizerNodeVisible(node)
 }
 
 export function findOrganizerPage(nodes: OrganizerNode[], nodeOrId: OrganizerNode | string) {

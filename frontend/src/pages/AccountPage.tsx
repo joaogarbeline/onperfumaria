@@ -70,7 +70,7 @@ export function AccountPage() {
   if (!token || scope !== 'customer') {
     return (
       <section className="surface-panel p-6 sm:p-8">
-        <h1 className="text-5xl leading-none text-[#171412]">Minha conta</h1>
+        <h1 className="text-5xl leading-none text-[#2a0f3d]">Minha conta</h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#6b665f]">
           Entre como cliente para acompanhar pedidos, salvar enderecos e manter um checkout mais rapido nas
           proximas compras.
@@ -163,7 +163,7 @@ export function AccountPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="eyebrow">Minha conta</p>
-              <h1 className="mt-3 text-5xl leading-none text-[#171412]">{profile.name}</h1>
+              <h1 className="mt-3 text-5xl leading-none text-[#2a0f3d]">{profile.name}</h1>
               <p className="mt-3 text-sm leading-7 text-[#6b665f]">
                 {profile.email} • {profile.phone}
               </p>
@@ -183,7 +183,7 @@ export function AccountPage() {
               onClick={() => setActiveTab(tab.id)}
               className={[
                 'flex items-center justify-center gap-2 rounded-[22px] px-4 py-4 text-sm font-semibold',
-                activeTab === tab.id ? 'bg-[#171412] text-[#fafaf8]' : 'bg-[#f7f2eb] text-[#6b665f]',
+                activeTab === tab.id ? 'bg-[#2a0f3d] text-[#f8f5f9]' : 'bg-[#eadcf0] text-[#6b665f]',
               ].join(' ')}
             >
               {tab.icon}
@@ -223,7 +223,7 @@ export function AccountPage() {
                 <div key={`${address.id ?? address.cep}-${index}`} className="surface-panel p-6">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <h2 className="text-3xl text-[#171412]">{address.label || `Endereco ${index + 1}`}</h2>
+                      <h2 className="text-3xl text-[#2a0f3d]">{address.label || `Endereco ${index + 1}`}</h2>
                       <p className="mt-4 text-sm leading-7 text-[#6b665f]">
                         {address.street}, {address.number}
                         <br />
@@ -268,7 +268,7 @@ export function AccountPage() {
           </div>
 
           <div className="surface-panel p-6">
-            <h2 className="text-4xl leading-none text-[#171412]">
+            <h2 className="text-4xl leading-none text-[#2a0f3d]">
               {addressForm.addressId ? 'Editar endereco' : 'Adicionar outro endereco'}
             </h2>
             <form className="mt-5 grid gap-4" onSubmit={handleAddressSubmit}>
@@ -326,7 +326,7 @@ export function AccountPage() {
                   }
                 />
               </div>
-              <label className="surface-soft flex items-center gap-3 px-4 py-4 text-sm text-[#171412]">
+              <label className="surface-soft flex items-center gap-3 px-4 py-4 text-sm text-[#2a0f3d]">
                 <input
                   type="checkbox"
                   checked={addressForm.isDefault}
@@ -372,7 +372,7 @@ export function AccountPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <p className="eyebrow">Pedido {order.id.slice(0, 8)}</p>
-                    <h2 className="mt-2 text-3xl text-[#171412]">
+                    <h2 className="mt-2 text-3xl text-[#2a0f3d]">
                       {new Date(order.createdAt).toLocaleDateString('pt-BR')}
                     </h2>
                     <p className="mt-2 text-sm text-[#6b665f]">Total {format(order.total)}</p>

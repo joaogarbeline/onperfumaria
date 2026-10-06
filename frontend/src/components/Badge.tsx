@@ -7,7 +7,7 @@ const toneClasses: Record<BadgeTone, string> = {
   success: 'bg-[#eefaf5] text-[#0f8a5f] border-[#bde4d4]',
   neutral: 'bg-[#f6f1ea] text-[#6b665f] border-[#e3dbd0]',
   danger: 'bg-rose-50 text-rose-700 border-rose-200',
-  trust: 'bg-[#e7edf7] text-[#142d52] border-[#c3d2ea]',
+  trust: 'bg-[#eadcf0] text-[#3a164f] border-[#ddc7ea]',
 }
 
 export function Badge({

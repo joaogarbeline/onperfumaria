@@ -26,7 +26,7 @@ export function ConfirmDialog({
             <AlertTriangle size={20} className="text-rose-600" />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-[#171412]">{title}</h3>
+            <h3 className="text-lg font-semibold text-[#2a0f3d]">{title}</h3>
             <div className="mt-2 text-sm leading-6 text-[#6b665f]">{children}</div>
             <div className="mt-6 flex gap-3">
               <Button variant="ghost" onClick={onCancel}>

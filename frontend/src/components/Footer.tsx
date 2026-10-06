@@ -10,14 +10,14 @@ const trustSeals = [
 
 export function Footer() {
   return (
-    <footer className="relative mt-16 overflow-hidden border-t border-[#24457a] bg-[linear-gradient(160deg,#142d52_0%,#0a1a33_100%)] text-[#e7edf7]">
-      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#2a4d82]/40 blur-3xl" />
+    <footer className="relative mt-16 overflow-hidden border-t border-[#5b247f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-[#eadcf0]">
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#5b247f]/40 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-0 h-64 w-64 rounded-full bg-[#d89a28]/15 blur-3xl" />
 
-      <div className="relative mx-auto grid max-w-7xl gap-10 border-b border-white/10 px-4 py-10 sm:px-6 lg:grid-cols-[1.3fr_0.8fr_0.9fr]">
+      <div className="relative grid gap-10 border-b border-white/10 px-4 py-10 sm:px-6 lg:grid-cols-[1.3fr_0.8fr_0.9fr]">
         <div className="space-y-4">
           <p className="text-sm font-semibold uppercase tracking-[0.38em] text-white">ON PERFUMARIA</p>
-          <p className="max-w-md text-sm leading-7 text-[#a9bedd]">
+          <p className="max-w-md text-sm leading-7 text-[#d9c2e8]">
             Na On Perfumaria fazemos a curadoria com a crença de que no ramo da perfumaria, descobrir emoções,
             memórias e identidade em cada fragrância. Afinal a vida é feita com momentos, conquista e tudo
             entrelaçado na fragrâncias que ficam na memoria.
@@ -66,21 +66,21 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <div className="relative px-4 py-6 sm:px-6">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {trustSeals.map(({ icon: Icon, label }) => (
             <div
               key={label}
               className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 backdrop-blur-sm"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d89a28]/15 text-[#f0c977]">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d89a28]/15 text-[#e2b04f]">
                 <Icon size={15} />
               </span>
-              <span className="text-[11px] font-medium leading-4 text-[#dbe6f5]">{label}</span>
+              <span className="text-[11px] font-medium leading-4 text-[#e8d9ef]">{label}</span>
             </div>
           ))}
         </div>
-        <p className="mt-6 text-center text-[11px] uppercase tracking-[0.2em] text-[#6d84ab] sm:text-left">
+        <p className="mt-6 text-center text-[11px] uppercase tracking-[0.2em] text-[#9b7fb0] sm:text-left">
           On Perfumaria e Importados — todos os direitos reservados
         </p>
       </div>

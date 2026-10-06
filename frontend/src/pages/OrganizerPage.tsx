@@ -15,6 +15,7 @@ import {
   Image as ImageIcon,
   LayoutGrid,
   Layers3,
+  LogOut,
   Package,
   PanelLeft,
   PanelRight,
@@ -29,17 +30,27 @@ import {
   X,
 } from 'lucide-react'
 import { OrganizerModal, type OrganizerModalMode } from '../components/organizer/OrganizerModal'
+import { ItemWizard, ItemWizardPreviewCard } from '../components/organizer/ItemWizard'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
 import {
+  emptyItemWizardDraft,
   findOrganizerPage,
   organizerStatusLabels,
   organizerTypeLabels,
   normalizeOrganizerSearch,
+  withOrganizerPreview,
 } from '../types/organizer'
-import type { OrganizerContentType, OrganizerNode, OrganizerTag } from '../types/organizer'
+import type {
+  ItemWizardDraft,
+  ItemWizardStep,
+  OrganizerContentType,
+  OrganizerNode,
+  OrganizerTag,
+  OrganizerTrashEntry,
+} from '../types/organizer'
 
 type DrawerName = 'left' | 'right'
-type Selection = { kind: 'node'; id: string } | { kind: 'tag'; id: string } | { kind: 'trash' } | null
+type Selection = { kind: 'node'; id: string } | { kind: 'tag'; id: string } | null
 type SectionKey = 'upcoming' | 'recent' | 'organization' | 'tags'
 
 interface DrawerItem {
@@ -56,7 +67,7 @@ interface DrawerItem {
 }
 
 const MIN_RIGHT_WIDTH = 210
-const MAX_RIGHT_WIDTH = 460
+const MAX_RIGHT_WIDTH = 760
 
 const formatDate = (value?: string) => {
   if (!value) return 'Sem data definida'
@@ -96,11 +107,17 @@ export function OrganizerPage() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [rightWidth, setRightWidth] = useState(250)
+  const [rightResizing, setRightResizing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selection, setSelection] = useState<Selection>({ kind: 'node', id: 'home' })
   const [modalMode, setModalMode] = useState<OrganizerModalMode | null>(null)
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [wizardDraft, setWizardDraft] = useState<ItemWizardDraft | null>(null)
+  const [wizardStep, setWizardStep] = useState<ItemWizardStep>(1)
+  const [visitorPreview, setVisitorPreview] = useState<{ name: string; route: string } | null>(null)
   const [notice, setNotice] = useState('')
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
     upcoming: true,
@@ -270,24 +287,81 @@ export function OrganizerPage() {
     event.preventDefault()
     const shell = shellRef.current
     if (!shell) return
+    const handle = event.currentTarget
+    const pointerId = event.pointerId
     const startX = event.clientX
     const startWidth = rightWidth
+    setRightResizing(true)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+    handle.setPointerCapture(pointerId)
 
     const handleMove = (moveEvent: PointerEvent) => {
       const shellWidth = shell.getBoundingClientRect().width
-      const maxAllowed = Math.min(MAX_RIGHT_WIDTH, Math.max(MIN_RIGHT_WIDTH, shellWidth * 0.42))
+      const maxAllowed = Math.min(MAX_RIGHT_WIDTH, Math.max(MIN_RIGHT_WIDTH, shellWidth * 0.7))
       setRightWidth(Math.max(MIN_RIGHT_WIDTH, Math.min(maxAllowed, startWidth + startX - moveEvent.clientX)))
     }
     const handleEnd = () => {
+      setRightResizing(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      if (handle.hasPointerCapture(pointerId)) {
+        handle.releasePointerCapture(pointerId)
+      }
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleEnd)
+      window.removeEventListener('pointercancel', handleEnd)
     }
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleEnd)
+    window.addEventListener('pointercancel', handleEnd)
+  }
+
+  const openItemWizard = (parentId: string) => {
+    setWizardDraft(emptyItemWizardDraft(parentId))
+    setWizardStep(1)
+  }
+
+  const closeItemWizard = () => {
+    setWizardDraft(null)
+    setWizardStep(1)
+  }
+
+  const finishItemWizard = () => {
+    if (!wizardDraft || !wizardDraft.name.trim()) return
+    const id = createNode({
+      name: wizardDraft.name,
+      type: 'item',
+      parentId: wizardDraft.parentId,
+      description: wizardDraft.description,
+      imageUrl: wizardDraft.photos[0] ?? '',
+      price: Number(wizardDraft.price) || 0,
+      tagIds: wizardDraft.tagId ? [wizardDraft.tagId] : [],
+      status: 'published',
+      availability: wizardDraft.availability,
+    })
+    closeItemWizard()
+    setSelection({ kind: 'node', id })
+    showNotice('Item criado com sucesso.')
+  }
+
+  const handleLogoff = () => {
+    window.location.href = '/'
+  }
+
+  const openTagFromSettings = (tagId: string) => {
+    setSelection({ kind: 'tag', id: tagId })
+    recordAccess(tagId, store.tags.find((tag) => tag.id === tagId)?.name ?? 'Tag')
+    setSettingsOpen(false)
+  }
+
+  const openActivityFromSettings = (targetId: string | null) => {
+    if (!targetId) return
+    const targetNode = store.nodes.find((node) => node.id === targetId)
+    if (!targetNode) return
+    setSelection({ kind: 'node', id: targetId })
+    setDetailNodeId(targetNode.type === 'page' || targetNode.type === 'folder' ? null : targetNode.id)
+    setSettingsOpen(false)
   }
 
   const handleCreated = (kind: 'node' | 'tag', id: string) => {
@@ -319,35 +393,59 @@ export function OrganizerPage() {
       addLabel: 'Agendar conteúdo',
     },
     {
-      key: 'recent',
-      label: 'Recentes',
-      empty: searchQuery ? 'Nenhum recente encontrado' : 'Não há nada de novo',
-      onAdd: () => setOpenSections((current) => ({ ...current, recent: !current.recent })),
-      addLabel: 'Mostrar ou ocultar recentes',
-    },
-    {
       key: 'organization',
       label: 'Organização',
       empty: searchQuery ? 'Nenhum conteúdo encontrado' : 'Não há páginas',
       onAdd: () => setModalMode('page'),
       addLabel: 'Criar nova página do site',
     },
-    {
-      key: 'tags',
-      label: 'Tags',
-      empty: searchQuery ? 'Nenhuma tag encontrada' : 'Não há tags',
-      onAdd: () => setModalMode('tag'),
-      addLabel: 'Criar tag',
-    },
   ]
 
+  const handleOpenModal = (mode: OrganizerModalMode) => {
+    if (mode === 'item') {
+      openItemWizard(selectedContainerId)
+      return
+    }
+    setModalMode(mode)
+  }
+
+  const workspaceElement = (
+    <Workspace
+      selectedNode={selectedNode}
+      selectedTag={selectedTag}
+      nodes={store.nodes}
+      onSelectNode={(id) => {
+        setSelection({ kind: 'node', id })
+        setDetailNodeId(id)
+        recordAccess(id, store.nodes.find((node) => node.id === id)?.name ?? 'Conteúdo')
+      }}
+      onOpenModal={handleOpenModal}
+      onNavigateBack={(parentId) => {
+        setDetailNodeId(null)
+        setSelection({ kind: 'node', id: parentId })
+        setRightOpen(false)
+      }}
+      onTrashNode={(id) => {
+        moveNodeToTrash(id)
+        setDetailNodeId(null)
+        showNotice('Conteúdo movido para a lixeira.')
+      }}
+    />
+  )
+
+  const wizardPages = store.nodes.filter((node) => node.type === 'page')
+  const wizardDiscountTags = store.tags.filter((tag) => (tag.discountPercent ?? 0) > 0)
+  const wizardSelectedTag = wizardDraft
+    ? (store.tags.find((tag) => tag.id === wizardDraft.tagId) ?? null)
+    : null
+
   return (
-    <main className="h-dvh w-full overflow-hidden bg-[#f7f3eb] text-[#132f57]">
+    <main className="organizer-font h-dvh w-full overflow-hidden bg-[var(--color-organizer-bg)] text-[#2a0f3d]">
       <section
         ref={shellRef}
-        className="flex h-full w-full min-h-0 flex-col overflow-hidden border-[3px] border-[#183861] bg-[#fdfbf7]"
+        className="flex h-full w-full min-h-0 flex-col overflow-hidden bg-[var(--color-organizer-bg)]"
       >
-        <header className="flex h-14 shrink-0 items-center justify-between bg-[#122f55] px-3 sm:px-4">
+        <header className="flex h-14 shrink-0 items-center justify-between bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3 shadow-[var(--shadow-organizer)] sm:px-4">
           <DrawerToggle drawer="left" open={leftOpen} onToggle={toggleLeftDrawer} />
           <div className="flex items-center gap-2 text-[#f5ca74]">
             <Layers3 size={17} />
@@ -364,25 +462,25 @@ export function OrganizerPage() {
             className={`absolute inset-y-0 left-0 z-30 flex flex-col overflow-hidden bg-[#fdfbf7] shadow-2xl transition-[width,opacity] duration-300 lg:relative lg:inset-auto lg:z-auto lg:shrink-0 lg:shadow-none ${leftOpen ? 'w-full opacity-100 lg:w-[250px]' : 'pointer-events-none w-0 opacity-0'}`}
           >
             <div className="min-h-0 w-full flex-1 overflow-y-auto px-3 pt-3 sm:px-5 lg:w-[250px] lg:px-3">
-              <label className="flex h-10 items-center border border-[#ded4c5] bg-white px-2 text-[#132f57] focus-within:border-[#c27a08]">
+              <label className="flex h-10 items-center rounded-xl border border-stone-200 bg-white px-3 text-[#2a0f3d] focus-within:border-[#d89a28] focus-within:ring-4 focus-within:ring-[#f7dfb1]">
                 <span className="sr-only">Buscar no organizador</span>
                 <input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="Busca"
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#887f73]"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-stone-400"
                 />
                 {searchQuery ? (
                   <button
                     type="button"
                     aria-label="Limpar busca"
                     onClick={() => setSearchQuery('')}
-                    className="rounded p-1 text-[#8c7b68] hover:bg-[#f3eadc] hover:text-[#b86b00]"
+                    className="rounded-full p-1 text-[#6b665f] hover:bg-[#fff1d6] hover:text-[#b77717]"
                   >
                     <X size={18} />
                   </button>
                 ) : (
-                  <Search size={22} className="text-[#b86b00]" />
+                  <Search size={18} className="text-[#b77717]" />
                 )}
               </label>
 
@@ -390,7 +488,7 @@ export function OrganizerPage() {
                 {sectionConfig.map((section) => {
                   const items = filteredSections[section.key]
                   return (
-                    <div key={section.key} className="border-b border-[#e8ded0] py-2 last:border-0">
+                    <div key={section.key} className="border-b border-stone-200/80 py-2 last:border-0">
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
@@ -400,21 +498,21 @@ export function OrganizerPage() {
                               [section.key]: !current[section.key],
                             }))
                           }
-                          className="flex min-w-0 flex-1 items-center gap-1 text-left text-sm font-medium hover:text-[#b86b00]"
+                          className="flex min-w-0 flex-1 items-center gap-1 text-left text-sm font-medium hover:text-[#b77717]"
                         >
                           <ChevronDown
                             size={14}
                             className={`shrink-0 transition-transform ${openSections[section.key] ? '' : '-rotate-90'}`}
                           />
                           <span className="truncate">{section.label}</span>
-                          <span className="ml-auto text-[10px] text-[#887f73]">{items.length}</span>
+                          <span className="ml-auto text-[10px] text-[#6b665f]">{items.length}</span>
                         </button>
                         <button
                           type="button"
                           title={section.addLabel}
                           aria-label={section.addLabel}
                           onClick={section.onAdd}
-                          className="rounded p-1 text-[#b86b00] hover:bg-[#f3eadc]"
+                          className="rounded-full p-1 text-[#b77717] hover:bg-[#fff1d6]"
                         >
                           <Plus size={17} />
                         </button>
@@ -422,7 +520,7 @@ export function OrganizerPage() {
                       {openSections[section.key] && (
                         <div className="mt-1 space-y-0.5">
                           {items.length === 0 ? (
-                            <p className="px-5 py-1 text-[10px] text-[#766e64]">{section.empty}</p>
+                            <p className="px-5 py-1 text-[10px] text-[#6b665f]">{section.empty}</p>
                           ) : (
                             items.map((item) => {
                               if (
@@ -448,7 +546,7 @@ export function OrganizerPage() {
                                 return (
                                   <div
                                     key={item.id}
-                                    className={`mt-1 flex items-stretch rounded-sm ${isSelected ? 'bg-[#e9decc] text-[#8b5200]' : 'bg-[#f7f2ea] hover:bg-[#f1e8dc]'}`}
+                                    className={`mt-1 flex items-stretch rounded-xl ${isSelected ? 'bg-[#fff1d6] text-[#8b5200]' : 'bg-stone-50 hover:bg-[#fff8ea]'}`}
                                   >
                                     <button
                                       type="button"
@@ -459,7 +557,7 @@ export function OrganizerPage() {
                                           [item.id]: !pageOpen,
                                         }))
                                       }
-                                      className="flex w-7 shrink-0 items-center justify-center text-[#9b6b2d]"
+                                      className="flex w-7 shrink-0 items-center justify-center text-[#b77717]"
                                     >
                                       <ChevronDown
                                         size={13}
@@ -472,13 +570,13 @@ export function OrganizerPage() {
                                       className="min-w-0 flex-1 py-2 pr-2 text-left"
                                     >
                                       <span className="flex items-center gap-2 text-xs font-semibold">
-                                        <FolderOpen size={14} className="shrink-0 text-[#b86b00]" />
+                                        <FolderOpen size={14} className="shrink-0 text-[#b77717]" />
                                         <span className="truncate">{item.label}</span>
-                                        <span className="ml-auto text-[9px] font-normal text-[#887f73]">
+                                        <span className="ml-auto text-[9px] font-normal text-[#6b665f]">
                                           {childCount}
                                         </span>
                                       </span>
-                                      <span className="mt-0.5 block truncate pl-[22px] text-[9px] text-[#766e64]">
+                                      <span className="mt-0.5 block truncate pl-[22px] text-[9px] text-[#6b665f]">
                                         {item.detail}
                                       </span>
                                     </button>
@@ -491,7 +589,7 @@ export function OrganizerPage() {
                                   key={item.id}
                                   type="button"
                                   onClick={() => selectItem(item)}
-                                  className={`block w-full rounded-sm py-1.5 pr-1 text-left transition-colors ${isSelected ? 'bg-[#efe3d1] text-[#9d5b00]' : 'hover:bg-[#f5eee4]'} ${item.depth ? 'ml-3 w-[calc(100%-0.75rem)] border-l-2 border-[#d8c9b5] pl-5' : 'pl-5'}`}
+                                  className={`block w-full rounded-xl py-1.5 pr-1 text-left transition-colors ${isSelected ? 'bg-[#fff1d6] text-[#b77717]' : 'hover:bg-stone-50'} ${item.depth ? 'ml-3 w-[calc(100%-0.75rem)] border-l-2 border-stone-200 pl-5' : 'pl-5'}`}
                                 >
                                   <span className="flex items-center gap-2 text-xs font-medium">
                                     {item.color && (
@@ -503,7 +601,7 @@ export function OrganizerPage() {
                                     {item.nodeType && !item.isPage ? nodeIcon(item.nodeType, 12) : null}
                                     <span className="truncate">{item.label}</span>
                                   </span>
-                                  <span className="mt-0.5 block truncate pl-[18px] text-[9px] text-[#766e64]">
+                                  <span className="mt-0.5 block truncate pl-[18px] text-[9px] text-[#6b665f]">
                                     {item.detail}
                                   </span>
                                 </button>
@@ -518,87 +616,106 @@ export function OrganizerPage() {
               </nav>
             </div>
 
-            <div className="relative flex h-14 w-full shrink-0 items-center gap-1 bg-[#fdfbf7] px-3 sm:px-5 lg:w-[250px] lg:px-3">
-              {profileOpen && (
-                <div className="absolute bottom-12 left-3 z-30 w-48 border border-[#d6cab9] bg-white p-1 shadow-xl">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.open('/', '_blank', 'noopener,noreferrer')
-                      setProfileOpen(false)
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[#f5eee4]"
-                  >
-                    <Eye size={15} /> Modo visitante
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModalMode('settings')
-                      setProfileOpen(false)
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[#f5eee4]"
-                  >
-                    <Settings size={15} /> Preferências
-                  </button>
-                </div>
-              )}
+            <div className="relative flex h-16 w-full shrink-0 items-center gap-1 border-t border-stone-200/70 bg-[var(--color-organizer-bg)] px-3 sm:px-5 lg:w-[250px] lg:px-3">
+              <div
+                aria-hidden={!profileOpen}
+                className={`organizer-surface absolute bottom-[4.25rem] left-3 right-3 z-30 overflow-hidden lg:right-auto lg:w-52 ${profileOpen ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0'}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (visitorPreview) {
+                      setVisitorPreview(null)
+                    } else {
+                      const visitorPage = selectedNode ? findOrganizerPage(store.nodes, selectedNode) : null
+                      setVisitorPreview({
+                        name: visitorPage?.name ?? 'Home',
+                        route: withOrganizerPreview(visitorPage?.route ?? '/', true),
+                      })
+                    }
+                    setProfileOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
+                >
+                  <Eye size={15} /> {visitorPreview ? 'Modo administrador' : 'Modo visitante'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(true)
+                    setProfileOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
+                >
+                  <Settings size={15} /> Configurações
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTrashOpen(true)
+                    setProfileOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
+                >
+                  <Trash2 size={15} /> Lixeira
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogoff}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-[#a0382f] hover:bg-[#fff0ed]"
+                >
+                  <LogOut size={15} /> Logoff
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => setProfileOpen((value) => !value)}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-2 text-sm hover:bg-[#f3eadc]"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-[#fff1d6]"
               >
                 <CircleUserRound size={23} />
-                <span className="truncate border-b border-[#d0b377]">usuário</span>
-              </button>
-              <button
-                type="button"
-                title="Preferências"
-                aria-label="Preferências"
-                onClick={() => setModalMode('settings')}
-                className="rounded p-2 hover:bg-[#f3eadc] hover:text-[#b86b00]"
-              >
-                <Settings size={19} />
-              </button>
-              <button
-                type="button"
-                title="Lixeira"
-                aria-label="Abrir lixeira"
-                onClick={() => setSelection({ kind: 'trash' })}
-                className={`rounded p-2 hover:bg-[#f3eadc] hover:text-[#b86b00] ${selection?.kind === 'trash' ? 'bg-[#efe3d1] text-[#b86b00]' : ''}`}
-              >
-                <Trash2 size={19} />
+                <span className="truncate border-b border-[#d89a28]">usuário</span>
               </button>
             </div>
           </aside>
 
-          <section className="min-w-0 flex-1 bg-[#fbf8f2] p-0 lg:p-2">
-            <div className="h-full overflow-y-auto bg-[#fffdfa] lg:border-[2px] lg:border-[#cdbfae]">
-              <Workspace
-                selection={selection}
-                selectedNode={selectedNode}
-                selectedTag={selectedTag}
-                nodes={store.nodes}
-                trash={store.trash}
-                onSelectNode={(id) => {
-                  setSelection({ kind: 'node', id })
-                  setDetailNodeId(id)
-                  recordAccess(id, store.nodes.find((node) => node.id === id)?.name ?? 'Conteúdo')
-                }}
-                onOpenModal={setModalMode}
-                onNavigateBack={(parentId) => {
-                  setDetailNodeId(null)
-                  setSelection({ kind: 'node', id: parentId })
-                  setRightOpen(false)
-                }}
-                onTrashNode={(id) => {
-                  moveNodeToTrash(id)
-                  setDetailNodeId(null)
-                  showNotice('Conteúdo movido para a lixeira.')
-                }}
-                onRestore={restoreTrash}
-                onDeletePermanently={deleteTrashPermanently}
-              />
+          <section className="min-w-0 flex-1 bg-[var(--color-organizer-bg)] lg:p-3">
+            <div
+              className={`organizer-container h-full bg-[var(--color-organizer-bg)] lg:rounded-2xl lg:border lg:border-stone-200/80 lg:shadow-[var(--shadow-float)] ${visitorPreview ? 'overflow-hidden' : 'overflow-y-auto'}`}
+            >
+              {visitorPreview ? (
+                <VisitorPreview name={visitorPreview.name} route={visitorPreview.route} />
+              ) : wizardDraft ? (
+                <ItemWizard
+                  step={wizardStep}
+                  draft={wizardDraft}
+                  onDraftChange={(changes) =>
+                    setWizardDraft((current) => (current ? { ...current, ...changes } : current))
+                  }
+                  onStepChange={setWizardStep}
+                  pages={wizardPages}
+                  discountTags={wizardDiscountTags}
+                  onCancel={closeItemWizard}
+                  onFinish={finishItemWizard}
+                />
+              ) : settingsOpen ? (
+                <SettingsPanel
+                  store={store}
+                  onClose={() => setSettingsOpen(false)}
+                  onClearActivities={() => {
+                    clearActivities()
+                    showNotice('Histórico de recentes limpo.')
+                  }}
+                  onOpenActivity={openActivityFromSettings}
+                  onCreateTag={() => setModalMode('tag')}
+                  onOpenTag={openTagFromSettings}
+                  onTrashTag={(id) => {
+                    moveTagToTrash(id)
+                    showNotice('Tag movida para a lixeira.')
+                  }}
+                />
+              ) : (
+                workspaceElement
+              )}
             </div>
           </section>
 
@@ -610,7 +727,7 @@ export function OrganizerPage() {
               onPointerDown={handleResizeStart}
               className="group relative z-20 hidden w-0 cursor-col-resize lg:block"
             >
-              <span className="absolute inset-y-0 -left-2 w-4" />
+              <span className="absolute inset-y-0 -left-3 w-6" />
               <span className="absolute left-[-3px] top-1/2 flex h-14 w-[7px] -translate-y-1/2 items-center justify-center rounded-full bg-[#d8c8b2] opacity-0 transition-opacity group-hover:opacity-100">
                 <GripVertical size={10} />
               </span>
@@ -620,75 +737,85 @@ export function OrganizerPage() {
           <aside
             aria-label="Gaveta de propriedades"
             style={{ width: rightOpen ? rightWidth : 0 }}
-            className="hidden shrink-0 overflow-hidden bg-[#fdfbf7] transition-[width] duration-300 lg:block"
+            className={`relative hidden shrink-0 overflow-hidden bg-[var(--color-organizer-bg)] lg:block ${rightResizing ? '' : 'transition-[width] duration-300'}`}
           >
-            <div className="h-full p-2" style={{ width: rightWidth }}>
-              <div className="h-full overflow-y-auto border-[2px] border-[#cdbfae] bg-[#fffdfa]">
-                <Inspector
-                  key={`${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
-                  node={selectedNode}
-                  tag={selectedTag}
-                  selection={selection}
-                  nodes={store.nodes}
-                  tags={store.tags}
-                  onUpdateNode={updateNode}
-                  onUpdateTag={updateTag}
-                  onDuplicate={(id) => {
-                    const copyId = duplicateNode(id)
-                    if (copyId) {
-                      setSelection({ kind: 'node', id: copyId })
-                      showNotice('Cópia criada com sucesso.')
-                    }
-                  }}
-                  onMoveNode={moveNode}
-                  onTrashNode={(id) => {
-                    moveNodeToTrash(id)
-                    setSelection({ kind: 'node', id: 'home' })
-                    showNotice('Conteúdo movido para a lixeira.')
-                  }}
-                  onTrashTag={(id) => {
-                    moveTagToTrash(id)
-                    setSelection({ kind: 'node', id: 'home' })
-                    showNotice('Tag movida para a lixeira.')
-                  }}
-                  onOpenSchedule={() => setModalMode('schedule')}
-                  onSaved={() => showNotice('Alterações salvas.')}
-                />
+            <div className="absolute inset-y-0 right-0 h-full py-3 pr-3" style={{ width: rightWidth }}>
+              <div className="organizer-container h-full overflow-y-auto rounded-2xl border border-stone-200/80 bg-[var(--color-organizer-bg)] shadow-[var(--shadow-float)]">
+                {visitorPreview ? (
+                  workspaceElement
+                ) : wizardDraft && wizardStep === 4 ? (
+                  <ItemWizardPreviewCard draft={wizardDraft} tag={wizardSelectedTag} />
+                ) : (
+                  <Inspector
+                    key={`${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
+                    node={selectedNode}
+                    tag={selectedTag}
+                    nodes={store.nodes}
+                    tags={store.tags}
+                    onUpdateNode={updateNode}
+                    onUpdateTag={updateTag}
+                    onDuplicate={(id) => {
+                      const copyId = duplicateNode(id)
+                      if (copyId) {
+                        setSelection({ kind: 'node', id: copyId })
+                        showNotice('Cópia criada com sucesso.')
+                      }
+                    }}
+                    onMoveNode={moveNode}
+                    onTrashNode={(id) => {
+                      moveNodeToTrash(id)
+                      setSelection({ kind: 'node', id: 'home' })
+                      showNotice('Conteúdo movido para a lixeira.')
+                    }}
+                    onTrashTag={(id) => {
+                      moveTagToTrash(id)
+                      setSelection({ kind: 'node', id: 'home' })
+                      showNotice('Tag movida para a lixeira.')
+                    }}
+                    onOpenSchedule={() => setModalMode('schedule')}
+                    onSaved={() => showNotice('Alterações salvas.')}
+                  />
+                )}
               </div>
             </div>
           </aside>
 
           <aside
             aria-label="Gaveta de propriedades"
-            className={`absolute inset-y-0 right-0 z-30 flex flex-col overflow-hidden bg-[#fdfbf7] shadow-2xl transition-[width,opacity] duration-300 lg:hidden ${rightOpen ? 'w-full opacity-100' : 'pointer-events-none w-0 opacity-0'}`}
+            className={`absolute inset-y-0 right-0 z-30 flex flex-col overflow-hidden bg-[var(--color-organizer-bg)] shadow-2xl transition-[width,opacity] duration-300 lg:hidden ${rightOpen ? 'w-full opacity-100' : 'pointer-events-none w-0 opacity-0'}`}
           >
             <div className="min-h-0 w-full flex-1 overflow-y-auto">
-              <div className="h-full overflow-y-auto bg-[#fffdfa]">
-                <Inspector
-                  key={`mobile-${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
-                  node={selectedNode}
-                  tag={selectedTag}
-                  selection={selection}
-                  nodes={store.nodes}
-                  tags={store.tags}
-                  onUpdateNode={updateNode}
-                  onUpdateTag={updateTag}
-                  onDuplicate={(id) => {
-                    const copyId = duplicateNode(id)
-                    if (copyId) setSelection({ kind: 'node', id: copyId })
-                  }}
-                  onMoveNode={moveNode}
-                  onTrashNode={(id) => {
-                    moveNodeToTrash(id)
-                    setSelection({ kind: 'node', id: 'home' })
-                  }}
-                  onTrashTag={(id) => {
-                    moveTagToTrash(id)
-                    setSelection({ kind: 'node', id: 'home' })
-                  }}
-                  onOpenSchedule={() => setModalMode('schedule')}
-                  onSaved={() => showNotice('Alterações salvas.')}
-                />
+              <div className="organizer-container h-full overflow-y-auto bg-[var(--color-organizer-bg)]">
+                {visitorPreview ? (
+                  workspaceElement
+                ) : wizardDraft && wizardStep === 4 ? (
+                  <ItemWizardPreviewCard draft={wizardDraft} tag={wizardSelectedTag} />
+                ) : (
+                  <Inspector
+                    key={`mobile-${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
+                    node={selectedNode}
+                    tag={selectedTag}
+                    nodes={store.nodes}
+                    tags={store.tags}
+                    onUpdateNode={updateNode}
+                    onUpdateTag={updateTag}
+                    onDuplicate={(id) => {
+                      const copyId = duplicateNode(id)
+                      if (copyId) setSelection({ kind: 'node', id: copyId })
+                    }}
+                    onMoveNode={moveNode}
+                    onTrashNode={(id) => {
+                      moveNodeToTrash(id)
+                      setSelection({ kind: 'node', id: 'home' })
+                    }}
+                    onTrashTag={(id) => {
+                      moveTagToTrash(id)
+                      setSelection({ kind: 'node', id: 'home' })
+                    }}
+                    onOpenSchedule={() => setModalMode('schedule')}
+                    onSaved={() => showNotice('Alterações salvas.')}
+                  />
+                )}
               </div>
             </div>
           </aside>
@@ -696,7 +823,7 @@ export function OrganizerPage() {
       </section>
 
       {notice && (
-        <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 bg-[#122f55] px-4 py-2 text-sm text-white shadow-xl">
+        <div className="organizer-surface-trust fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-full px-5 py-2.5 text-sm">
           {notice}
         </div>
       )}
@@ -712,105 +839,311 @@ export function OrganizerPage() {
           onCreateTag={createTag}
           onSchedule={scheduleNode}
           onCreated={handleCreated}
-          onClearActivities={() => {
-            clearActivities()
-            showNotice('Histórico de recentes limpo.')
-          }}
-          onChooseModule={(type) => setModalMode(type)}
+          onChooseModule={(type) =>
+            type === 'item' ? openItemWizard(selectedContainerId) : setModalMode(type)
+          }
         />
       )}
       {detailNode && (
         <OrganizerUsageModal node={detailNode} nodes={store.nodes} onClose={() => setDetailNodeId(null)} />
       )}
+      {trashOpen && (
+        <TrashModal
+          trash={store.trash}
+          onClose={() => setTrashOpen(false)}
+          onRestore={restoreTrash}
+          onDeletePermanently={deleteTrashPermanently}
+        />
+      )}
     </main>
   )
 }
 
+interface VisitorPreviewProps {
+  name: string
+  route: string
+}
+
+function VisitorPreview({ name, route }: VisitorPreviewProps) {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-white">
+      <header className="flex shrink-0 items-center bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3 py-3 text-white sm:px-4">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#e2b04f]">Modo visitante</p>
+      </header>
+      <iframe
+        key={route}
+        src={route}
+        title={`Visualização de ${name}`}
+        className="min-h-0 w-full flex-1 border-0 bg-white"
+      />
+    </div>
+  )
+}
+
+function SettingsPanel({
+  store,
+  onClose,
+  onClearActivities,
+  onOpenActivity,
+  onCreateTag,
+  onOpenTag,
+  onTrashTag,
+}: {
+  store: ReturnType<typeof useOrganizerStore>['store']
+  onClose: () => void
+  onClearActivities: () => void
+  onOpenActivity: (targetId: string | null) => void
+  onCreateTag: () => void
+  onOpenTag: (tagId: string) => void
+  onTrashTag: (tagId: string) => void
+}) {
+  return (
+    <div className="p-5">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-full bg-[#fff1d6] p-3 text-[#b77717]">
+            <Settings size={22} />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold">Configurações</h1>
+            <p className="text-xs text-[#6b665f]">Preferências do organizador.</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-label="Fechar configurações"
+          onClick={onClose}
+          className="rounded-full p-2 hover:bg-[#fff1d6] hover:text-[#b77717]"
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="organizer-surface p-4 lg:col-span-2">
+          <h3 className="text-sm font-semibold text-[#3a164f]">Salvamento automático</h3>
+          <p className="mt-1 text-xs leading-5 text-[#6b665f]">
+            Páginas, itens, tags, agendamentos e lixeira ficam salvos neste navegador.
+          </p>
+        </div>
+
+        <div className="organizer-surface p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-[#3a164f]">Recentes · {store.activities.length}</h3>
+            {store.activities.length > 0 && (
+              <button
+                type="button"
+                onClick={onClearActivities}
+                className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#a0382f] hover:underline"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+          {store.activities.length === 0 ? (
+            <p className="text-xs text-[#6b665f]">Não há nada de novo.</p>
+          ) : (
+            <ul className="max-h-80 space-y-1 overflow-y-auto">
+              {store.activities.map((activity) => (
+                <li key={activity.id}>
+                  <button
+                    type="button"
+                    disabled={!activity.targetId}
+                    onClick={() => onOpenActivity(activity.targetId)}
+                    className="block w-full rounded-xl px-2 py-1.5 text-left text-xs hover:bg-[#fff8ea] disabled:cursor-default disabled:hover:bg-transparent"
+                  >
+                    <span className="block truncate font-medium text-[#3a164f]">{activity.label}</span>
+                    <span className="mt-0.5 block truncate text-[10px] text-[#6b665f]">
+                      {activity.detail} · {formatDate(activity.createdAt)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="organizer-surface p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-[#3a164f]">Tags · {store.tags.length}</h3>
+            <button
+              type="button"
+              onClick={onCreateTag}
+              className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#b77717] hover:underline"
+            >
+              <Plus size={12} /> Nova tag
+            </button>
+          </div>
+          {store.tags.length === 0 ? (
+            <p className="text-xs text-[#6b665f]">Não há tags. Crie uma para organizar itens.</p>
+          ) : (
+            <ul className="max-h-80 space-y-1 overflow-y-auto">
+              {store.tags.map((tag) => (
+                <li key={tag.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onOpenTag(tag.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs hover:bg-[#fff8ea]"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="min-w-0 flex-1 truncate font-medium text-[#3a164f]">{tag.name}</span>
+                    {tag.discountPercent ? (
+                      <span className="shrink-0 text-[10px] font-semibold text-[#b77717]">
+                        -{tag.discountPercent}%
+                      </span>
+                    ) : null}
+                    <span className="shrink-0 text-[10px] text-[#6b665f]">
+                      {store.nodes.filter((node) => node.tagIds.includes(tag.id)).length} item(ns)
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    title="Mover tag para a lixeira"
+                    aria-label={`Excluir tag ${tag.name}`}
+                    onClick={() => onTrashTag(tag.id)}
+                    className="shrink-0 rounded-full p-1.5 text-[#9b5a50] hover:bg-[#fff0ed] hover:text-[#a0382f]"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TrashModal({
+  trash,
+  onClose,
+  onRestore,
+  onDeletePermanently,
+}: {
+  trash: OrganizerTrashEntry[]
+  onClose: () => void
+  onRestore: (id: string) => void
+  onDeletePermanently: (id: string) => void
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="trash-modal-title"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+    >
+      <button
+        type="button"
+        aria-label="Fechar lixeira"
+        onClick={onClose}
+        className="absolute inset-0 bg-[#081b32]/45 backdrop-blur-[2px]"
+      />
+      <section className="relative z-10 flex max-h-[80dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#5b247f]/40 bg-[var(--color-organizer-bg)] shadow-[var(--shadow-organizer)]">
+        <header className="flex shrink-0 items-center justify-between gap-3 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-4 py-3 text-white">
+          <div className="flex items-center gap-2">
+            <Trash2 size={17} className="text-[#e2b04f]" />
+            <h2 id="trash-modal-title" className="text-sm font-semibold uppercase tracking-[0.14em]">
+              Lixeira
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="rounded-full p-1 hover:bg-white/10"
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {trash.length === 0 ? (
+            <EmptyState icon={<Trash2 size={28} />} title="A lixeira está vazia" />
+          ) : (
+            <ul className="divide-y divide-stone-100">
+              {trash.map((entry) => (
+                <li key={entry.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-stone-200 bg-[#fff1d6] text-[#b77717]">
+                    {entry.kind === 'node' && (entry.payload as OrganizerNode).imageUrl ? (
+                      <img
+                        src={(entry.payload as OrganizerNode).imageUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Package size={16} />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold">{entry.payload.name}</p>
+                    <p className="mt-0.5 truncate text-[10px] text-[#6b665f]">
+                      {entry.kind === 'node'
+                        ? organizerTypeLabels[(entry.payload as OrganizerNode).type]
+                        : 'Tag'}
+                      {' · excluído em '}
+                      {formatDate(entry.deletedAt)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    title="Restaurar"
+                    aria-label={`Restaurar ${entry.payload.name}`}
+                    onClick={() => onRestore(entry.id)}
+                    className="rounded-full p-1.5 text-[#3a164f] hover:bg-[#eadcf0]"
+                  >
+                    <RotateCcw size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Excluir permanentemente"
+                    aria-label={`Excluir ${entry.payload.name} permanentemente`}
+                    onClick={() => onDeletePermanently(entry.id)}
+                    className="rounded-full p-1.5 text-[#a0382f] hover:bg-[#fff0ed]"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
 interface WorkspaceProps {
-  selection: Selection
   selectedNode: OrganizerNode | null
   selectedTag: OrganizerTag | null
   nodes: OrganizerNode[]
-  trash: ReturnType<typeof useOrganizerStore>['store']['trash']
   onSelectNode: (id: string) => void
   onOpenModal: (mode: OrganizerModalMode) => void
   onNavigateBack: (parentId: string) => void
   onTrashNode: (id: string) => void
-  onRestore: (id: string) => void
-  onDeletePermanently: (id: string) => void
 }
 
 function Workspace({
-  selection,
   selectedNode,
   selectedTag,
   nodes,
-  trash,
   onSelectNode,
   onOpenModal,
   onNavigateBack,
   onTrashNode,
-  onRestore,
-  onDeletePermanently,
 }: WorkspaceProps) {
-  if (selection?.kind === 'trash') {
-    return (
-      <div className="p-5 sm:p-8">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="rounded-full bg-[#f1e6d5] p-3 text-[#b86b00]">
-            <Trash2 size={22} />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold">Lixeira</h1>
-            <p className="text-xs text-[#71685d]">Restaure conteúdos ou remova-os definitivamente.</p>
-          </div>
-        </div>
-        {trash.length === 0 ? (
-          <EmptyState icon={<Trash2 size={28} />} title="A lixeira está vazia" />
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {trash.map((entry) => (
-              <article key={entry.id} className="border border-[#ddd1c1] bg-white p-4">
-                <p className="text-xs font-semibold">{entry.payload.name}</p>
-                <p className="mt-1 text-[10px] text-[#7d7367]">
-                  {entry.kind === 'node' ? organizerTypeLabels[(entry.payload as OrganizerNode).type] : 'Tag'}{' '}
-                  · excluído em {formatDate(entry.deletedAt)}
-                </p>
-                <div className="mt-4 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onRestore(entry.id)}
-                    className="flex items-center gap-1 border border-[#183861] px-2 py-1.5 text-[11px] hover:bg-[#eef2f7]"
-                  >
-                    <RotateCcw size={13} /> Restaurar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDeletePermanently(entry.id)}
-                    className="flex items-center gap-1 px-2 py-1.5 text-[11px] text-[#a0382f] hover:bg-[#fff0ed]"
-                  >
-                    <Trash2 size={13} /> Excluir
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
   if (selectedTag) {
     const taggedNodes = nodes.filter((node) => node.tagIds.includes(selectedTag.id))
     return (
-      <div className="p-5 sm:p-8">
+      <div className="p-5">
         <div className="mb-6 flex items-center gap-3">
           <span
             className="h-8 w-8 rounded-full border-4 border-white shadow"
             style={{ backgroundColor: selectedTag.color }}
           />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-[#a25f00]">Tag</p>
+            <p className="organizer-eyebrow">Tag</p>
             <h1 className="text-2xl font-semibold">{selectedTag.name}</h1>
           </div>
         </div>
@@ -854,12 +1187,12 @@ function Workspace({
   const previewRoute = page?.route
 
   return (
-    <div className="p-5 sm:p-8">
+    <div className="p-5">
       {workspaceNode.parentId && (
         <button
           type="button"
           onClick={() => onNavigateBack(workspaceNode.parentId as string)}
-          className="mb-5 inline-flex items-center gap-2 border border-[#cfb78e] bg-white px-3 py-2 text-xs font-semibold text-[#183861] hover:border-[#b86b00] hover:bg-[#fbf2e3]"
+          className="mb-5 inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3.5 py-2 text-xs font-semibold text-[#3a164f] hover:border-[#d89a28] hover:bg-[#fff8ea]"
         >
           <ArrowLeft size={15} />
           Voltar um nível
@@ -867,23 +1200,23 @@ function Workspace({
       )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="mt-1 rounded-full bg-[#f1e6d5] p-3 text-[#b86b00]">
+          <div className="mt-1 rounded-full bg-[#fff1d6] p-3 text-[#b77717]">
             {nodeIcon(workspaceNode.type, 22)}
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-[#a25f00]">
+            <p className="organizer-eyebrow">
               {organizerTypeLabels[workspaceNode.type]}
               {parent ? ` · ${parent.name}` : ''}
             </p>
             <h1 className="truncate text-2xl font-semibold sm:text-3xl">{workspaceNode.name}</h1>
-            <p className="mt-1 max-w-2xl text-sm text-[#71685d]">
+            <p className="mt-1 max-w-2xl text-sm text-[#6b665f]">
               {workspaceNode.description || 'Sem descrição. Edite as propriedades na gaveta direita.'}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {workspaceNode.type === 'folder' ? (
-            <span className="border border-[#cfb78e] bg-[#fbf2e3] px-3 py-2 text-xs text-[#8b5200]">
+            <span className="rounded-full border border-stone-200 bg-[#fff8ea] px-3.5 py-2 text-xs text-[#8b5200]">
               Somente organização
             </span>
           ) : (
@@ -893,14 +1226,14 @@ function Workspace({
                 href={previewRoute ?? '/'}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1.5 border border-[#183861] bg-white px-3 py-2 text-xs hover:bg-[#eef2f7]"
+                className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-2 text-xs hover:border-[#5b247f]/40 hover:bg-[#eadcf0]"
               >
                 <Eye size={15} /> Abrir no site
               </a>
               <button
                 type="button"
                 onClick={() => onOpenModal('schedule')}
-                className="flex items-center gap-1.5 bg-[#122f55] px-3 py-2 text-xs text-white hover:bg-[#1b4677]"
+                className="flex items-center gap-1.5 rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3.5 py-2 text-xs text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
               >
                 <CalendarClock size={15} /> Agendar
               </button>
@@ -910,8 +1243,8 @@ function Workspace({
       </div>
 
       {workspaceNode.scheduledAt && (
-        <div className="mt-5 flex items-center gap-2 border-l-4 border-[#d89220] bg-[#fbf2e3] px-4 py-3 text-xs">
-          <CalendarClock size={16} className="text-[#b86b00]" /> Publicação programada para{' '}
+        <div className="mt-5 flex items-center gap-2 rounded-xl border-l-4 border-[#d89a28] bg-[#fff8ea] px-4 py-3 text-xs">
+          <CalendarClock size={16} className="text-[#b77717]" /> Publicação programada para{' '}
           {formatDate(workspaceNode.scheduledAt)}.
         </div>
       )}
@@ -921,9 +1254,9 @@ function Workspace({
           <h2 className="text-sm font-semibold">
             {workspaceNode.type === 'folder' ? 'Adicionar à subpasta' : 'Adicionar à página'}
           </h2>
-          <p className="text-[10px] text-[#7d7367]">Escolha o tipo de conteúdo que será exibido.</p>
+          <p className="text-[10px] text-[#6b665f]">Escolha o tipo de conteúdo que será exibido.</p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="organizer-grid-actions grid gap-3">
           <QuickAction
             icon={<Layers3 size={20} />}
             title="Carrossel"
@@ -961,7 +1294,7 @@ function Workspace({
           <h2 className="text-sm font-semibold">
             {workspaceNode.type === 'folder' ? 'Conteúdo da subpasta' : 'Conteúdo da página'}
           </h2>
-          <p className="text-[10px] text-[#7d7367]">{childNodes.length} bloco(s) organizado(s).</p>
+          <p className="text-[10px] text-[#6b665f]">{childNodes.length} bloco(s) organizado(s).</p>
         </div>
         {childNodes.length === 0 ? (
           <EmptyState
@@ -991,17 +1324,17 @@ function ContentGrid({
   onDeleteNode: (id: string) => void
 }) {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="organizer-grid-content grid gap-3">
       {nodes.map((node) => (
         <article
           key={node.id}
-          className="group overflow-hidden border border-[#ddd1c1] bg-white hover:border-[#c27a08] hover:shadow-sm"
+          className="interactive-card group overflow-hidden rounded-2xl border border-stone-200/80 bg-[#eadcf0] shadow-[var(--shadow-float)] hover:border-[#d89a28]"
         >
           <button
             type="button"
             aria-label={`Abrir ${node.name}`}
             onClick={() => onSelectNode(node.id)}
-            className="flex h-24 w-full items-center justify-center overflow-hidden bg-[#f4eee5] text-[#b86b00]"
+            className="flex h-24 w-full items-center justify-center overflow-hidden bg-[#fff1d6] text-[#b77717]"
           >
             {node.imageUrl ? (
               <img src={node.imageUrl} alt="" className="h-full w-full object-cover" />
@@ -1017,7 +1350,7 @@ function ContentGrid({
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
               >
                 <span className="truncate text-xs font-semibold">{node.name}</span>
-                <span className="h-2 w-2 shrink-0 rounded-full bg-[#d89220]" />
+                <span className="h-2 w-2 shrink-0 rounded-full bg-[#d89a28]" />
               </button>
               {!node.immutable && (
                 <button
@@ -1025,7 +1358,7 @@ function ContentGrid({
                   aria-label={`Excluir ${node.name}`}
                   title="Mover para a lixeira"
                   onClick={() => onDeleteNode(node.id)}
-                  className="shrink-0 rounded p-1 text-[#9b5a50] hover:bg-[#fff0ed] hover:text-[#a0382f]"
+                  className="shrink-0 rounded-full p-1 text-[#9b5a50] hover:bg-[#fff0ed] hover:text-[#a0382f]"
                 >
                   <Trash2 size={15} />
                 </button>
@@ -1034,7 +1367,7 @@ function ContentGrid({
             <button
               type="button"
               onClick={() => onSelectNode(node.id)}
-              className="mt-1 block w-full text-left text-[10px] text-[#7d7367]"
+              className="mt-1 block w-full text-left text-[10px] text-[#6b665f]"
             >
               {organizerTypeLabels[node.type]} ·{' '}
               {node.type === 'folder' ? 'Somente organização' : organizerStatusLabels[node.status]}
@@ -1093,8 +1426,8 @@ function OrganizerUsageModal({
         onClick={onClose}
         className="absolute inset-0 bg-[#081b32]/45 backdrop-blur-[2px]"
       />
-      <section className="relative z-10 flex max-h-[88dvh] w-full max-w-xl flex-col overflow-hidden border-[2px] border-[#183861] bg-[#fffdfa] shadow-2xl">
-        <header className="flex shrink-0 items-start justify-between gap-4 bg-[#122f55] px-5 py-4 text-white">
+      <section className="relative z-10 flex max-h-[88dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[#5b247f]/40 bg-[var(--color-organizer-bg)] shadow-[var(--shadow-organizer)]">
+        <header className="flex shrink-0 items-start justify-between gap-4 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-5 py-4 text-white">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#e2b04f]">
               Detalhes de uso
@@ -1107,7 +1440,7 @@ function OrganizerUsageModal({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="rounded p-1.5 hover:bg-white/10"
+            className="rounded-full p-1.5 hover:bg-white/10"
           >
             <X size={20} />
           </button>
@@ -1129,11 +1462,11 @@ function OrganizerUsageModal({
           </div>
 
           {node.description ? (
-            <div className="border border-[#ded2c2] bg-white p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8b7963]">
+            <div className="organizer-surface p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#6b665f]">
                 Descrição
               </p>
-              <p className="mt-2 text-sm leading-6 text-[#302a24]">{node.description}</p>
+              <p className="mt-2 text-sm leading-6 text-[#2a0f3d]">{node.description}</p>
             </div>
           ) : null}
 
@@ -1157,11 +1490,11 @@ function OrganizerUsageModal({
           )}
         </div>
 
-        <footer className="shrink-0 border-t border-[#ded2c2] bg-[#fffdfa] p-4">
+        <footer className="shrink-0 border-t border-stone-200/80 bg-[var(--color-organizer-bg)] p-4">
           <button
             type="button"
             onClick={onClose}
-            className="w-full bg-[#122f55] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1b4677]"
+            className="w-full rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
           >
             Fechar detalhes
           </button>
@@ -1173,18 +1506,18 @@ function OrganizerUsageModal({
 
 function UsageMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-[#d8c9b5] bg-[#f7efe3] p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#846f56]">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-[#122f55]">{value}</p>
+    <div className="rounded-xl border border-stone-200/80 bg-[#fff8ea] p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-[#3a164f]">{value}</p>
     </div>
   )
 }
 
 function UsageDetail({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-b border-[#ded2c2] pb-3">
-      <p className="text-[10px] uppercase tracking-[0.14em] text-[#8b7963]">{label}</p>
-      <p className="mt-1 text-sm font-medium text-[#302a24]">{value}</p>
+    <div className="border-b border-stone-200/80 pb-3">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-[#6b665f]">{label}</p>
+      <p className="mt-1 text-sm font-medium text-[#2a0f3d]">{value}</p>
     </div>
   )
 }
@@ -1200,14 +1533,17 @@ function UsageProductCards({
 }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-[#122f55]">
+      <h3 className="text-sm font-semibold text-[#3a164f]">
         {title} · {items.length}
       </h3>
       {items.length > 0 ? (
         <div className="mt-2 grid gap-3 sm:grid-cols-2">
           {items.map((item) => (
-            <article key={item.id} className="flex gap-3 border border-[#ded2c2] bg-white p-2.5">
-              <div className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden bg-[#f3ece1] text-[#b86b00]">
+            <article
+              key={item.id}
+              className="flex gap-3 rounded-xl border border-[#5b247f]/15 bg-[#eadcf0] p-2.5"
+            >
+              <div className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#fff1d6] text-[#b77717]">
                 {item.imageUrl ? (
                   <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
                 ) : (
@@ -1215,8 +1551,8 @@ function UsageProductCards({
                 )}
               </div>
               <div className="min-w-0 py-1">
-                <p className="truncate text-sm font-semibold text-[#122f55]">{item.name}</p>
-                <p className="mt-1 text-xs text-[#756a5d]">
+                <p className="truncate text-sm font-semibold text-[#3a164f]">{item.name}</p>
+                <p className="mt-1 text-xs text-[#6b665f]">
                   {item.price > 0
                     ? item.price.toLocaleString('pt-BR', {
                         style: 'currency',
@@ -1224,7 +1560,7 @@ function UsageProductCards({
                       })
                     : 'Preço não informado'}
                 </p>
-                <span className="mt-2 inline-flex bg-[#f7efe3] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9a6109]">
+                <span className="mt-2 inline-flex rounded-full bg-[#fff1d6] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#b77717]">
                   Em uso
                 </span>
               </div>
@@ -1232,7 +1568,7 @@ function UsageProductCards({
           ))}
         </div>
       ) : (
-        <p className="mt-2 border border-dashed border-[#d8c9b5] bg-[#fcfaf6] p-4 text-xs text-[#756a5d]">
+        <p className="mt-2 rounded-xl border border-dashed border-stone-200 bg-[#fff8ea] p-4 text-xs text-[#6b665f]">
           {empty}
         </p>
       )}
@@ -1243,18 +1579,18 @@ function UsageProductCards({
 function UsageList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-[#122f55]">{title}</h3>
+      <h3 className="text-sm font-semibold text-[#3a164f]">{title}</h3>
       {items.length > 0 ? (
-        <ul className="mt-2 divide-y divide-[#e8ded0] border border-[#ded2c2] bg-white">
+        <ul className="mt-2 divide-y divide-stone-100 rounded-xl border border-stone-200/80 bg-white">
           {items.map((item, index) => (
             <li key={`${item}-${index}`} className="flex items-center gap-2 px-3 py-2.5 text-xs">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#c27a08]" />
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d89a28]" />
               {item}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 border border-dashed border-[#d8c9b5] bg-[#fcfaf6] p-4 text-xs text-[#756a5d]">
+        <p className="mt-2 rounded-xl border border-dashed border-stone-200 bg-[#fff8ea] p-4 text-xs text-[#6b665f]">
           {empty}
         </p>
       )}
@@ -1265,7 +1601,6 @@ function UsageList({ title, items, empty }: { title: string; items: string[]; em
 interface InspectorProps {
   node: OrganizerNode | null
   tag: OrganizerTag | null
-  selection: Selection
   nodes: OrganizerNode[]
   tags: OrganizerTag[]
   onUpdateNode: (id: string, changes: Partial<OrganizerNode>) => void
@@ -1281,7 +1616,6 @@ interface InspectorProps {
 function Inspector({
   node,
   tag,
-  selection,
   nodes,
   tags,
   onUpdateNode,
@@ -1310,8 +1644,6 @@ function Inspector({
   )
   const [tagDraft, setTagDraft] = useState(() => (tag ? { name: tag.name, color: tag.color } : null))
 
-  if (selection?.kind === 'trash')
-    return <InspectorEmpty title="Lixeira aberta" detail="Use o painel central para restaurar conteúdos." />
   if (!node && !tag)
     return <InspectorEmpty title="Propriedades" detail="Selecione um conteúdo para editar seus detalhes." />
 
@@ -1338,7 +1670,7 @@ function Inspector({
               type="color"
               value={tagDraft.color}
               onChange={(event) => setTagDraft({ ...tagDraft, color: event.target.value })}
-              className="h-10 w-12 border border-[#d8cdbc] bg-white p-1"
+              className="h-10 w-12 rounded-xl border border-stone-200 bg-white p-1"
             />
             <input
               value={tagDraft.color}
@@ -1412,8 +1744,8 @@ function Inspector({
   return (
     <form onSubmit={submitNode} className="p-4">
       <InspectorHeading icon={nodeIcon(node.type)} title="Propriedades" />
-      <div className="mb-4 flex items-center justify-between gap-2 bg-[#f4eee5] px-3 py-2">
-        <span className="text-[10px] uppercase tracking-wider text-[#7d7367]">
+      <div className="mb-4 flex items-center justify-between gap-2 rounded-xl bg-[#fff1d6] px-3 py-2">
+        <span className="text-[10px] uppercase tracking-wider text-[#8b5200]">
           {organizerTypeLabels[node.type]}
         </span>
         {node.type === 'folder' ? (
@@ -1427,7 +1759,7 @@ function Inspector({
           value={nodeDraft.name}
           disabled={node.immutable}
           onChange={(event) => setNodeDraft({ ...nodeDraft, name: event.target.value })}
-          className="organizer-input disabled:bg-[#eee8df] disabled:text-[#777067]"
+          className="organizer-input disabled:bg-stone-100 disabled:text-[#6b665f]"
         />
       </Field>
       <Field label="Descrição">
@@ -1471,15 +1803,10 @@ function Inspector({
       )}
       {(node.type === 'item' || node.type === 'highlight') && (
         <div className="mb-4">
-          <Field label="Endereço da imagem">
-            <input
-              value={nodeDraft.imageUrl.startsWith('data:') ? '' : nodeDraft.imageUrl}
-              onChange={(event) => setNodeDraft({ ...nodeDraft, imageUrl: event.target.value })}
-              placeholder="https://..."
-              className="organizer-input"
-            />
-          </Field>
-          <label className="flex cursor-pointer items-center justify-center gap-2 border border-[#cfb78e] px-3 py-2 text-xs hover:bg-[#f6eee2]">
+          <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
+            Imagem
+          </span>
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-stone-200 px-3 py-2 text-xs hover:border-[#d89a28] hover:bg-[#fff8ea]">
             <ImageIcon size={15} /> Enviar arquivo
             <input
               type="file"
@@ -1489,7 +1816,7 @@ function Inspector({
             />
           </label>
           {nodeDraft.imageUrl && (
-            <img src={nodeDraft.imageUrl} alt="Prévia" className="mt-2 h-24 w-full object-cover" />
+            <img src={nodeDraft.imageUrl} alt="Prévia" className="mt-2 h-24 w-full rounded-xl object-cover" />
           )}
         </div>
       )}
@@ -1543,7 +1870,7 @@ function Inspector({
         <button
           type="button"
           onClick={onOpenSchedule}
-          className="mt-2 flex w-full items-center justify-center gap-2 border border-[#cfb78e] px-3 py-2 text-xs hover:bg-[#f6eee2]"
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-stone-200 px-3 py-2 text-xs hover:border-[#d89a28] hover:bg-[#fff8ea]"
         >
           <CalendarClock size={15} />
           {node.scheduledAt ? formatDate(node.scheduledAt) : 'Agendar publicação'}
@@ -1554,14 +1881,14 @@ function Inspector({
           <button
             type="button"
             onClick={() => onMoveNode(node.id, 'up')}
-            className="flex items-center justify-center gap-1 border border-[#d8cdbc] px-2 py-2 text-[10px] hover:bg-[#f6eee2]"
+            className="flex items-center justify-center gap-1 rounded-xl border border-stone-200 px-2 py-2 text-[10px] hover:border-[#d89a28] hover:bg-[#fff8ea]"
           >
             <ArrowUp size={13} /> Mover acima
           </button>
           <button
             type="button"
             onClick={() => onMoveNode(node.id, 'down')}
-            className="flex items-center justify-center gap-1 border border-[#d8cdbc] px-2 py-2 text-[10px] hover:bg-[#f6eee2]"
+            className="flex items-center justify-center gap-1 rounded-xl border border-stone-200 px-2 py-2 text-[10px] hover:border-[#d89a28] hover:bg-[#fff8ea]"
           >
             <ArrowDown size={13} /> Mover abaixo
           </button>
@@ -1570,7 +1897,7 @@ function Inspector({
       <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
         <button
           type="submit"
-          className="flex items-center justify-center gap-2 bg-[#122f55] px-3 py-2.5 text-xs font-medium text-white hover:bg-[#1b4677]"
+          className="flex items-center justify-center gap-2 rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3 py-2.5 text-xs font-medium text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
         >
           <Save size={15} /> Salvar alterações
         </button>
@@ -1580,7 +1907,7 @@ function Inspector({
             title="Duplicar"
             aria-label="Duplicar conteúdo"
             onClick={() => onDuplicate(node.id)}
-            className="border border-[#183861] p-2.5 hover:bg-[#eef2f7]"
+            className="rounded-full border border-stone-200 p-2.5 hover:border-[#5b247f]/40 hover:bg-[#eadcf0]"
           >
             <Copy size={16} />
           </button>
@@ -1590,7 +1917,7 @@ function Inspector({
         <button
           type="button"
           onClick={() => onTrashNode(node.id)}
-          className="mt-2 flex w-full items-center justify-center gap-2 px-3 py-2 text-xs text-[#a0382f] hover:bg-[#fff0ed]"
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-[#a0382f] hover:bg-[#fff0ed]"
         >
           <Trash2 size={15} /> Mover para a lixeira
         </button>
@@ -1602,7 +1929,7 @@ function Inspector({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="mb-4 block">
-      <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#766e64]">
+      <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
         {label}
       </span>
       {children}
@@ -1625,12 +1952,12 @@ function ChoiceList({
 }) {
   return (
     <fieldset className="mb-4">
-      <legend className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#766e64]">
+      <legend className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
         {label}
       </legend>
-      <div className="max-h-32 overflow-y-auto border border-[#d8cdbc] bg-white p-2">
+      <div className="max-h-32 overflow-y-auto rounded-xl border border-stone-200 bg-white p-2">
         {options.length === 0 ? (
-          <p className="text-[10px] text-[#7d7367]">{empty}</p>
+          <p className="text-[10px] text-[#6b665f]">{empty}</p>
         ) : (
           options.map((option) => (
             <label key={option.id} className="flex items-center gap-2 py-1 text-xs">
@@ -1638,7 +1965,7 @@ function ChoiceList({
                 type="checkbox"
                 checked={selected.includes(option.id)}
                 onChange={() => onToggle(option.id)}
-                className="accent-[#b86b00]"
+                className="accent-[#d89a28]"
               />
               <span className="truncate">{option.label}</span>
             </label>
@@ -1664,11 +1991,11 @@ function ItemCardChoiceList({
 }) {
   return (
     <fieldset className="mb-4">
-      <legend className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#766e64]">
+      <legend className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
         {label} · {selected.length} selecionado(s)
       </legend>
       {items.length === 0 ? (
-        <p className="border border-dashed border-[#d8cdbc] bg-[#fcfaf6] p-3 text-[10px] text-[#7d7367]">
+        <p className="rounded-xl border border-dashed border-stone-200 bg-[#fff8ea] p-3 text-[10px] text-[#6b665f]">
           {empty}
         </p>
       ) : (
@@ -1678,13 +2005,13 @@ function ItemCardChoiceList({
             return (
               <label
                 key={item.id}
-                className={`flex cursor-pointer gap-3 border p-2 transition ${
+                className={`flex cursor-pointer gap-3 rounded-xl border p-2 transition ${
                   checked
-                    ? 'border-[#c27a08] bg-[#fff7e8] shadow-sm'
-                    : 'border-[#d8cdbc] bg-white hover:border-[#cfad76]'
+                    ? 'border-[#d89a28] bg-[#fff8ea] shadow-sm'
+                    : 'border-stone-200 bg-white hover:border-[#d89a28]'
                 }`}
               >
-                <span className="flex h-16 w-14 shrink-0 items-center justify-center overflow-hidden bg-[#f3ece1] text-[#b86b00]">
+                <span className="flex h-16 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#fff1d6] text-[#b77717]">
                   {item.imageUrl ? (
                     <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
@@ -1692,8 +2019,8 @@ function ItemCardChoiceList({
                   )}
                 </span>
                 <span className="min-w-0 flex-1 py-0.5">
-                  <span className="block truncate text-xs font-semibold text-[#122f55]">{item.name}</span>
-                  <span className="mt-1 block text-[10px] text-[#7d7367]">
+                  <span className="block truncate text-xs font-semibold text-[#3a164f]">{item.name}</span>
+                  <span className="mt-1 block text-[10px] text-[#6b665f]">
                     {item.price > 0
                       ? item.price.toLocaleString('pt-BR', {
                           style: 'currency',
@@ -1701,12 +2028,12 @@ function ItemCardChoiceList({
                         })
                       : 'Preço não informado'}
                   </span>
-                  <span className="mt-1.5 flex items-center gap-1.5 text-[10px] font-medium text-[#9a6109]">
+                  <span className="mt-1.5 flex items-center gap-1.5 text-[10px] font-medium text-[#b77717]">
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={() => onToggle(item.id)}
-                      className="accent-[#b86b00]"
+                      className="accent-[#d89a28]"
                     />
                     {checked ? 'Usando neste módulo' : 'Adicionar ao módulo'}
                   </span>
@@ -1725,14 +2052,14 @@ function InspectorActions({ onSaveLabel, onDelete }: { onSaveLabel: string; onDe
     <div className="mt-6 space-y-2">
       <button
         type="submit"
-        className="flex w-full items-center justify-center gap-2 bg-[#122f55] px-3 py-2.5 text-xs text-white hover:bg-[#1b4677]"
+        className="flex w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3 py-2.5 text-xs text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
       >
         <Save size={15} /> {onSaveLabel}
       </button>
       <button
         type="button"
         onClick={onDelete}
-        className="flex w-full items-center justify-center gap-2 px-3 py-2 text-xs text-[#a0382f] hover:bg-[#fff0ed]"
+        className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-[#a0382f] hover:bg-[#fff0ed]"
       >
         <Trash2 size={15} /> Mover para a lixeira
       </button>
@@ -1742,8 +2069,8 @@ function InspectorActions({ onSaveLabel, onDelete }: { onSaveLabel: string; onDe
 
 function InspectorHeading({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
-    <div className="mb-5 flex items-center gap-2 border-b border-[#e8ded0] pb-3">
-      <span className="text-[#b86b00]">{icon}</span>
+    <div className="mb-5 flex items-center gap-2 border-b border-stone-200/80 pb-3">
+      <span className="text-[#b77717]">{icon}</span>
       <h2 className="text-sm font-semibold">{title}</h2>
     </div>
   )
@@ -1752,9 +2079,9 @@ function InspectorHeading({ icon, title }: { icon: React.ReactNode; title: strin
 function InspectorEmpty({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="flex h-full min-h-64 flex-col items-center justify-center p-6 text-center">
-      <Settings size={28} className="mb-3 text-[#b9a991]" />
+      <Settings size={28} className="mb-3 text-[#6b665f]" />
       <h2 className="text-sm font-semibold">{title}</h2>
-      <p className="mt-1 text-[10px] leading-relaxed text-[#7d7367]">{detail}</p>
+      <p className="mt-1 text-[10px] leading-relaxed text-[#6b665f]">{detail}</p>
     </div>
   )
 }
@@ -1774,22 +2101,22 @@ function QuickAction({
     <button
       type="button"
       onClick={onClick}
-      className="group border border-[#d9cebf] bg-white p-4 text-left hover:border-[#c27a08] hover:bg-[#fffbf4]"
+      className="interactive-card group rounded-2xl border border-stone-200/80 bg-[#eadcf0] p-4 text-left shadow-[var(--shadow-float)] hover:border-[#d89a28]"
     >
-      <span className="mb-3 inline-flex rounded-full bg-[#f1e6d5] p-2.5 text-[#b86b00] group-hover:bg-[#ead6b7]">
+      <span className="mb-3 inline-flex rounded-full bg-[#fff1d6] p-2.5 text-[#b77717] group-hover:bg-[#ffe2a8]">
         {icon}
       </span>
       <span className="block text-sm font-semibold">{title}</span>
-      <span className="mt-1 block text-[10px] leading-relaxed text-[#71685d]">{detail}</span>
+      <span className="mt-1 block text-[10px] leading-relaxed text-[#6b665f]">{detail}</span>
     </button>
   )
 }
 
 function EmptyState({ icon, title, detail }: { icon: React.ReactNode; title: string; detail?: string }) {
   return (
-    <div className="flex min-h-48 flex-col items-center justify-center border border-dashed border-[#d8cdbc] bg-[#fcfaf6] p-6 text-center text-[#9d8f7c]">
+    <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-stone-200 bg-[#fff8ea] p-6 text-center text-[#6b665f]">
       {icon}
-      <p className="mt-3 text-sm font-medium text-[#334969]">{title}</p>
+      <p className="mt-3 text-sm font-medium text-[#3a164f]">{title}</p>
       {detail && <p className="mt-1 text-[10px]">{detail}</p>}
     </div>
   )
@@ -1797,8 +2124,8 @@ function EmptyState({ icon, title, detail }: { icon: React.ReactNode; title: str
 
 function StatusPill({ status, compact = false }: { status: OrganizerNode['status']; compact?: boolean }) {
   const colors = {
-    draft: 'bg-[#eee8df] text-[#665e54]',
-    scheduled: 'bg-[#fff0ce] text-[#8b5700]',
+    draft: 'bg-stone-100 text-[#6b665f]',
+    scheduled: 'bg-[#fff1d6] text-[#8b5700]',
     published: 'bg-[#e5f0e8] text-[#27633a]',
   }
   return (
@@ -1826,7 +2153,7 @@ function DrawerToggle({
       onClick={onToggle}
       aria-label={`${open ? 'Fechar' : 'Abrir'} gaveta ${isLeft ? 'esquerda' : 'direita'}`}
       title={`${open ? 'Fechar' : 'Abrir'} gaveta ${isLeft ? 'esquerda' : 'direita'}`}
-      className="flex h-8 w-8 items-center justify-center rounded border border-[#e0a83f] bg-[#fffaf0] text-[#17365e] shadow-sm transition hover:bg-[#f7e9cf] focus:outline-none focus:ring-2 focus:ring-[#e0a83f]"
+      className="flex h-8 w-8 items-center justify-center rounded-full border border-[#e0a83f] bg-[#fff8ea] text-[#3a164f] shadow-sm transition hover:bg-[#fff1d6] focus:outline-none focus:ring-2 focus:ring-[#e0a83f]"
     >
       {isLeft ? <PanelLeft size={18} /> : <PanelRight size={18} />}
     </button>

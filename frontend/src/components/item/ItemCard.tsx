@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useCart } from '../../contexts/CartContext'
-import { DEMO_PRODUCT } from './demoProduct'
+import { itemCardToProduct } from '../../utils/productModel'
 import { itemIcons } from './icons'
 
 export type ItemCardContent = {
@@ -11,49 +11,26 @@ export type ItemCardContent = {
   imageUrl?: string
   price?: number
   tagLabel?: string
+  createdAt?: string
 }
 
-export function ItemCard({ className = '', item }: { className?: string; item?: ItemCardContent }) {
-  const location = useLocation()
-  const navigate = useNavigate()
+export function ItemCard({ className = '', item }: { className?: string; item: ItemCardContent }) {
   const { addItem } = useCart()
   const [favorited, setFavorited] = useState(false)
-  const productName = item?.name || 'Nome do produto'
-  const productPrice = item?.price || 0
+  const productName = item.name
+  const productPrice = item.price || 0
   const displayPrice = productPrice
     ? productPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-    : 'R$ 000,00'
-  const cartProduct = item
-    ? {
-        ...DEMO_PRODUCT,
-        id: item.id,
-        sku: item.id,
-        name: productName,
-        slug: item.id,
-        description: item.description || '',
-        salePrice: productPrice,
-        finalPrice: productPrice,
-        imageUrl: item.imageUrl || '',
-        images: item.imageUrl ? [item.imageUrl] : [],
-      }
-    : DEMO_PRODUCT
-
-  const openItemDetail = () => {
-    navigate('/produto-modelo', { state: { from: `${location.pathname}${location.search}` } })
-  }
+    : 'Preço não informado'
+  const installmentPrice = productPrice / 12
 
   return (
-    <div
-      role="link"
-      tabIndex={0}
-      onClick={openItemDetail}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') openItemDetail()
-      }}
-      className={`cursor-pointer overflow-hidden rounded-[24px] border border-stone-200 bg-white ${className}`}
+    <Link
+      to={`/produto/${item.id}`}
+      className={`block overflow-hidden rounded-[24px] border border-[#e3cfee] bg-white ${className}`}
     >
-      <div className="relative flex aspect-[3/4] items-center justify-center bg-[#f4efe8] text-[#d89a28]">
-        {item?.imageUrl ? (
+      <div className="relative flex aspect-[3/4] items-center justify-center bg-[#eadcf0] text-[#d89a28]">
+        {item.imageUrl ? (
           <img src={item.imageUrl} alt={productName} className="h-full w-full object-cover" />
         ) : (
           <img src={itemIcons.frascoGold} alt="Frasco de perfume" className="h-10 w-10 object-contain" />
@@ -61,6 +38,7 @@ export function ItemCard({ className = '', item }: { className?: string; item?: 
         <button
           type="button"
           onClick={(event) => {
+            event.preventDefault()
             event.stopPropagation()
             setFavorited((value) => !value)
           }}
@@ -77,21 +55,35 @@ export function ItemCard({ className = '', item }: { className?: string; item?: 
         </button>
       </div>
       <div className="space-y-2 p-4">
-        <span className="inline-block rounded-[14px] bg-[#fff1d6] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#b77717]">
-          {item?.tagLabel || 'Marca'}
-        </span>
-        <p className="text-sm font-semibold text-[#171412]">{productName}</p>
+        {item.tagLabel ? (
+          <span className="inline-block rounded-[14px] bg-[#fff1d6] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#b77717]">
+            {item.tagLabel}
+          </span>
+        ) : null}
+        <p className="text-sm font-semibold text-[#2a0f3d]">{productName}</p>
+        {item.description ? (
+          <p className="line-clamp-2 text-xs leading-5 text-[#6b665f]">{item.description}</p>
+        ) : null}
         <div className="flex items-end justify-between">
           <div>
-            <p className="text-sm font-semibold text-[#171412]">{displayPrice}</p>
-            <p className="mt-1 text-xs text-[#6b665f]">ou 12x de R$ 00,00</p>
+            <p className="text-sm font-semibold text-[#2a0f3d]">{displayPrice}</p>
+            {productPrice > 0 ? (
+              <p className="mt-1 text-xs text-[#6b665f]">
+                ou 12x de{' '}
+                {installmentPrice.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
+              </p>
+            ) : null}
           </div>
           <div className="group relative">
             <button
               type="button"
               onClick={(event) => {
+                event.preventDefault()
                 event.stopPropagation()
-                addItem(cartProduct)
+                addItem(itemCardToProduct(item))
               }}
               onKeyDown={(event) => event.stopPropagation()}
               aria-label="Colocar na sacola"
@@ -99,12 +91,12 @@ export function ItemCard({ className = '', item }: { className?: string; item?: 
             >
               <img src={itemIcons.compra} alt="" className="h-7 w-7 object-contain" />
             </button>
-            <span className="pointer-events-none absolute -top-8 right-0 whitespace-nowrap rounded-[8px] bg-[#171412] px-2 py-1 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="pointer-events-none absolute -top-8 right-0 whitespace-nowrap rounded-[8px] bg-[#2a0f3d] px-2 py-1 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
               Colocar na sacola
             </span>
           </div>
         </div>
       </div>
-    </div>
+    </Link>
   )
 }
