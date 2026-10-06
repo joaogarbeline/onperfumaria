@@ -1,5 +1,11 @@
 export type OrganizerContentType = 'page' | 'folder' | 'carousel' | 'highlight' | 'catalog' | 'item'
-export type OrganizerStatus = 'draft' | 'scheduled' | 'published'
+export type OrganizerStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'published'
+  | 'coming-soon'
+  | 'out-of-stock'
+  | 'low-stock'
 export type OrganizerSize = 'small' | 'medium' | 'large'
 export type OrganizerVariant =
   | 'standard'
@@ -8,8 +14,6 @@ export type OrganizerVariant =
   | 'product-carousel'
   | 'product-grid'
   | 'brand-marquee'
-
-export type OrganizerAvailability = 'publish' | 'coming-soon' | 'out-of-stock' | 'low-stock'
 
 export type OrganizerNode = {
   id: string
@@ -24,11 +28,12 @@ export type OrganizerNode = {
   size: OrganizerSize
   tagIds: string[]
   itemIds: string[]
+  /** Codigo interno do item (so visivel no Organizador, nunca na pagina publica). */
+  sku?: string
   route?: string
   variant?: OrganizerVariant
   builtin?: boolean
   immutable?: boolean
-  availability?: OrganizerAvailability
   createdAt: string
   updatedAt: string
 }
@@ -78,19 +83,22 @@ export const organizerStatusLabels: Record<OrganizerStatus, string> = {
   draft: 'Rascunho',
   scheduled: 'Agendado',
   published: 'Publicado',
+  'coming-soon': 'Em breve',
+  'out-of-stock': 'Esgotado',
+  'low-stock': 'Pouco no estoque',
 }
+
+export const organizerItemStatusOptions: OrganizerStatus[] = [
+  'published',
+  'coming-soon',
+  'out-of-stock',
+  'low-stock',
+]
 
 export const organizerSizeLabels: Record<OrganizerSize, string> = {
   small: 'Pequeno',
   medium: 'Médio',
   large: 'Grande',
-}
-
-export const organizerAvailabilityLabels: Record<OrganizerAvailability, string> = {
-  publish: 'Publicar',
-  'coming-soon': 'Em breve',
-  'out-of-stock': 'Esgotado',
-  'low-stock': 'Pouco no estoque',
 }
 
 export const organizerDiscountOptions = [10, 20, 30, 40, 50, 60] as const
@@ -100,13 +108,13 @@ export function getOrganizerDiscountedPrice(price: number, percent?: number) {
   return price - (price * percent) / 100
 }
 
-export type ItemWizardStep = 1 | 2 | 3 | 4
+export type ItemWizardStep = 1 | 2 | 3
 
 export type ItemWizardDraft = {
   name: string
   photos: string[]
   description: string
-  availability: OrganizerAvailability
+  status: OrganizerStatus
   parentId: string
   price: string
   tagId: string
@@ -117,7 +125,7 @@ export function emptyItemWizardDraft(parentId: string): ItemWizardDraft {
     name: '',
     photos: [],
     description: '',
-    availability: 'publish',
+    status: 'published',
     parentId,
     price: '',
     tagId: '',
@@ -302,9 +310,9 @@ export function normalizeOrganizerSearch(value: string) {
 }
 
 export function isOrganizerNodeVisible(node: OrganizerNode, referenceDate = new Date()) {
-  if (node.status === 'published') return true
-  if (node.status !== 'scheduled' || !node.scheduledAt) return false
-  return new Date(node.scheduledAt).getTime() <= referenceDate.getTime()
+  if (node.status === 'draft') return false
+  if (node.status !== 'scheduled') return true
+  return Boolean(node.scheduledAt) && new Date(node.scheduledAt).getTime() <= referenceDate.getTime()
 }
 
 export function isOrganizerPreviewMode(search: string) {

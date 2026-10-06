@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"onperfumaria/backend/internal/auth"
 	"onperfumaria/backend/internal/config"
@@ -33,7 +34,7 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			data, err := service.GetOrganizerStore(c.Request.Context())
 			respond(c, data, err)
 		})
-		api.PUT("/organizer", func(c *gin.Context) {
+		api.PUT("/organizer", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
 			var input json.RawMessage
 			if err := c.ShouldBindJSON(&input); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
@@ -95,13 +96,7 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 				return
 			}
-			header := c.GetHeader("Authorization")
-			if strings.HasPrefix(header, "Bearer ") {
-				claims, err := auth.ParseToken(cfg.JWTSecret, strings.TrimPrefix(header, "Bearer "))
-				if err == nil && claims.Scope == "customer" {
-					input.CustomerID = claims.UserID
-				}
-			}
+			input.CustomerID = customerIDFromHeader(cfg, c)
 			data, err := service.CreateOrder(c.Request.Context(), input)
 			respond(c, data, err)
 		})
@@ -109,18 +104,80 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			data, err := service.GetOrderPublic(c.Request.Context(), c.Param("id"))
 			respond(c, data, err)
 		})
-		api.POST("/auth/customer/recover", func(c *gin.Context) {
+		api.GET("/orders", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+			limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+			filter := services.OrderFilter{
+				Search:    c.Query("search"),
+				Status:    c.Query("status"),
+				Payment:   c.Query("payment"),
+				StartDate: c.Query("startDate"),
+				EndDate:   c.Query("endDate"),
+				Page:      page,
+				Limit:     limit,
+			}
+			data, err := service.Orders(c.Request.Context(), filter)
+			respond(c, data, err)
+		})
+		api.GET("/customers", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			data, err := service.Customers(c.Request.Context(), c.Query("search"), c.GetString("userID"))
+			respond(c, data, err)
+		})
+		api.GET("/customers/:id", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			data, err := service.CustomerProfile(c.Request.Context(), c.Param("id"), c.GetString("userID"))
+			respond(c, data, err)
+		})
+		// So quem ja e admin pode promover outro cliente. A unica excecao e a
+		// loja recem-instalada (nenhum admin ainda): nesse caso a rota libera
+		// uma vez sem token para destravar o primeiro acesso.
+		api.PUT("/customers/:id/admin", func(c *gin.Context) {
 			var input struct {
-				Email string `json:"email"`
+				IsAdmin bool `json:"isAdmin"`
 			}
 			if err := c.ShouldBindJSON(&input); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 				return
 			}
-			data, err := service.RequestPasswordReset(c.Request.Context(), input.Email)
-			respond(c, gin.H{"token": data}, err)
+
+			adminCount, err := service.CountAdmins(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+				return
+			}
+
+			if adminCount > 0 {
+				header := c.GetHeader("Authorization")
+				claims, err := auth.ParseToken(cfg.JWTSecret, strings.TrimPrefix(header, "Bearer "))
+				if !strings.HasPrefix(header, "Bearer ") || err != nil || claims.Scope != "customer" || claims.Role != "admin" {
+					c.JSON(http.StatusForbidden, gin.H{"message": "acesso restrito a administradores"})
+					return
+				}
+			}
+
+			data, err := service.SetCustomerAdmin(c.Request.Context(), c.Param("id"), input.IsAdmin)
+			respond(c, data, err)
 		})
-		api.POST("/auth/customer/reset", func(c *gin.Context) {
+		// Enviar e-mail custa caro e e uma via de abuso, entao a janela aqui e
+		// bem mais curta que a das outras rotas.
+		api.POST("/auth/customer/recover", middlewares.RateLimit("recover", 5, 15*time.Minute), func(c *gin.Context) {
+			var input struct {
+				Identifier string `json:"identifier"`
+				Email      string `json:"email"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			identifier := input.Identifier
+			if identifier == "" {
+				identifier = input.Email
+			}
+			// A resposta e sempre a mesma, com ou sem cadastro: o token sai por
+			// e-mail e nunca pelo corpo da resposta.
+			err := service.RequestPasswordReset(c.Request.Context(), identifier)
+			respond(c, gin.H{"sent": true}, err)
+		})
+		api.POST("/auth/customer/reset", middlewares.RateLimit("reset", 10, time.Minute), func(c *gin.Context) {
 			var input struct {
 				Token    string `json:"token"`
 				Password string `json:"password"`
@@ -129,8 +186,8 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 				return
 			}
-			err := service.ResetPassword(c.Request.Context(), input.Token, input.Password)
-			respond(c, gin.H{"success": true}, err)
+			data, err := service.ResetPassword(c.Request.Context(), input.Token, input.Password)
+			respond(c, data, err)
 		})
 		api.GET("/cep/:cep", func(c *gin.Context) {
 			cep := strings.ReplaceAll(c.Param("cep"), "-", "")
@@ -144,31 +201,70 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			_ = json.NewDecoder(resp.Body).Decode(&result)
 			respond(c, result, nil)
 		})
-		api.POST("/auth/customer/register", func(c *gin.Context) {
+		// Etapa 1 do login: descobre se o e-mail/CPF digitado tem cadastro e
+		// como essa conta entra (senha, Google ou os dois).
+		api.POST("/auth/customer/identify", middlewares.RateLimit("identify", 20, time.Minute), func(c *gin.Context) {
 			var input struct {
-				Name     string `json:"name"`
-				Email    string `json:"email"`
-				Phone    string `json:"phone"`
-				CPF      string `json:"cpf"`
-				Password string `json:"password"`
+				Identifier string `json:"identifier"`
 			}
 			if err := c.ShouldBindJSON(&input); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 				return
 			}
-			token, err := service.CustomerRegister(c.Request.Context(), input.Name, input.Email, input.Password, input.Phone, input.CPF)
-			respond(c, gin.H{"token": token}, err)
+			data, err := service.IdentifyCustomer(c.Request.Context(), input.Identifier)
+			respond(c, data, err)
 		})
-		api.POST("/auth/customer/login", func(c *gin.Context) {
+		// Checagem em tempo real da ficha: diz quais campos ja existem no banco.
+		api.POST("/auth/customer/availability", middlewares.RateLimit("availability", 30, time.Minute), func(c *gin.Context) {
 			var input struct {
-				Email    string `json:"email"`
-				Password string `json:"password"`
+				Email string `json:"email"`
+				CPF   string `json:"cpf"`
+				Phone string `json:"phone"`
 			}
 			if err := c.ShouldBindJSON(&input); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 				return
 			}
-			token, err := service.CustomerLogin(c.Request.Context(), input.Email, input.Password)
+			data, err := service.CustomerFieldConflicts(c.Request.Context(), input.Email, input.CPF, input.Phone, customerIDFromHeader(cfg, c))
+			respond(c, gin.H{"conflicts": data}, err)
+		})
+		api.POST("/auth/customer/google", middlewares.RateLimit("google", 10, time.Minute), func(c *gin.Context) {
+			var input struct {
+				Credential string `json:"credential"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			data, err := service.GoogleSignIn(c.Request.Context(), input.Credential)
+			respond(c, data, err)
+		})
+		api.POST("/auth/customer/register", middlewares.RateLimit("register", 5, 10*time.Minute), func(c *gin.Context) {
+			var input services.CustomerRegistrationPayload
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			// Com token, a mesma ficha completa o cadastro de quem entrou pelo
+			// Google e chegou aqui com telefone/CPF/endereco em branco.
+			data, err := service.RegisterCustomer(c.Request.Context(), customerIDFromHeader(cfg, c), input)
+			respond(c, data, err)
+		})
+		api.POST("/auth/customer/login", middlewares.RateLimit("login", 10, time.Minute), func(c *gin.Context) {
+			var input struct {
+				Identifier string `json:"identifier"`
+				Email      string `json:"email"`
+				Password   string `json:"password"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			identifier := input.Identifier
+			if identifier == "" {
+				identifier = input.Email
+			}
+			token, err := service.CustomerLoginIdentifier(c.Request.Context(), identifier, input.Password)
 			respond(c, gin.H{"token": token}, err)
 		})
 	}
@@ -177,7 +273,8 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 	customer.Use(middlewares.JWT(cfg, "customer"))
 	{
 		customer.GET("/me", func(c *gin.Context) {
-			data, err := service.CustomerProfile(c.Request.Context(), c.GetString("userID"))
+			userID := c.GetString("userID")
+			data, err := service.CustomerProfile(c.Request.Context(), userID, userID)
 			respond(c, data, err)
 		})
 		customer.GET("/orders/:id", func(c *gin.Context) {
@@ -268,4 +365,18 @@ func registerFrontend(router *gin.Engine) {
 		}
 		serveIndex(c)
 	})
+}
+
+// customerIDFromHeader le o token opcional de rotas publicas que mudam de
+// comportamento quando o cliente ja esta logado. Devolve "" para visitantes.
+func customerIDFromHeader(cfg config.Config, c *gin.Context) string {
+	header := c.GetHeader("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		return ""
+	}
+	claims, err := auth.ParseToken(cfg.JWTSecret, strings.TrimPrefix(header, "Bearer "))
+	if err != nil || claims.Scope != "customer" {
+		return ""
+	}
+	return claims.UserID
 }

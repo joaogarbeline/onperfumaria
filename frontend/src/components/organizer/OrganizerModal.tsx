@@ -67,7 +67,7 @@ export function OrganizerModal({
   onChooseModule,
 }: OrganizerModalProps) {
   const containers = store.nodes.filter((node) => node.type === 'page' || node.type === 'folder')
-  const items = store.nodes.filter((node) => node.type === 'item')
+  const items = store.nodes.filter((node) => node.type === 'item' && findOrganizerPage(store.nodes, node))
   const schedulableNodes = store.nodes.filter((node) => node.type !== 'folder')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')

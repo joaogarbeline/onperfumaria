@@ -12,6 +12,7 @@ export function toItemContent(node: OrganizerNode, tags: OrganizerTag[]): ItemCa
     price: node.price,
     tagLabel: firstTag?.name,
     createdAt: node.createdAt,
+    sku: node.sku,
   }
 }
 

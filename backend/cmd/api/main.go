@@ -27,6 +27,12 @@ func main() {
 		}
 	}
 
+	if cfg.SeedDemoCustomer {
+		if err := database.SeedDemoCustomer(db); err != nil {
+			log.Fatalf("demo customer seed failed: %v", err)
+		}
+	}
+
 	router := handlers.NewRouter(cfg, db)
 
 	log.Printf("API listening on :%s", cfg.Port)

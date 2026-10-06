@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import pedidosIcon from '../../../assets/icons/catalogo_d_c.png'
 import homeIcon from '../../../assets/icons/home_d_c.png'
 import perfilIcon from '../../../assets/icons/perfil_d_c.png'
@@ -7,8 +7,9 @@ import { useAuth } from '../../../contexts/AuthContext'
 import { useCart } from '../../../contexts/CartContext'
 
 export function MobileBottomNav() {
-  const { scope } = useAuth()
+  const { scope, requireAuth } = useAuth()
   const { items } = useCart()
+  const navigate = useNavigate()
   const isCustomer = scope === 'customer'
   const count = items.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -36,10 +37,23 @@ export function MobileBottomNav() {
         </span>
         Sacola
       </NavLink>
-      <NavLink to={isCustomer ? '/conta' : '/login'} className={itemClassName}>
-        <img src={perfilIcon} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
-        Minha conta
-      </NavLink>
+      {isCustomer ? (
+        <NavLink to="/conta" className={itemClassName}>
+          <img src={perfilIcon} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
+          Minha conta
+        </NavLink>
+      ) : (
+        <button
+          type="button"
+          onClick={() =>
+            requireAuth(() => navigate('/conta'), 'Entre ou cadastre-se para acessar sua conta.')
+          }
+          className={itemClassName({ isActive: false })}
+        >
+          <img src={perfilIcon} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
+          Minha conta
+        </button>
+      )}
     </nav>
   )
 }

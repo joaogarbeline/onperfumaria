@@ -1,9 +1,9 @@
 import { Search, User } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import atendimentoIcon from '../../../assets/icons/atendimento_white.png'
+import atendimentoIcon from '../../../assets/icons/atendente_d_c.png'
 import favoritoIcon from '../../../assets/icons/coracoes_d_c.png'
-import sacolaIcon from '../../../assets/icons/sacola_white.png'
+import sacolaIcon from '../../../assets/icons/sacola_d_c.png'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCart } from '../../../contexts/CartContext'
 import { useOrganizerStore } from '../../../hooks/useOrganizerStore'
@@ -17,7 +17,7 @@ import { Carousel } from '../../../components/Carousel'
 
 export function DesktopHeader() {
   const { items } = useCart()
-  const { scope } = useAuth()
+  const { scope, openAuth, requireAuth } = useAuth()
   const { store } = useOrganizerStore()
   const isCustomer = scope === 'customer'
   const [scrolled, setScrolled] = useState(false)
@@ -88,11 +88,8 @@ export function DesktopHeader() {
             to={homePath}
             className="flex flex-col justify-center space-y-1.5 self-center justify-self-start rounded-[20px] lg:px-1 xl:px-5"
           >
-            <span className="block text-xs font-bold uppercase tracking-[0.42em] text-[#d89a28]">
-              Loja Premium
-            </span>
             <span className="block whitespace-nowrap text-base font-semibold tracking-[0.28em] text-[#FAF6EF] lg:text-lg lg:tracking-[0.38em]">
-              ON PERFUMARIA
+              <span className="text-[#d89a28]">ON</span> PERFUMARIA
             </span>
           </Link>
 
@@ -150,11 +147,14 @@ export function DesktopHeader() {
                   </Button>
                 </Link>
               ) : (
-                <Link to="/login" aria-label="Entrar" className="inline-flex">
-                  <Button variant="secondary" size="sm">
-                    Entrar
-                  </Button>
-                </Link>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-label="Entrar"
+                  onClick={() => openAuth({ reason: 'Entre ou cadastre-se para acompanhar seus pedidos.' })}
+                >
+                  Entrar
+                </Button>
               )}
             </div>
 
@@ -177,7 +177,10 @@ export function DesktopHeader() {
               </a>
               <button
                 type="button"
-                aria-label="Favoritos (em breve)"
+                aria-label="Favoritos"
+                onClick={() =>
+                  requireAuth(() => navigate('/conta'), 'Entre ou cadastre-se para salvar seus favoritos.')
+                }
                 className="group relative inline-flex shrink-0 items-center"
               >
                 <img

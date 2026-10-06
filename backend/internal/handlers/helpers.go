@@ -15,6 +15,13 @@ func respond(c *gin.Context, data interface{}, err error) {
 			c.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
 			return
 		}
+		// A ficha de cadastro precisa saber qual campo reprovou para destacar o
+		// input certo em vez de mostrar um erro generico no topo do formulario.
+		var conflict *services.FieldConflictError
+		if errors.As(err, &conflict) {
+			c.JSON(http.StatusConflict, gin.H{"message": conflict.Message, "field": conflict.Field})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}

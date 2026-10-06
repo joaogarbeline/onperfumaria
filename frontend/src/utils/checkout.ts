@@ -6,15 +6,12 @@ export const CHECKOUT_INITIAL_FORM: CheckoutForm = {
   confirmEmail: '',
   customerPhone: '',
   customerCpf: '',
-  password: '',
-  confirmPassword: '',
-  showPassword: false,
   cep: '',
   street: '',
   number: '',
   neighborhood: '',
-  city: 'Campo Grande',
-  state: 'MS',
+  city: '',
+  state: '',
   deliveryMode: '',
   couponCode: '',
 }
@@ -86,7 +83,15 @@ export function getPasswordStrength(password: string): { score: number; label: s
   return { score, label: 'Forte', color: 'text-emerald-600' }
 }
 
-export function validateCheckoutForm(form: CheckoutForm, isGuest: boolean) {
+/** Campo Grande/MS tem regra propria de entrega: sem frete precificado no site. */
+export function isCampoGrandeAddress(city: string, state: string): boolean {
+  return (
+    city.trim().toUpperCase() === 'CAMPO GRANDE' &&
+    (state.trim().toUpperCase() === 'MS' || state.trim() === '')
+  )
+}
+
+export function validateCheckoutForm(form: CheckoutForm) {
   const errors: string[] = []
 
   if (!form.customerName.trim()) errors.push('Nome obrigatorio')
@@ -98,23 +103,7 @@ export function validateCheckoutForm(form: CheckoutForm, isGuest: boolean) {
   if (!cpf) errors.push('CPF obrigatorio')
   else if (!isValidCPF(cpf)) errors.push('CPF invalido')
 
-  if (isGuest) {
-    if (!form.password) errors.push('Senha obrigatoria')
-    else if (form.password.length < 6) errors.push('Senha deve ter no minimo 6 caracteres')
-    else if (getPasswordStrength(form.password).score < 2)
-      errors.push('Senha muito fraca - use letras e numeros')
-
-    if (form.password && form.confirmPassword && form.password !== form.confirmPassword) {
-      errors.push('Senhas nao conferem')
-    }
-  }
-
-  if (!form.cep.replace(/\D/g, '')) errors.push('CEP obrigatorio')
-  if (!form.street.trim()) errors.push('Rua obrigatoria')
-  if (!form.number.trim()) errors.push('Numero obrigatorio')
-  if (!form.neighborhood.trim()) errors.push('Bairro obrigatorio')
-  if (!form.city.trim()) errors.push('Cidade obrigatoria')
-  if (!form.state.trim()) errors.push('Estado obrigatorio')
+  // Endereco temporariamente opcional no checkout.
   if (!form.deliveryMode) errors.push('Selecione a entrega')
 
   return { valid: errors.length === 0, errors }

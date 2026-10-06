@@ -143,10 +143,9 @@ export type CreateOrganizerNodeInput = {
   variant?: OrganizerVariant
   route?: string
   status?: OrganizerStatus
-  availability?: OrganizerNode['availability']
 }
 
-export function useOrganizerStore() {
+export function useOrganizerStore(token?: string) {
   const [store, setStore] = useState<OrganizerStore>(loadOrganizerStore)
   const [remoteReady, setRemoteReady] = useState(false)
   const storeRef = useRef(store)
@@ -154,6 +153,12 @@ export function useOrganizerStore() {
   const localRevision = useRef(0)
   const hasSyncedWithServer = useRef(false)
   const isOrganizerRoute = window.location.pathname === '/organizador'
+  // Salvar (PUT) agora exige o token de administrador; ler (GET) continua
+  // publico porque o site inteiro depende da estrutura para renderizar.
+  const tokenRef = useRef(token)
+  useEffect(() => {
+    tokenRef.current = token
+  }, [token])
 
   const setLocalStore = (updater: SetStateAction<OrganizerStore>) => {
     setStore((current) => {
@@ -231,7 +236,7 @@ export function useOrganizerStore() {
         if (remoteStore && Array.isArray(remoteStore.nodes)) {
           applyRemoteStore(remoteStore)
         } else if (allowInitialize && isOrganizerRoute) {
-          await api.put<OrganizerStore>('/organizer', storeRef.current)
+          await api.put<OrganizerStore>('/organizer', storeRef.current, tokenRef.current)
           hasSyncedWithServer.current = true
         }
       } catch {
@@ -256,7 +261,7 @@ export function useOrganizerStore() {
     const snapshot = store
     const timeout = window.setTimeout(() => {
       void api
-        .put<OrganizerStore>('/organizer', snapshot)
+        .put<OrganizerStore>('/organizer', snapshot, tokenRef.current)
         .then(() => {
           if (storesAreEqual(storeRef.current, snapshot)) pendingLocalSave.current = false
         })
@@ -313,7 +318,6 @@ export function useOrganizerStore() {
               ? 'banner'
               : 'standard'),
       route: input.type === 'page' ? pageRoute : undefined,
-      availability: input.availability,
       createdAt: timestamp,
       updatedAt: timestamp,
     }
@@ -518,10 +522,35 @@ export function useOrganizerStore() {
     setLocalStore((current) => {
       const entry = current.trash.find((item) => item.id === id)
       if (!entry) return current
-      const next = { ...current, trash: current.trash.filter((item) => item.id !== id) }
-      if (entry.kind === 'node') next.nodes = [...next.nodes, entry.payload as OrganizerNode]
-      else next.tags = [...next.tags, entry.payload as OrganizerTag]
-      return withActivity(next, activity(`${entry.label} restaurado`, 'Item recuperado da lixeira', null))
+
+      let trash = current.trash
+      let nodes = current.nodes
+      let tags = current.tags
+
+      const restoreNode = (nodeEntry: OrganizerTrashEntry) => {
+        trash = trash.filter((item) => item.id !== nodeEntry.id)
+        let node = nodeEntry.payload as OrganizerNode
+        if (node.parentId && !nodes.some((existing) => existing.id === node.parentId)) {
+          const ancestorEntry = trash.find(
+            (item) => item.kind === 'node' && (item.payload as OrganizerNode).id === node.parentId,
+          )
+          if (ancestorEntry) restoreNode(ancestorEntry)
+          else node = { ...node, parentId: 'home' }
+        }
+        nodes = [...nodes, node]
+      }
+
+      if (entry.kind === 'node') {
+        restoreNode(entry)
+      } else {
+        trash = trash.filter((item) => item.id !== id)
+        tags = [...tags, entry.payload as OrganizerTag]
+      }
+
+      return withActivity(
+        { ...current, trash, nodes, tags },
+        activity(`${entry.label} restaurado`, 'Item recuperado da lixeira', null),
+      )
     })
   }
 

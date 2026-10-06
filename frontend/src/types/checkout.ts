@@ -32,9 +32,6 @@ export type CheckoutForm = {
   confirmEmail: string
   customerPhone: string
   customerCpf: string
-  password: string
-  confirmPassword: string
-  showPassword: boolean
   cep: string
   street: string
   number: string

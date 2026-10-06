@@ -193,15 +193,6 @@ a:active {
   }
 }
 
-@keyframes shineSweep {
-  0% {
-    transform: translateX(-130%) skewX(-12deg);
-  }
-  100% {
-    transform: translateX(160%) skewX(-12deg);
-  }
-}
-
 @keyframes countUpFade {
   from {
     opacity: 0;
@@ -280,27 +271,6 @@ a:active {
   transform-style: preserve-3d;
 }
 
-.shine-sweep {
-  position: relative;
-  overflow: hidden;
-}
-
-.shine-sweep::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  width: 40%;
-  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-  transform: translateX(-130%) skewX(-12deg);
-  pointer-events: none;
-}
-
-.shine-sweep:hover::after {
-  animation: shineSweep 900ms ease forwards;
-}
-
 .skeleton-wave {
   background: linear-gradient(
     90deg,
@@ -341,6 +311,11 @@ a:active {
 
   .field-base {
     @apply w-full rounded-[22px] border border-[#ddc7ea] bg-white px-4 py-3.5 text-sm text-[#2a0f3d] placeholder:text-[#9b86a8] focus:border-[#d89a28] focus:outline-none focus:ring-4 focus:ring-[#f7dfb1];
+  }
+
+  /* Variante baixa, para formularios longos dentro de janela flutuante. */
+  .field-compact {
+    @apply rounded-[16px] px-3.5 py-2.5;
   }
 
   .surface-trust {

@@ -1,5 +1,7 @@
 import { Outlet, useLocation } from 'react-router-dom'
+import { AuthModal } from '../../components/auth/AuthModal'
 import { Footer } from '../../components/Footer'
+import { useAuth } from '../../contexts/AuthContext'
 import { Header } from './Header'
 import { MobileBottomNav } from './mobile/MobileBottomNav'
 import { useIsMobile } from './useIsMobile'
@@ -7,6 +9,7 @@ import { useIsMobile } from './useIsMobile'
 export function MainLayout() {
   const location = useLocation()
   const isMobile = useIsMobile()
+  const { modal } = useAuth()
   const isStandaloneProductPage = location.pathname === '/organizador'
 
   return (
@@ -30,6 +33,8 @@ export function MainLayout() {
       </div>
       {isStandaloneProductPage ? null : <Footer />}
       {isMobile && !isStandaloneProductPage ? <MobileBottomNav /> : null}
+      {/* A chave remonta a janela zerada a cada nova abertura. */}
+      {modal ? <AuthModal key={modal.id} /> : null}
     </div>
   )
 }

@@ -1,11 +1,22 @@
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react'
-import { Copy, Eye, EyeOff, Minus, Plus, Trash2 } from 'lucide-react'
+import {
+  Check,
+  ChevronLeft,
+  Copy,
+  CreditCard,
+  MapPin,
+  Minus,
+  Plus,
+  ShoppingBag,
+  Trash2,
+  Truck,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { CartSummary } from '../components/CartSummary'
 import { EmptyState } from '../components/EmptyState'
-import { InputField, SelectField } from '../components/Field'
+import { InputField } from '../components/Field'
 import { Reveal } from '../components/Reveal'
 import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
@@ -20,19 +31,26 @@ import type {
 } from '../types/checkout'
 import {
   CHECKOUT_INITIAL_FORM,
-  formatCPF,
-  formatPhone,
-  getPasswordStrength,
+  isCampoGrandeAddress,
   PAYMENT_METHODS_CONFIG,
   paymentReturnMessage,
   rejectionMessage,
   validateCheckoutForm,
 } from '../utils/checkout'
 
+const STEP_LABELS: Record<1 | 2 | 3 | 4, string> = {
+  1: 'Carrinho',
+  2: 'Endereço',
+  3: 'Entrega',
+  4: 'Pagamento',
+}
+
 export function CheckoutPage() {
   const { items, updateQuantity, removeItem, clearCart } = useCart()
-  const { token, scope } = useAuth()
+  const { token, scope, isCustomer, requireAuth } = useAuth()
   const format = useCurrency()
+  const navigate = useNavigate()
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState<CheckoutConfig>({ shippingOptions: [], mpPublicKey: '' })
@@ -55,6 +73,9 @@ export function CheckoutPage() {
   const [readyBrickKey, setReadyBrickKey] = useState('')
   const [timedOutBrickKey, setTimedOutBrickKey] = useState('')
   const displayMessage = message || paymentReturnMessage(searchParams.get('status'))
+  // Sem conta o checkout nao passa do carrinho, mesmo se o cliente sair da
+  // conta no meio do processo.
+  const activeStep: 1 | 2 | 3 | 4 = isCustomer ? step : 1
 
   useEffect(() => {
     if (config.mpPublicKey) {
@@ -84,6 +105,28 @@ export function CheckoutPage() {
   const totalWeight = useMemo(
     () => items.reduce((sum, item) => sum + item.weightGrams * item.quantity, 0),
     [items],
+  )
+
+  // Campo Grande nao tem frete precificado no site: so entrega em residencia
+  // (valor combinado com o vendedor) ou retirada na loja.
+  const isCampoGrande = isCampoGrandeAddress(form.city, form.state)
+  const deliveryOptions = useMemo(
+    () =>
+      isCampoGrande
+        ? [
+            { value: 'local', label: 'Entrega em residencia' },
+            { value: 'pickup', label: 'Retirar na loja' },
+          ]
+        : config.shippingOptions,
+    [isCampoGrande, config.shippingOptions],
+  )
+
+  const deliveryMode = useMemo(
+    () =>
+      deliveryOptions.some((option) => option.value === form.deliveryMode)
+        ? form.deliveryMode
+        : (deliveryOptions[0]?.value ?? ''),
+    [deliveryOptions, form.deliveryMode],
   )
 
   useEffect(() => {
@@ -141,11 +184,11 @@ export function CheckoutPage() {
   }
 
   useEffect(() => {
-    if (!form.deliveryMode || !form.cep || subtotal <= 0 || totalWeight <= 0) {
+    if (!deliveryMode || !form.cep || subtotal <= 0 || totalWeight <= 0) {
       return
     }
 
-    if (form.deliveryMode === 'correios') {
+    if (deliveryMode === 'correios') {
       api
         .get<CorreiosOption[]>(`/shipping/correios?cep=${form.cep}&weight=${totalWeight}`)
         .then((options) => {
@@ -161,30 +204,48 @@ export function CheckoutPage() {
         cep: form.cep,
         subtotal: subtotal - couponDiscount,
         weightGrams: totalWeight,
-        deliveryMode: form.deliveryMode,
+        deliveryMode,
         city: form.city,
       })
       .then(setQuote)
       .catch(() => setQuote(null))
-  }, [form.cep, form.deliveryMode, form.city, subtotal, totalWeight, couponDiscount])
+  }, [form.cep, deliveryMode, form.city, subtotal, totalWeight, couponDiscount])
 
   const selectedCorreiosOption = correiosOptions.find((o) => o.code === selectedCorreios)
   const activeQuote =
-    form.deliveryMode === 'correios'
+    deliveryMode === 'correios'
       ? selectedCorreiosOption
         ? { amount: selectedCorreiosOption.price, label: selectedCorreiosOption.label }
         : null
-      : form.deliveryMode && form.cep && subtotal > 0 && totalWeight > 0
+      : deliveryMode && form.cep && subtotal > 0 && totalWeight > 0
         ? quote
         : null
   const total = subtotal - couponDiscount + (activeQuote?.amount ?? 0)
-  const isGuest = !token || scope !== 'customer'
-  const validation = validateCheckoutForm(form, isGuest)
+  const validation = validateCheckoutForm(form)
   const missingRequiredFields = !validation.valid
+  const addressErrors = validation.errors.filter((error) => error !== 'Selecione a entrega')
+  const step2Valid = addressErrors.length === 0
+  const step3Valid = Boolean(deliveryMode) && (deliveryMode !== 'correios' || Boolean(selectedCorreios))
   const showBrick = !missingRequiredFields && !!config.mpPublicKey
   const brickKey = showBrick ? total.toFixed(2) : ''
   const brickReady = readyBrickKey === brickKey
   const brickTimedOut = timedOutBrickKey === brickKey
+
+  function goToStep(next: 1 | 2 | 3 | 4) {
+    setStep(next)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Sair do carrinho exige conta: a janela flutuante cuida do login/cadastro e
+  // so depois o checkout avanca para o endereco.
+  function handleContinue() {
+    const next = (activeStep + 1) as 2 | 3 | 4
+    if (activeStep === 1) {
+      requireAuth(() => goToStep(2), 'Entre ou cadastre-se para informar o endereco de entrega.')
+      return
+    }
+    goToStep(next)
+  }
 
   useEffect(() => {
     if (!showBrick) return
@@ -211,7 +272,8 @@ export function CheckoutPage() {
         '/checkout',
         {
           ...form,
-          correiosPrice: form.deliveryMode === 'correios' ? (activeQuote?.amount ?? 0) : 0,
+          deliveryMode,
+          correiosPrice: deliveryMode === 'correios' ? (activeQuote?.amount ?? 0) : 0,
           items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
           paymentMethodId: formData.payment_method_id,
           token: formData.token ?? '',
@@ -253,6 +315,7 @@ export function CheckoutPage() {
   if (pixData) {
     return (
       <EmptyState
+        fullPage
         eyebrow="Pix"
         title={pixPaid ? 'Pagamento confirmado!' : 'Escaneie o QR Code para pagar'}
         description={
@@ -298,6 +361,7 @@ export function CheckoutPage() {
   if (items.length === 0) {
     return (
       <EmptyState
+        fullPage
         eyebrow="Carrinho vazio"
         title={displayMessage ? 'Pedido concluido' : 'Seu carrinho esta vazio'}
         description={
@@ -314,293 +378,71 @@ export function CheckoutPage() {
   }
 
   return (
-    <form className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]" onSubmit={(event) => event.preventDefault()}>
-      <div className="space-y-6">
-        <Reveal>
-          <section className="surface-panel p-5 sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="eyebrow">Checkout</p>
-                <h1 className="mt-2 text-5xl leading-none text-[#2a0f3d]">Finalize com seguranca</h1>
-              </div>
-              {profile ? (
-                <p className="text-sm text-[#6b665f]">Cliente identificado: {profile.name}</p>
-              ) : null}
-            </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <StepBar step={activeStep} />
 
-            <div className="mt-6 space-y-4">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="surface-soft flex flex-col gap-4 p-4 sm:flex-row sm:items-center"
-                >
-                  <img
-                    src={item.imageUrl}
-                    alt={item.name}
-                    className="h-28 w-full rounded-[24px] object-cover sm:h-24 sm:w-24"
-                  />
-                  <div className="flex-1">
-                    <p className="text-xl font-semibold text-[#2a0f3d]">{item.name}</p>
-                    <p className="mt-1 text-sm text-[#6b665f]">
-                      {item.brand} • {format(item.finalPrice)}
-                    </p>
-                    {item.discountLabel ? (
-                      <p className="mt-1 text-xs text-[#0f8a5f]">{item.discountLabel}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center justify-between gap-3 sm:justify-end">
-                    <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-2 py-2">
-                      <button
-                        type="button"
-                        aria-label={`Diminuir quantidade de ${item.name}`}
-                        onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
-                      >
-                        <Minus size={16} />
-                      </button>
-                      <span className="min-w-8 text-center text-sm font-semibold">{item.quantity}</span>
-                      <button
-                        type="button"
-                        aria-label={`Aumentar quantidade de ${item.name}`}
-                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                      >
-                        <Plus size={16} />
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label={`Remover ${item.name}`}
-                      onClick={() => removeItem(item.id)}
-                      className="rounded-full border border-rose-200 p-2 text-rose-600"
+      <form
+        className={`grid gap-6 ${activeStep !== 4 ? 'xl:grid-cols-[1.2fr_0.8fr]' : ''}`}
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <div className={`space-y-6 ${activeStep === 4 ? 'mx-auto w-full max-w-2xl' : ''}`}>
+          {activeStep === 1 && (
+            <Reveal>
+              <section className="surface-panel p-5 sm:p-6">
+                <h1 className="text-5xl leading-none text-[#2a0f3d]">Seu carrinho</h1>
+
+                <div className="mt-6 space-y-4">
+                  {items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="surface-soft flex flex-col gap-4 p-4 sm:flex-row sm:items-center"
                     >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </Reveal>
-
-        <Reveal delay={80}>
-          <section className="surface-panel p-5 sm:p-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <InputField
-                label="Nome completo"
-                value={form.customerName}
-                onChange={(event) => setForm((current) => ({ ...current, customerName: event.target.value }))}
-                required
-              />
-              {!isGuest && profile && profile.addresses.length > 0 ? (
-                <SelectField
-                  label="Endereco salvo"
-                  value={selectedAddressId}
-                  onChange={(event) => {
-                    if (event.target.value === '__new__') {
-                      setSelectedAddressId('__new__')
-                      setForm((current) => ({
-                        ...current,
-                        cep: '',
-                        street: '',
-                        number: '',
-                        neighborhood: '',
-                        city: 'Campo Grande',
-                        state: 'MS',
-                      }))
-                    } else {
-                      applyAddress(event.target.value)
-                    }
-                  }}
-                >
-                  <option value="">Selecionar endereco...</option>
-                  {profile.addresses.map((address, index) => (
-                    <option key={address.id || `${address.cep}-${index}`} value={address.id}>
-                      {(address.label || `Endereco ${index + 1}`) + (address.isDefault ? ' - padrao' : '')}
-                    </option>
-                  ))}
-                  <option value="__new__">+ Novo endereco</option>
-                </SelectField>
-              ) : null}
-              <InputField
-                label="CEP"
-                value={form.cep}
-                onChange={(event) => {
-                  const cep = event.target.value
-                  setForm((current) => ({ ...current, cep }))
-                  if (cep.replace(/\D/g, '').length === 8) {
-                    api
-                      .get<{
-                        logradouro?: string
-                        bairro?: string
-                        localidade?: string
-                        uf?: string
-                        erro?: string
-                      }>(`/cep/${cep.replace(/\D/g, '')}`)
-                      .then((data) => {
-                        if (!data.erro) {
-                          setForm((current) => ({
-                            ...current,
-                            street: data.logradouro || current.street,
-                            neighborhood: data.bairro || current.neighborhood,
-                            city: data.localidade ? data.localidade.toUpperCase() : current.city,
-                            state: data.uf || current.state,
-                          }))
-                        }
-                      })
-                      .catch(() => undefined)
-                  }
-                }}
-                required
-              />
-              <InputField
-                label="Rua"
-                value={form.street}
-                onChange={(event) => setForm((current) => ({ ...current, street: event.target.value }))}
-                required
-              />
-              <InputField
-                label="Numero"
-                value={form.number}
-                onChange={(event) => setForm((current) => ({ ...current, number: event.target.value }))}
-                required
-              />
-              <InputField
-                label="Bairro"
-                value={form.neighborhood}
-                onChange={(event) => setForm((current) => ({ ...current, neighborhood: event.target.value }))}
-                required
-              />
-              <InputField
-                label="Cidade"
-                value={form.city}
-                onChange={(event) => {
-                  let value = event.target.value
-                  if (value.toLowerCase() === 'campo grande') {
-                    value = 'CAMPO GRANDE'
-                  }
-                  setForm((current) => ({ ...current, city: value }))
-                }}
-                required
-              />
-              <InputField
-                label="Estado"
-                value={form.state}
-                onChange={(event) => setForm((current) => ({ ...current, state: event.target.value }))}
-                required
-              />
-              <InputField
-                label="E-mail"
-                type="email"
-                value={form.customerEmail}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, customerEmail: event.target.value }))
-                }
-                required
-              />
-              <InputField
-                label="Confirmar e-mail"
-                type="email"
-                value={form.confirmEmail}
-                onChange={(event) => setForm((current) => ({ ...current, confirmEmail: event.target.value }))}
-                required
-              />
-              <InputField
-                label="Telefone"
-                value={form.customerPhone}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, customerPhone: formatPhone(event.target.value) }))
-                }
-                placeholder="(67) 99999-9999"
-                required
-              />
-              <InputField
-                label="CPF"
-                value={form.customerCpf}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, customerCpf: formatCPF(event.target.value) }))
-                }
-                placeholder="000.000.000-00"
-                required
-              />
-              {isGuest ? (
-                <>
-                  <div className="md:col-span-2">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="relative">
-                        <InputField
-                          label="Senha para cadastro"
-                          type={form.showPassword ? 'text' : 'password'}
-                          value={form.password}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, password: event.target.value }))
-                          }
-                          required
-                        />
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name}
+                        className="h-28 w-full rounded-[24px] object-cover sm:h-24 sm:w-24"
+                      />
+                      <div className="flex-1">
+                        <p className="text-xl font-semibold text-[#2a0f3d]">{item.name}</p>
+                        <p className="mt-1 text-sm text-[#6b665f]">
+                          {item.brand} • {format(item.finalPrice)}
+                        </p>
+                        {item.discountLabel ? (
+                          <p className="mt-1 text-xs text-[#0f8a5f]">{item.discountLabel}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center justify-between gap-3 sm:justify-end">
+                        <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-2 py-2">
+                          <button
+                            type="button"
+                            aria-label={`Diminuir quantidade de ${item.name}`}
+                            onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
+                          >
+                            <Minus size={16} />
+                          </button>
+                          <span className="min-w-8 text-center text-sm font-semibold">{item.quantity}</span>
+                          <button
+                            type="button"
+                            aria-label={`Aumentar quantidade de ${item.name}`}
+                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setForm((f) => ({ ...f, showPassword: !f.showPassword }))}
-                          className="absolute right-3 top-[34px] text-[#6b665f]"
-                          tabIndex={-1}
+                          aria-label={`Remover ${item.name}`}
+                          onClick={() => removeItem(item.id)}
+                          className="rounded-full border border-rose-200 p-2 text-rose-600"
                         >
-                          {form.showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          <Trash2 size={16} />
                         </button>
-                        {form.password ? (
-                          <p
-                            className={`mt-1 text-xs font-medium ${getPasswordStrength(form.password).color}`}
-                          >
-                            Forca: {getPasswordStrength(form.password).label}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="relative">
-                        <InputField
-                          label="Confirmar senha"
-                          type={form.showPassword ? 'text' : 'password'}
-                          value={form.confirmPassword}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, confirmPassword: event.target.value }))
-                          }
-                          required
-                        />
-                        {form.confirmPassword ? (
-                          <p
-                            className={`mt-1 text-xs font-medium ${form.password === form.confirmPassword ? 'text-emerald-500' : 'text-rose-500'}`}
-                          >
-                            {form.password === form.confirmPassword
-                              ? 'Senhas conferem'
-                              : 'Senhas nao conferem'}
-                          </p>
-                        ) : null}
                       </div>
                     </div>
-                  </div>
-                </>
-              ) : null}
-              <SelectField
-                label="Entrega"
-                value={form.deliveryMode}
-                onChange={(event) => setForm((current) => ({ ...current, deliveryMode: event.target.value }))}
-              >
-                {config.shippingOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </SelectField>
-              {form.deliveryMode === 'correios' && correiosOptions.length > 0 ? (
-                <SelectField
-                  label="Opcao Correios"
-                  value={selectedCorreios}
-                  onChange={(event) => setSelectedCorreios(event.target.value)}
-                >
-                  {correiosOptions.map((option) => (
-                    <option key={option.code} value={option.code}>
-                      {option.label}
-                    </option>
                   ))}
-                </SelectField>
-              ) : null}
-              <div className="md:col-span-2">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                   <InputField
                     label="Cupom"
                     value={form.couponCode}
@@ -641,83 +483,302 @@ export function CheckoutPage() {
                   </Button>
                 </div>
                 {couponMessage ? <p className="mt-2 text-xs text-[#6b665f]">{couponMessage}</p> : null}
-              </div>
-            </div>
-
-            {displayMessage ? (
-              <p className="mt-5 rounded-[22px] border border-stone-200 bg-[#eadcf0] px-4 py-3 text-sm text-[#6b665f]">
-                {displayMessage}
-              </p>
-            ) : null}
-          </section>
-        </Reveal>
-      </div>
-
-      <Reveal delay={120}>
-        <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-          <CartSummary
-            subtotal={subtotal}
-            shipping={activeQuote?.amount ?? 0}
-            shippingLabel={activeQuote?.label || 'Frete'}
-            discount={couponDiscount}
-            total={total}
-            couponCode={form.couponCode}
-          />
-          {missingRequiredFields ? (
-            <p className="rounded-[22px] border border-stone-200 bg-[#eadcf0] px-4 py-3 text-center text-sm text-[#6b665f]">
-              Preencha seus dados e endereco acima para escolher a forma de pagamento.
-            </p>
-          ) : !config.mpPublicKey ? (
-            <p className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-[#6b665f]">
-              Pagamento online indisponivel no momento. Entre em contato para finalizar seu pedido.
-            </p>
-          ) : brickTimedOut && !brickReady ? (
-            <p className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm text-rose-600">
-              Nao foi possivel carregar o formulario de pagamento. Verifique sua conexao e recarregue a
-              pagina.
-            </p>
-          ) : (
-            <div
-              className={`surface-panel overflow-hidden p-2 ${loading ? 'pointer-events-none opacity-60' : ''}`}
-            >
-              {loading ? (
-                <p className="px-4 pt-3 text-center text-xs font-medium text-[#6b665f]">
-                  Processando pagamento...
-                </p>
-              ) : null}
-              {!brickReady ? (
-                <p className="px-4 pt-3 text-center text-xs font-medium text-[#6b665f]">
-                  Carregando formulario de pagamento...
-                </p>
-              ) : null}
-              <Payment
-                key={brickKey}
-                initialization={{ amount: total }}
-                customization={{ paymentMethods: PAYMENT_METHODS_CONFIG }}
-                onSubmit={handlePayment}
-                onReady={() => setReadyBrickKey(brickKey)}
-                onError={(error) =>
-                  setPaymentError(error instanceof Error ? error.message : 'Erro ao carregar o pagamento')
-                }
-                locale="pt-BR"
-              />
-            </div>
+              </section>
+            </Reveal>
           )}
-          {paymentError ? (
-            <p className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
-              {paymentError}
-            </p>
+
+          {activeStep === 2 && (
+            <Reveal>
+              <section>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                  Selecione seu endereço
+                </p>
+
+                {profile && profile.addresses.length > 0 ? (
+                  <div className="space-y-2">
+                    {profile.addresses.map((address, index) => {
+                      const isSelected = selectedAddressId === address.id
+                      return (
+                        <label
+                          key={address.id || `${address.cep}-${index}`}
+                          className={`flex cursor-pointer items-center gap-3 rounded-[18px] border p-3.5 transition ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
+                        >
+                          <input
+                            type="radio"
+                            name="savedAddress"
+                            checked={isSelected}
+                            onChange={() => applyAddress(address.id || '')}
+                            className="h-4 w-4 shrink-0 accent-[#5b247f]"
+                          />
+                          <span className="text-sm text-[#2a0f3d]">
+                            {address.street}
+                            {address.number ? `, ${address.number}` : ''} - {address.city}, {address.state},
+                            CEP {address.cep}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#6b665f]">Nenhum endereço cadastrado.</p>
+                )}
+              </section>
+            </Reveal>
+          )}
+
+          {activeStep === 3 && (
+            <Reveal>
+              <section className="surface-panel p-5 sm:p-6">
+                <h1 className="text-4xl leading-none text-[#2a0f3d]">Forma de entrega</h1>
+
+                <div className="mt-6 space-y-3">
+                  {deliveryOptions.map((option) => {
+                    const isSelected = deliveryMode === option.value
+                    return (
+                      <label
+                        key={option.value}
+                        className={`flex cursor-pointer items-center justify-between gap-4 rounded-[22px] border p-4 transition ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
+                      >
+                        <span className="flex items-center gap-3">
+                          <input
+                            type="radio"
+                            name="deliveryMode"
+                            value={option.value}
+                            checked={isSelected}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, deliveryMode: event.target.value }))
+                            }
+                            className="h-4 w-4 accent-[#5b247f]"
+                          />
+                          <span className="text-sm font-semibold text-[#2a0f3d]">{option.label}</span>
+                        </span>
+                        {isCampoGrande ? (
+                          <span className="text-xs font-bold uppercase tracking-[0.18em] text-[#b77717]">
+                            {option.value === 'pickup' ? 'Sem custo' : 'A combinar'}
+                          </span>
+                        ) : isSelected && activeQuote ? (
+                          <span className="text-sm font-semibold text-[#3a164f]">
+                            {format(activeQuote.amount)}
+                          </span>
+                        ) : null}
+                      </label>
+                    )
+                  })}
+                </div>
+
+                {deliveryMode === 'correios' && correiosOptions.length > 0 ? (
+                  <div className="mt-5 space-y-3">
+                    <p className="eyebrow">Opção dos Correios</p>
+                    {correiosOptions.map((option) => {
+                      const isSelected = selectedCorreios === option.code
+                      return (
+                        <label
+                          key={option.code}
+                          className={`flex cursor-pointer items-center justify-between gap-4 rounded-[22px] border p-4 transition ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
+                        >
+                          <span className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="correiosOption"
+                              value={option.code}
+                              checked={isSelected}
+                              onChange={() => setSelectedCorreios(option.code)}
+                              className="h-4 w-4 accent-[#5b247f]"
+                            />
+                            <span className="text-sm font-semibold text-[#2a0f3d]">{option.label}</span>
+                          </span>
+                          <span className="text-sm font-semibold text-[#3a164f]">{format(option.price)}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </section>
+            </Reveal>
+          )}
+
+          {activeStep === 4 && (
+            <Reveal>
+              <section className="surface-panel p-5 sm:p-6">
+                <h1 className="text-4xl leading-none text-[#2a0f3d]">Revise e pague</h1>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <div className="surface-soft p-4">
+                    <p className="eyebrow mb-1">Endereço de entrega</p>
+                    {form.street || form.number || form.cep ? (
+                      <>
+                        <p className="text-sm text-[#2a0f3d]">
+                          {form.street}
+                          {form.number ? `, ${form.number}` : ''}
+                          {form.neighborhood ? ` - ${form.neighborhood}` : ''}
+                        </p>
+                        <p className="text-sm text-[#6b665f]">
+                          {form.city} - {form.state}
+                          {form.cep ? ` · CEP ${form.cep}` : ''}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-[#6b665f]">Não informado</p>
+                    )}
+                  </div>
+                  <div className="surface-soft p-4">
+                    <p className="eyebrow mb-1">Entrega escolhida</p>
+                    <p className="text-sm text-[#2a0f3d]">
+                      {activeQuote?.label || 'Selecione na etapa anterior'}
+                    </p>
+                    {activeQuote && !isCampoGrande ? (
+                      <p className="text-sm text-[#6b665f]">{format(activeQuote.amount)}</p>
+                    ) : null}
+                  </div>
+                </div>
+
+                {displayMessage ? (
+                  <p className="mt-5 rounded-[22px] border border-stone-200 bg-[#eadcf0] px-4 py-3 text-sm text-[#6b665f]">
+                    {displayMessage}
+                  </p>
+                ) : null}
+              </section>
+            </Reveal>
+          )}
+
+          {activeStep === 4 ? (
+            <Reveal delay={60}>
+              <div className="space-y-4">
+                {missingRequiredFields ? (
+                  <p className="rounded-[22px] border border-stone-200 bg-[#eadcf0] px-4 py-3 text-center text-sm text-[#6b665f]">
+                    Volte e preencha seus dados e endereco para escolher a forma de pagamento.
+                  </p>
+                ) : !config.mpPublicKey ? (
+                  <p className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-[#6b665f]">
+                    Pagamento online indisponivel no momento. Entre em contato para finalizar seu pedido.
+                  </p>
+                ) : brickTimedOut && !brickReady ? (
+                  <p className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm text-rose-600">
+                    Nao foi possivel carregar o formulario de pagamento. Verifique sua conexao e recarregue a
+                    pagina.
+                  </p>
+                ) : (
+                  <div
+                    className={`surface-panel overflow-hidden p-2 ${loading ? 'pointer-events-none opacity-60' : ''}`}
+                  >
+                    {loading ? (
+                      <p className="px-4 pt-3 text-center text-xs font-medium text-[#6b665f]">
+                        Processando pagamento...
+                      </p>
+                    ) : null}
+                    {!brickReady ? (
+                      <p className="px-4 pt-3 text-center text-xs font-medium text-[#6b665f]">
+                        Carregando formulario de pagamento...
+                      </p>
+                    ) : null}
+                    <Payment
+                      key={brickKey}
+                      initialization={{ amount: total }}
+                      customization={{ paymentMethods: PAYMENT_METHODS_CONFIG }}
+                      onSubmit={handlePayment}
+                      onReady={() => setReadyBrickKey(brickKey)}
+                      onError={(error) =>
+                        setPaymentError(
+                          error instanceof Error ? error.message : 'Erro ao carregar o pagamento',
+                        )
+                      }
+                      locale="pt-BR"
+                    />
+                  </div>
+                )}
+
+                {paymentError ? (
+                  <p className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+                    {paymentError}
+                  </p>
+                ) : null}
+              </div>
+            </Reveal>
           ) : null}
-          {isGuest ? (
-            <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-[#6b665f]">
-              Ja tem cadastro?{' '}
-              <Link to="/login" className="font-semibold text-[#b77717]">
-                Entrar como cliente
-              </Link>
+
+          {activeStep === 4 ? (
+            <div className="flex items-center justify-between gap-3">
+              <Button type="button" variant="secondary" onClick={() => goToStep(3)}>
+                <ChevronLeft size={16} /> Voltar
+              </Button>
             </div>
           ) : null}
         </div>
-      </Reveal>
-    </form>
+
+        {/* O resumo acompanha carrinho, endereco e entrega; na etapa de pagamento a tela e unica. */}
+        {activeStep !== 4 ? (
+          <Reveal delay={120}>
+            <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+              <CartSummary
+                subtotal={subtotal}
+                shipping={activeQuote?.amount ?? 0}
+                shippingLabel={activeQuote?.label || 'Frete'}
+                discount={couponDiscount}
+                total={total}
+                couponCode={form.couponCode}
+              />
+              <div className="surface-panel space-y-3 p-5">
+                <Button
+                  type="button"
+                  fullWidth
+                  disabled={(activeStep === 2 && !step2Valid) || (activeStep === 3 && !step3Valid)}
+                  onClick={handleContinue}
+                >
+                  Continuar
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fullWidth
+                  onClick={() => (activeStep === 1 ? navigate(-1) : goToStep((activeStep - 1) as 1 | 2))}
+                >
+                  Voltar
+                </Button>
+              </div>
+            </div>
+          </Reveal>
+        ) : null}
+      </form>
+    </div>
+  )
+}
+
+function StepBar({ step }: { step: 1 | 2 | 3 | 4 }) {
+  const steps = [1, 2, 3, 4] as const
+  return (
+    <ol className="flex items-center justify-center gap-2 sm:gap-4">
+      {steps.map((item, index) => {
+        const isActive = step === item
+        const isDone = step > item
+        const Icon = item === 1 ? ShoppingBag : item === 2 ? MapPin : item === 3 ? Truck : CreditCard
+        return (
+          <li key={item} className="flex items-center gap-2 sm:gap-4">
+            {index > 0 ? (
+              <span
+                className={`h-0.5 w-6 rounded-full sm:w-12 ${isDone || isActive ? 'bg-[#5b247f]' : 'bg-stone-200'}`}
+              />
+            ) : null}
+            <div className="flex flex-col items-center gap-1.5">
+              <span
+                className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition ${
+                  isActive
+                    ? 'border-[#5b247f] bg-[#5b247f] text-white'
+                    : isDone
+                      ? 'border-[#5b247f] bg-[#eadcf0] text-[#5b247f]'
+                      : 'border-stone-200 bg-white text-stone-400'
+                }`}
+              >
+                {isDone ? <Check size={16} /> : <Icon size={16} />}
+              </span>
+              <span
+                className={`text-[10px] font-semibold uppercase tracking-wide ${isActive || isDone ? 'text-[#3a164f]' : 'text-stone-400'}`}
+              >
+                {STEP_LABELS[item]}
+              </span>
+            </div>
+          </li>
+        )
+      })}
+    </ol>
   )
 }

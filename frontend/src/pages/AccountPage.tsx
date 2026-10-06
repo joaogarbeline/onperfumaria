@@ -49,7 +49,7 @@ const emptyAddressForm: AddressForm = {
 }
 
 export function AccountPage() {
-  const { token, scope, logout } = useAuth()
+  const { token, scope, logout, openAuth } = useAuth()
   const format = useCurrency()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [message, setMessage] = useState('')
@@ -76,14 +76,16 @@ export function AccountPage() {
           proximas compras.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Link to="/login">
-            <Button size="lg">Entrar</Button>
-          </Link>
-          <Link to="/cadastro">
-            <Button variant="secondary" size="lg">
-              Criar cadastro
-            </Button>
-          </Link>
+          <Button size="lg" onClick={() => openAuth({ reason: 'Entre para ver seus pedidos e enderecos.' })}>
+            Entrar
+          </Button>
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={() => openAuth({ view: 'register', reason: 'Preencha sua ficha de cadastro.' })}
+          >
+            Criar cadastro
+          </Button>
         </div>
       </section>
     )

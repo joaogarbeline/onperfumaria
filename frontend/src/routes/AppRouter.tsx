@@ -3,7 +3,7 @@ import { MainLayout } from '../pages/layout/MainLayout'
 import { AccountPage } from '../pages/AccountPage'
 import { CategoryPage } from '../pages/CategoryPage'
 import { CheckoutPage } from '../pages/CheckoutPage'
-import { CustomerAuthPage } from '../pages/CustomerAuthPage'
+import { CustomerAuthPage, PasswordResetPage } from '../pages/CustomerAuthPage'
 import { HomePage } from '../pages/HomePage'
 import { ManagedPage } from '../pages/ManagedPage'
 import { OrderTrackingPage } from '../pages/OrderTrackingPage'
@@ -28,6 +28,7 @@ export function AppRouter() {
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/login" element={<CustomerAuthPage mode="login" />} />
           <Route path="/cadastro" element={<CustomerAuthPage mode="register" />} />
+          <Route path="/redefinir-senha" element={<PasswordResetPage />} />
           <Route path="/conta" element={<AccountPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

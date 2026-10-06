@@ -5,7 +5,7 @@ export function itemCardToProduct(item: ItemCardContent): Product {
   const price = item.price || 0
   return {
     id: item.id,
-    sku: item.id,
+    sku: item.sku || item.id,
     name: item.name,
     slug: item.id,
     brand: item.tagLabel || '',

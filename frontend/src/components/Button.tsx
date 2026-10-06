@@ -6,11 +6,10 @@ type ButtonSize = 'sm' | 'md' | 'lg'
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'shine-sweep bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-white shadow-[0_24px_48px_-26px_rgba(58,22,79,0.58)] hover:-translate-y-1 hover:brightness-110 hover:shadow-[var(--shadow-3d)] active:translate-y-0 disabled:bg-stone-300 disabled:text-stone-500',
+    'bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-white shadow-[0_24px_48px_-26px_rgba(58,22,79,0.58)] hover:brightness-90 disabled:bg-stone-300 disabled:text-stone-500',
   secondary:
-    'border border-[#ddc7ea] bg-white text-[#2a0f3d] hover:-translate-y-1 hover:border-[#d89a28] hover:text-[#2a0f3d] hover:shadow-[0_24px_50px_-30px_rgba(216,154,40,0.42)] active:translate-y-0 disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400',
-  ghost:
-    'bg-transparent text-[#2a0f3d] hover:bg-white/70 hover:shadow-[0_18px_36px_-24px_rgba(58,22,79,0.22)] disabled:text-stone-400',
+    'border border-[#ddc7ea] bg-white text-[#2a0f3d] hover:bg-[#f3e9f7] disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400',
+  ghost: 'bg-transparent text-[#2a0f3d] hover:bg-black/5 disabled:text-stone-400',
 }
 
 const sizeClasses: Record<ButtonSize, string> = {

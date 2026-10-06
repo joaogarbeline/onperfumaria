@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"onperfumaria/backend/internal/auth"
 	"onperfumaria/backend/internal/config"
+	"onperfumaria/backend/internal/mailer"
 	"onperfumaria/backend/internal/models"
 	"onperfumaria/backend/internal/payments"
 	"onperfumaria/backend/internal/repositories"
@@ -28,6 +28,7 @@ type Service struct {
 	db       *pgxpool.Pool
 	repo     *repositories.StoreRepository
 	payments payments.Provider
+	mailer   *mailer.Mailer
 }
 
 var ErrInvalidCredentials = errors.New("e-mail ou senha invalidos")
@@ -117,6 +118,14 @@ func NewService(cfg config.Config, db *pgxpool.Pool) *Service {
 		cfg:  cfg,
 		db:   db,
 		repo: repositories.NewStoreRepository(db),
+		mailer: mailer.New(mailer.Config{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			User:     cfg.SMTPUser,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+			FromName: cfg.SMTPFromName,
+		}),
 	}
 
 	var mpToken string
@@ -295,7 +304,13 @@ func (s *Service) StoreConfig(ctx context.Context) (map[string]interface{}, erro
 
 	mpPublicKey, _ := s.GetMPSetting(ctx, "mp_public_key")
 
-	return map[string]interface{}{"shippingOptions": options, "mpPublicKey": mpPublicKey}, nil
+	// O client id do Google sai daqui em vez de ser compilado no bundle: assim
+	// uma unica variavel no backend configura a loja, sem rebuild do frontend.
+	return map[string]interface{}{
+		"shippingOptions": options,
+		"mpPublicKey":     mpPublicKey,
+		"googleClientId":  s.cfg.GoogleClientID,
+	}, nil
 }
 
 func (s *Service) QuoteShipping(ctx context.Context, input shipping.QuoteInput) (shipping.QuoteOutput, error) {
@@ -314,8 +329,13 @@ func (s *Service) QuoteShipping(ctx context.Context, input shipping.QuoteInput) 
 	}
 	rules = normalizeShippingRules(rules)
 
+	// Em Campo Grande o frete nao e precificado no site: o valor (quando houver)
+	// e combinado direto entre o cliente e o vendedor que atender o pedido.
 	if strings.EqualFold(input.City, "CAMPO GRANDE") {
-		return shipping.QuoteOutput{Amount: 0, Label: "Frete gratis - Campo Grande"}, nil
+		if input.DeliveryMode == "pickup" {
+			return shipping.QuoteOutput{Amount: 0, Label: "Retirada na loja"}, nil
+		}
+		return shipping.QuoteOutput{Amount: 0, Label: "Entrega em residencia - a combinar com o vendedor"}, nil
 	}
 
 	switch input.DeliveryMode {
@@ -352,45 +372,18 @@ func (s *Service) QuoteShipping(ctx context.Context, input shipping.QuoteInput) 
 	return shipping.QuoteOutput{Amount: base, Label: label}, nil
 }
 
-func (s *Service) CustomerRegister(ctx context.Context, name, email, password, phone, cpf string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
-	}
-
-	var id string
-	err = s.db.QueryRow(ctx, `
-		INSERT INTO customers (name, email, phone, cpf, password_hash)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone, cpf = EXCLUDED.cpf
-		RETURNING id::text`, name, email, phone, cpf, string(hash)).Scan(&id)
-	if err != nil {
-		return "", err
-	}
-
-	return auth.GenerateToken(s.cfg.JWTSecret, id, "customer", "customer", 72*time.Hour)
-}
-
-func (s *Service) CustomerLogin(ctx context.Context, email, password string) (string, error) {
-	var id, hash string
-	err := s.db.QueryRow(ctx, `SELECT id::text, password_hash FROM customers WHERE email = $1`, email).Scan(&id, &hash)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", ErrInvalidCredentials
-		}
-		return "", err
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
-		return "", ErrInvalidCredentials
-	}
-	return auth.GenerateToken(s.cfg.JWTSecret, id, "customer", "customer", 72*time.Hour)
-}
-
-func (s *Service) CustomerProfile(ctx context.Context, customerID string) (map[string]interface{}, error) {
+// CustomerProfile busca a ficha completa de um cliente (usada tanto por
+// "/customer/me", onde requesterID e sempre o proprio customerID, quanto pela
+// tela de Clientes do admin). O admin fixo so pode ver a si mesmo por aqui.
+func (s *Service) CustomerProfile(ctx context.Context, customerID, requesterID string) (map[string]interface{}, error) {
 	var name, email, phone, cpf string
-	err := s.db.QueryRow(ctx, `SELECT name, email, phone, COALESCE(cpf, '') FROM customers WHERE id = $1`, customerID).Scan(&name, &email, &phone, &cpf)
+	var isFixedAdmin bool
+	err := s.db.QueryRow(ctx, `SELECT name, email, phone, COALESCE(cpf, ''), is_fixed_admin FROM customers WHERE id = $1`, customerID).Scan(&name, &email, &phone, &cpf, &isFixedAdmin)
 	if err != nil {
 		return nil, err
+	}
+	if isFixedAdmin && customerID != requesterID {
+		return nil, errors.New("cliente nao encontrado")
 	}
 
 	addressRows, err := s.db.Query(ctx, `SELECT id::text, label, cep, street, number, neighborhood, city, state, is_default FROM addresses WHERE customer_id = $1 ORDER BY is_default DESC, created_at DESC`, customerID)
@@ -570,7 +563,7 @@ func (s *Service) UpdateCustomerProfile(ctx context.Context, customerID string, 
 		return nil, err
 	}
 
-	return s.CustomerProfile(ctx, customerID)
+	return s.CustomerProfile(ctx, customerID, customerID)
 }
 
 func (s *Service) SaveCustomerAddress(ctx context.Context, customerID string, payload CustomerAddressPayload) (map[string]interface{}, error) {
@@ -634,7 +627,7 @@ func (s *Service) SaveCustomerAddress(ctx context.Context, customerID string, pa
 		return nil, err
 	}
 
-	return s.CustomerProfile(ctx, customerID)
+	return s.CustomerProfile(ctx, customerID, customerID)
 }
 
 func (s *Service) SetDefaultCustomerAddress(ctx context.Context, customerID, addressID string) (map[string]interface{}, error) {
@@ -663,7 +656,7 @@ func (s *Service) SetDefaultCustomerAddress(ctx context.Context, customerID, add
 		return nil, err
 	}
 
-	return s.CustomerProfile(ctx, customerID)
+	return s.CustomerProfile(ctx, customerID, customerID)
 }
 
 func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[string]interface{}, error) {
@@ -814,14 +807,30 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	}, nil
 }
 
-func (s *Service) Customers(ctx context.Context, search string) ([]map[string]interface{}, error) {
+// Customers lista clientes para as telas de administracao. O admin fixo
+// (is_fixed_admin) nunca aparece para ninguem alem dele mesmo - requesterID
+// e o id de quem esta chamando, extraido do token.
+func (s *Service) Customers(ctx context.Context, search, requesterID string) ([]map[string]interface{}, error) {
 	var rows pgx.Rows
 	var err error
 	if search != "" {
 		like := "%" + search + "%"
-		rows, err = s.db.Query(ctx, `SELECT id::text, name, email, phone, COALESCE(cpf, ''), created_at FROM customers WHERE name ILIKE $1 OR phone ILIKE $1 ORDER BY name LIMIT 30`, like)
+		cpfDigits := digitsOnly(search)
+		rows, err = s.db.Query(ctx, `
+			SELECT id::text, name, email, phone, COALESCE(cpf, ''), created_at, is_admin, is_fixed_admin
+			FROM customers
+			WHERE (name ILIKE $1
+			   OR email ILIKE $1
+			   OR ($2 <> '' AND regexp_replace(COALESCE(cpf, ''), '[^0-9]', '', 'g') ILIKE '%' || $2 || '%'))
+			   AND (NOT is_fixed_admin OR id::text = $3)
+			ORDER BY name
+			LIMIT 30`, like, cpfDigits, requesterID)
 	} else {
-		rows, err = s.db.Query(ctx, `SELECT id::text, name, email, phone, COALESCE(cpf, ''), created_at FROM customers ORDER BY created_at DESC`)
+		rows, err = s.db.Query(ctx, `
+			SELECT id::text, name, email, phone, COALESCE(cpf, ''), created_at, is_admin, is_fixed_admin
+			FROM customers
+			WHERE NOT is_fixed_admin OR id::text = $1
+			ORDER BY created_at DESC`, requesterID)
 	}
 	if err != nil {
 		return nil, err
@@ -832,12 +841,50 @@ func (s *Service) Customers(ctx context.Context, search string) ([]map[string]in
 	for rows.Next() {
 		var id, name, email, phone, cpf string
 		var createdAt time.Time
-		if err := rows.Scan(&id, &name, &email, &phone, &cpf, &createdAt); err != nil {
+		var isAdmin, isFixedAdmin bool
+		if err := rows.Scan(&id, &name, &email, &phone, &cpf, &createdAt, &isAdmin, &isFixedAdmin); err != nil {
 			return nil, err
 		}
-		customers = append(customers, map[string]interface{}{"id": id, "name": name, "email": email, "phone": phone, "cpf": cpf, "createdAt": createdAt})
+		customers = append(customers, map[string]interface{}{"id": id, "name": name, "email": email, "phone": phone, "cpf": cpf, "createdAt": createdAt, "isAdmin": isAdmin, "isFixedAdmin": isFixedAdmin})
 	}
 	return customers, rows.Err()
+}
+
+// CountAdmins existe para o bootstrap do primeiro administrador: enquanto
+// nao houver nenhum, SetCustomerAdmin aceita a chamada sem token.
+func (s *Service) CountAdmins(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM customers WHERE is_admin = true`).Scan(&count)
+	return count, err
+}
+
+// SetCustomerAdmin concede ou revoga o cargo de administrador de um cliente
+// ja cadastrado. O handler decide quem pode chamar: com pelo menos um admin
+// ja existente, so outro admin autenticado consegue; antes disso (loja
+// recem-instalada), a propria rota libera a primeira vez sem token.
+func (s *Service) SetCustomerAdmin(ctx context.Context, customerID string, isAdmin bool) (map[string]interface{}, error) {
+	if !isAdmin {
+		var isFixedAdmin bool
+		if err := s.db.QueryRow(ctx, `SELECT is_fixed_admin FROM customers WHERE id = $1`, customerID).Scan(&isFixedAdmin); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, errors.New("cliente nao encontrado")
+			}
+			return nil, err
+		}
+		if isFixedAdmin {
+			return nil, errors.New("este administrador e fixo e nao pode ter o acesso removido")
+		}
+	}
+
+	var id, name string
+	err := s.db.QueryRow(ctx, `UPDATE customers SET is_admin = $1 WHERE id = $2 RETURNING id::text, name`, isAdmin, customerID).Scan(&id, &name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("cliente nao encontrado")
+		}
+		return nil, err
+	}
+	return map[string]interface{}{"id": id, "name": name, "isAdmin": isAdmin}, nil
 }
 
 func (s *Service) ProductOptions(ctx context.Context) (map[string]interface{}, error) {
@@ -1152,6 +1199,17 @@ func (s *Service) ensureCustomer(ctx context.Context, tx pgx.Tx, customerID, nam
 				return "", errors.New("cliente autenticado nao encontrado")
 			}
 			return "", err
+		}
+		// E-mail e CPF sao unicos no banco: avisa qual campo colidiu em vez de
+		// deixar vazar o erro cru do Postgres para a tela de pagamento. O
+		// telefone so e checado na ficha de cadastro, para nao travar o pedido
+		// de quem compartilha o numero de contato.
+		conflicts, conflictErr := s.CustomerFieldConflicts(ctx, email, cpf, "", id)
+		if conflictErr != nil {
+			return "", conflictErr
+		}
+		if len(conflicts) > 0 {
+			return "", &FieldConflictError{Field: conflicts[0]["field"], Message: conflicts[0]["message"]}
 		}
 		_, updateErr := tx.Exec(ctx, `UPDATE customers SET name = $1, email = $2, phone = $3, cpf = $4 WHERE id = $5`, name, email, phone, cpf, id)
 		return id, updateErr
@@ -1755,31 +1813,6 @@ func (s *Service) GetOrderPublic(ctx context.Context, orderID string) (map[strin
 	return map[string]interface{}{
 		"id": order.ID, "customerName": order.CustomerName, "total": order.Total, "paymentStatus": order.PaymentStatus, "orderStatus": order.OrderStatus, "origin": order.Origin, "createdAt": order.CreatedAt, "shipping": order.Shipping, "discount": order.Discount, "items": items, "statuses": statuses,
 	}, nil
-}
-
-func (s *Service) RequestPasswordReset(ctx context.Context, email string) (string, error) {
-	var id string
-	if err := s.db.QueryRow(ctx, `SELECT id FROM customers WHERE email = $1`, email).Scan(&id); err != nil {
-		return "", err
-	}
-	token, err := auth.GenerateToken(s.cfg.JWTSecret, id, "customer", "reset", 1*time.Hour)
-	if err != nil {
-		return "", err
-	}
-	return token, nil
-}
-
-func (s *Service) ResetPassword(ctx context.Context, resetToken, newPassword string) error {
-	claims, err := auth.ParseToken(s.cfg.JWTSecret, resetToken)
-	if err != nil || claims.Scope != "reset" {
-		return fmt.Errorf("token invalido ou expirado")
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(ctx, `UPDATE customers SET password_hash = $2 WHERE id = $1`, claims.UserID, hash)
-	return err
 }
 
 func scanShippingRules(rows pgx.Rows) ([]shippingRule, error) {

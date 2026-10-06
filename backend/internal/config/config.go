@@ -9,24 +9,47 @@ import (
 )
 
 type Config struct {
-	Port          string
-	DatabaseURL   string
-	JWTSecret     string
-	FrontendURL   string
-	AutoSeed      bool
-	DefaultTaxFee float64
+	Port           string
+	DatabaseURL    string
+	JWTSecret      string
+	FrontendURL    string
+	GoogleClientID string
+	AutoSeed       bool
+	// Cria a conta de teste do seed_demo.go. So para desenvolvimento.
+	SeedDemoCustomer bool
+	DefaultTaxFee    float64
+
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
+	SMTPFromName string
+	// Em dev, sem SMTP, imprime o link de recuperacao no log do servidor.
+	// Nunca ligar em producao: quem le o log troca a senha de qualquer cliente.
+	DebugPasswordResetLink bool
 }
 
 func Load() Config {
 	_ = godotenv.Load()
 
 	cfg := Config{
-		Port:          getEnv("PORT", "8080"),
-		DatabaseURL:   getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/onperfumaria?sslmode=disable"),
-		JWTSecret:     getEnv("JWT_SECRET", "change-me-in-production"),
-		FrontendURL:   getEnv("FRONTEND_URL", "http://localhost:5173"),
-		AutoSeed:      getEnv("AUTO_SEED", "true") == "true",
-		DefaultTaxFee: getFloatEnv("DEFAULT_TAX_FEE", 4.5),
+		Port:             getEnv("PORT", "8080"),
+		DatabaseURL:      getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/onperfumaria?sslmode=disable"),
+		JWTSecret:        getEnv("JWT_SECRET", "change-me-in-production"),
+		FrontendURL:      getEnv("FRONTEND_URL", "http://localhost:5173"),
+		GoogleClientID:   getEnv("GOOGLE_CLIENT_ID", ""),
+		AutoSeed:         getEnv("AUTO_SEED", "true") == "true",
+		SeedDemoCustomer: getEnv("SEED_DEMO_CUSTOMER", "false") == "true",
+		DefaultTaxFee:    getFloatEnv("DEFAULT_TAX_FEE", 4.5),
+
+		SMTPHost:               getEnv("SMTP_HOST", ""),
+		SMTPPort:               getEnv("SMTP_PORT", "587"),
+		SMTPUser:               getEnv("SMTP_USER", ""),
+		SMTPPassword:           getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:               getEnv("SMTP_FROM", ""),
+		SMTPFromName:           getEnv("SMTP_FROM_NAME", "On Perfumaria"),
+		DebugPasswordResetLink: getEnv("DEBUG_PASSWORD_RESET_LINK", "false") == "true",
 	}
 
 	if cfg.JWTSecret == "" {

@@ -1,17 +1,19 @@
-import { useMemo, useRef, useState } from 'react'
-import type { FormEvent, PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
   CalendarClock,
   ChevronDown,
+  ChevronLeft,
   CircleUserRound,
   Copy,
   Eye,
   FileText,
   FolderOpen,
   GripVertical,
+  History,
   Image as ImageIcon,
   LayoutGrid,
   Layers3,
@@ -24,17 +26,27 @@ import {
   Save,
   Search,
   Settings,
+  ShieldAlert,
   Sparkles,
   Tag,
   Trash2,
+  Users,
   X,
 } from 'lucide-react'
+import { Link, Navigate } from 'react-router-dom'
+import { Button } from '../components/Button'
 import { OrganizerModal, type OrganizerModalMode } from '../components/organizer/OrganizerModal'
-import { ItemWizard, ItemWizardPreviewCard } from '../components/organizer/ItemWizard'
+import { ItemWizard } from '../components/organizer/ItemWizard'
+import { useAuth } from '../contexts/AuthContext'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
+import { useCurrency } from '../hooks/useCurrency'
+import { api } from '../services/api'
+import { getOrderStatusPresentation } from '../utils/orders'
+import type { CustomerOrder } from '../types'
 import {
   emptyItemWizardDraft,
   findOrganizerPage,
+  organizerItemStatusOptions,
   organizerStatusLabels,
   organizerTypeLabels,
   normalizeOrganizerSearch,
@@ -43,6 +55,7 @@ import {
 import type {
   ItemWizardDraft,
   ItemWizardStep,
+  OrganizerActivity,
   OrganizerContentType,
   OrganizerNode,
   OrganizerTag,
@@ -87,6 +100,7 @@ const nodeIcon = (type: OrganizerContentType, size = 17) => {
 }
 
 export function OrganizerPage() {
+  const { isCustomer, isAdmin, token, logout } = useAuth()
   const {
     store,
     createNode,
@@ -102,7 +116,7 @@ export function OrganizerPage() {
     restoreTrash,
     deleteTrashPermanently,
     clearActivities,
-  } = useOrganizerStore()
+  } = useOrganizerStore(token ?? undefined)
 
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
@@ -110,11 +124,14 @@ export function OrganizerPage() {
   const [rightResizing, setRightResizing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selection, setSelection] = useState<Selection>({ kind: 'node', id: 'home' })
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
   const [modalMode, setModalMode] = useState<OrganizerModalMode | null>(null)
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [customersOpen, setCustomersOpen] = useState(false)
   const [wizardDraft, setWizardDraft] = useState<ItemWizardDraft | null>(null)
   const [wizardStep, setWizardStep] = useState<ItemWizardStep>(1)
   const [visitorPreview, setVisitorPreview] = useState<{ name: string; route: string } | null>(null)
@@ -137,6 +154,9 @@ export function OrganizerPage() {
     selectedNode?.type === 'page' || selectedNode?.type === 'folder'
       ? selectedNode.id
       : (selectedNode?.parentId ?? 'home')
+  const isItemPageFocused = Boolean(
+    selectedNode && selectedNode.type === 'item' && focusedItemId === selectedNode.id,
+  )
 
   const organizationItems = useMemo<DrawerItem[]>(() => {
     const pages = store.nodes.filter((node) => node.type === 'page')
@@ -267,6 +287,7 @@ export function OrganizerPage() {
         setRightOpen(false)
       }
     }
+    closeOpenSession()
     if (item.kind === 'tag') {
       setSelection({ kind: 'tag', id: item.id })
       recordAccess(item.id, item.label)
@@ -277,7 +298,11 @@ export function OrganizerPage() {
     const targetNode = store.nodes.find((node) => node.id === targetId)
     if (targetNode) {
       setSelection({ kind: 'node', id: targetId })
-      setDetailNodeId(targetNode.type === 'page' || targetNode.type === 'folder' ? null : targetNode.id)
+      setDetailNodeId(
+        targetNode.type === 'page' || targetNode.type === 'folder' || targetNode.type === 'item'
+          ? null
+          : targetNode.id,
+      )
       if (item.kind !== 'activity') recordAccess(targetId, item.label)
       closeDrawersOnMobile()
     }
@@ -327,6 +352,16 @@ export function OrganizerPage() {
     setWizardStep(1)
   }
 
+  const closeOpenSession = () => {
+    setSettingsOpen(false)
+    setTrashOpen(false)
+    setHistoryOpen(false)
+    setCustomersOpen(false)
+    setVisitorPreview(null)
+    setFocusedItemId(null)
+    closeItemWizard()
+  }
+
   const finishItemWizard = () => {
     if (!wizardDraft || !wizardDraft.name.trim()) return
     const id = createNode({
@@ -337,15 +372,16 @@ export function OrganizerPage() {
       imageUrl: wizardDraft.photos[0] ?? '',
       price: Number(wizardDraft.price) || 0,
       tagIds: wizardDraft.tagId ? [wizardDraft.tagId] : [],
-      status: 'published',
-      availability: wizardDraft.availability,
+      status: wizardDraft.status,
     })
     closeItemWizard()
     setSelection({ kind: 'node', id })
+    setFocusedItemId(id)
     showNotice('Item criado com sucesso.')
   }
 
   const handleLogoff = () => {
+    logout()
     window.location.href = '/'
   }
 
@@ -355,13 +391,18 @@ export function OrganizerPage() {
     setSettingsOpen(false)
   }
 
-  const openActivityFromSettings = (targetId: string | null) => {
+  const openActivityFromHistory = (targetId: string | null) => {
     if (!targetId) return
     const targetNode = store.nodes.find((node) => node.id === targetId)
     if (!targetNode) return
     setSelection({ kind: 'node', id: targetId })
-    setDetailNodeId(targetNode.type === 'page' || targetNode.type === 'folder' ? null : targetNode.id)
-    setSettingsOpen(false)
+    setDetailNodeId(
+      targetNode.type === 'page' || targetNode.type === 'folder' || targetNode.type === 'item'
+        ? null
+        : targetNode.id,
+    )
+    setFocusedItemId(null)
+    setHistoryOpen(false)
   }
 
   const handleCreated = (kind: 'node' | 'tag', id: string) => {
@@ -386,13 +427,6 @@ export function OrganizerPage() {
     addLabel: string
   }> = [
     {
-      key: 'upcoming',
-      label: 'Próximos eventos',
-      empty: searchQuery ? 'Nenhum evento encontrado' : 'Não há eventos futuros',
-      onAdd: () => setModalMode('schedule'),
-      addLabel: 'Agendar conteúdo',
-    },
-    {
       key: 'organization',
       label: 'Organização',
       empty: searchQuery ? 'Nenhum conteúdo encontrado' : 'Não há páginas',
@@ -414,14 +448,23 @@ export function OrganizerPage() {
       selectedNode={selectedNode}
       selectedTag={selectedTag}
       nodes={store.nodes}
+      focusedItemId={focusedItemId}
       onSelectNode={(id) => {
+        const node = store.nodes.find((candidate) => candidate.id === id)
+        const alreadySelected = selection?.kind === 'node' && selection.id === id
+        if (node?.type === 'item' && alreadySelected) {
+          setFocusedItemId(id)
+          return
+        }
         setSelection({ kind: 'node', id })
-        setDetailNodeId(id)
-        recordAccess(id, store.nodes.find((node) => node.id === id)?.name ?? 'Conteúdo')
+        setDetailNodeId(null)
+        setFocusedItemId(null)
+        recordAccess(id, node?.name ?? 'Conteúdo')
       }}
       onOpenModal={handleOpenModal}
       onNavigateBack={(parentId) => {
         setDetailNodeId(null)
+        setFocusedItemId(null)
         setSelection({ kind: 'node', id: parentId })
         setRightOpen(false)
       }}
@@ -435,9 +478,28 @@ export function OrganizerPage() {
 
   const wizardPages = store.nodes.filter((node) => node.type === 'page')
   const wizardDiscountTags = store.tags.filter((tag) => (tag.discountPercent ?? 0) > 0)
-  const wizardSelectedTag = wizardDraft
-    ? (store.tags.find((tag) => tag.id === wizardDraft.tagId) ?? null)
-    : null
+  const rightDrawerVisible = rightOpen && !settingsOpen && !wizardDraft
+
+  if (!isCustomer) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (!isAdmin) {
+    return (
+      <main className="organizer-font flex h-dvh w-full items-center justify-center bg-[var(--color-organizer-bg)] p-6 text-[#2a0f3d]">
+        <div className="organizer-surface max-w-sm space-y-4 p-8 text-center">
+          <ShieldAlert size={32} className="mx-auto text-[#a0382f]" />
+          <h1 className="text-lg font-semibold">Acesso restrito</h1>
+          <p className="text-sm text-[#6b665f]">Sua conta nao tem permissao de administrador.</p>
+          <Link to="/">
+            <Button variant="secondary" fullWidth>
+              Voltar ao site
+            </Button>
+          </Link>
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="organizer-font h-dvh w-full overflow-hidden bg-[var(--color-organizer-bg)] text-[#2a0f3d]">
@@ -449,11 +511,13 @@ export function OrganizerPage() {
           <DrawerToggle drawer="left" open={leftOpen} onToggle={toggleLeftDrawer} />
           <div className="flex items-center gap-2 text-[#f5ca74]">
             <Layers3 size={17} />
-            <span className="hidden text-xs font-semibold uppercase tracking-[0.22em] sm:inline">
-              Organizador do site
-            </span>
+            <span className="hidden text-xs font-semibold uppercase tracking-[0.22em] sm:inline">Admin</span>
           </div>
-          <DrawerToggle drawer="right" open={rightOpen} onToggle={toggleRightDrawer} />
+          {settingsOpen ? (
+            <span className="h-8 w-8" aria-hidden="true" />
+          ) : (
+            <DrawerToggle drawer="right" open={rightOpen} onToggle={toggleRightDrawer} />
+          )}
         </header>
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -624,9 +688,9 @@ export function OrganizerPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (visitorPreview) {
-                      setVisitorPreview(null)
-                    } else {
+                    const wasVisitorPreview = Boolean(visitorPreview)
+                    closeOpenSession()
+                    if (!wasVisitorPreview) {
                       const visitorPage = selectedNode ? findOrganizerPage(store.nodes, selectedNode) : null
                       setVisitorPreview({
                         name: visitorPage?.name ?? 'Home',
@@ -642,6 +706,7 @@ export function OrganizerPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    closeOpenSession()
                     setSettingsOpen(true)
                     setProfileOpen(false)
                   }}
@@ -652,12 +717,35 @@ export function OrganizerPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    closeOpenSession()
                     setTrashOpen(true)
                     setProfileOpen(false)
                   }}
                   className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
                 >
                   <Trash2 size={15} /> Lixeira
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeOpenSession()
+                    setHistoryOpen(true)
+                    setProfileOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
+                >
+                  <History size={15} /> Histórico
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeOpenSession()
+                    setCustomersOpen(true)
+                    setProfileOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
+                >
+                  <Users size={15} /> Clientes
                 </button>
                 <button
                   type="button"
@@ -700,12 +788,8 @@ export function OrganizerPage() {
               ) : settingsOpen ? (
                 <SettingsPanel
                   store={store}
+                  token={token}
                   onClose={() => setSettingsOpen(false)}
-                  onClearActivities={() => {
-                    clearActivities()
-                    showNotice('Histórico de recentes limpo.')
-                  }}
-                  onOpenActivity={openActivityFromSettings}
                   onCreateTag={() => setModalMode('tag')}
                   onOpenTag={openTagFromSettings}
                   onTrashTag={(id) => {
@@ -719,7 +803,7 @@ export function OrganizerPage() {
             </div>
           </section>
 
-          {rightOpen && (
+          {rightDrawerVisible && (
             <div
               role="separator"
               aria-orientation="vertical"
@@ -736,15 +820,13 @@ export function OrganizerPage() {
 
           <aside
             aria-label="Gaveta de propriedades"
-            style={{ width: rightOpen ? rightWidth : 0 }}
+            style={{ width: rightDrawerVisible ? rightWidth : 0 }}
             className={`relative hidden shrink-0 overflow-hidden bg-[var(--color-organizer-bg)] lg:block ${rightResizing ? '' : 'transition-[width] duration-300'}`}
           >
             <div className="absolute inset-y-0 right-0 h-full py-3 pr-3" style={{ width: rightWidth }}>
               <div className="organizer-container h-full overflow-y-auto rounded-2xl border border-stone-200/80 bg-[var(--color-organizer-bg)] shadow-[var(--shadow-float)]">
                 {visitorPreview ? (
                   workspaceElement
-                ) : wizardDraft && wizardStep === 4 ? (
-                  <ItemWizardPreviewCard draft={wizardDraft} tag={wizardSelectedTag} />
                 ) : (
                   <Inspector
                     key={`${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
@@ -774,6 +856,7 @@ export function OrganizerPage() {
                     }}
                     onOpenSchedule={() => setModalMode('schedule')}
                     onSaved={() => showNotice('Alterações salvas.')}
+                    liveSync={isItemPageFocused}
                   />
                 )}
               </div>
@@ -782,14 +865,12 @@ export function OrganizerPage() {
 
           <aside
             aria-label="Gaveta de propriedades"
-            className={`absolute inset-y-0 right-0 z-30 flex flex-col overflow-hidden bg-[var(--color-organizer-bg)] shadow-2xl transition-[width,opacity] duration-300 lg:hidden ${rightOpen ? 'w-full opacity-100' : 'pointer-events-none w-0 opacity-0'}`}
+            className={`absolute inset-y-0 right-0 z-30 flex flex-col overflow-hidden bg-[var(--color-organizer-bg)] shadow-2xl transition-[width,opacity] duration-300 lg:hidden ${rightDrawerVisible ? 'w-full opacity-100' : 'pointer-events-none w-0 opacity-0'}`}
           >
             <div className="min-h-0 w-full flex-1 overflow-y-auto">
               <div className="organizer-container h-full overflow-y-auto bg-[var(--color-organizer-bg)]">
                 {visitorPreview ? (
                   workspaceElement
-                ) : wizardDraft && wizardStep === 4 ? (
-                  <ItemWizardPreviewCard draft={wizardDraft} tag={wizardSelectedTag} />
                 ) : (
                   <Inspector
                     key={`mobile-${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
@@ -814,6 +895,7 @@ export function OrganizerPage() {
                     }}
                     onOpenSchedule={() => setModalMode('schedule')}
                     onSaved={() => showNotice('Alterações salvas.')}
+                    liveSync={isItemPageFocused}
                   />
                 )}
               </div>
@@ -855,6 +937,18 @@ export function OrganizerPage() {
           onDeletePermanently={deleteTrashPermanently}
         />
       )}
+      {historyOpen && (
+        <HistoryModal
+          activities={store.activities}
+          onClose={() => setHistoryOpen(false)}
+          onClearActivities={() => {
+            clearActivities()
+            showNotice('Histórico de recentes limpo.')
+          }}
+          onOpenActivity={openActivityFromHistory}
+        />
+      )}
+      {customersOpen && <CustomersModal token={token} onClose={() => setCustomersOpen(false)} />}
     </main>
   )
 }
@@ -882,17 +976,15 @@ function VisitorPreview({ name, route }: VisitorPreviewProps) {
 
 function SettingsPanel({
   store,
+  token,
   onClose,
-  onClearActivities,
-  onOpenActivity,
   onCreateTag,
   onOpenTag,
   onTrashTag,
 }: {
   store: ReturnType<typeof useOrganizerStore>['store']
+  token: string | null
   onClose: () => void
-  onClearActivities: () => void
-  onOpenActivity: (targetId: string | null) => void
   onCreateTag: () => void
   onOpenTag: (tagId: string) => void
   onTrashTag: (tagId: string) => void
@@ -918,102 +1010,264 @@ function SettingsPanel({
           <X size={18} />
         </button>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="organizer-surface p-4 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-[#3a164f]">Salvamento automático</h3>
-          <p className="mt-1 text-xs leading-5 text-[#6b665f]">
-            Páginas, itens, tags, agendamentos e lixeira ficam salvos neste navegador.
-          </p>
-        </div>
+      <div className="space-y-6">
+        <SettingsTopic title="Geral">
+          <div className="organizer-surface p-4">
+            <h3 className="text-sm font-semibold text-[#3a164f]">Salvamento automático</h3>
+            <p className="mt-1 text-xs leading-5 text-[#6b665f]">
+              Páginas, itens, tags, agendamentos e lixeira ficam salvos neste navegador.
+            </p>
+          </div>
+        </SettingsTopic>
 
-        <div className="organizer-surface p-4">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-[#3a164f]">Recentes · {store.activities.length}</h3>
-            {store.activities.length > 0 && (
+        <SettingsTopic title="Ferramentas">
+          <div className="organizer-surface p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-[#3a164f]">Tags · {store.tags.length}</h3>
               <button
                 type="button"
-                onClick={onClearActivities}
-                className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#a0382f] hover:underline"
+                onClick={onCreateTag}
+                className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#b77717] hover:underline"
               >
-                Limpar
+                <Plus size={12} /> Nova tag
               </button>
+            </div>
+            {store.tags.length === 0 ? (
+              <p className="text-xs text-[#6b665f]">Não há tags. Crie uma para organizar itens.</p>
+            ) : (
+              <ul className="max-h-80 space-y-1 overflow-y-auto">
+                {store.tags.map((tag) => (
+                  <li key={tag.id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onOpenTag(tag.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs hover:bg-[#fff8ea]"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: tag.color }}
+                      />
+                      <span className="min-w-0 flex-1 truncate font-medium text-[#3a164f]">{tag.name}</span>
+                      {tag.discountPercent ? (
+                        <span className="shrink-0 text-[10px] font-semibold text-[#b77717]">
+                          -{tag.discountPercent}%
+                        </span>
+                      ) : null}
+                      <span className="shrink-0 text-[10px] text-[#6b665f]">
+                        {store.nodes.filter((node) => node.tagIds.includes(tag.id)).length} item(ns)
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Mover tag para a lixeira"
+                      aria-label={`Excluir tag ${tag.name}`}
+                      onClick={() => onTrashTag(tag.id)}
+                      className="shrink-0 rounded-full p-1.5 text-[#9b5a50] hover:bg-[#fff0ed] hover:text-[#a0382f]"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-          {store.activities.length === 0 ? (
-            <p className="text-xs text-[#6b665f]">Não há nada de novo.</p>
-          ) : (
-            <ul className="max-h-80 space-y-1 overflow-y-auto">
-              {store.activities.map((activity) => (
-                <li key={activity.id}>
-                  <button
-                    type="button"
-                    disabled={!activity.targetId}
-                    onClick={() => onOpenActivity(activity.targetId)}
-                    className="block w-full rounded-xl px-2 py-1.5 text-left text-xs hover:bg-[#fff8ea] disabled:cursor-default disabled:hover:bg-transparent"
-                  >
-                    <span className="block truncate font-medium text-[#3a164f]">{activity.label}</span>
-                    <span className="mt-0.5 block truncate text-[10px] text-[#6b665f]">
-                      {activity.detail} · {formatDate(activity.createdAt)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        </SettingsTopic>
 
-        <div className="organizer-surface p-4">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-[#3a164f]">Tags · {store.tags.length}</h3>
-            <button
-              type="button"
-              onClick={onCreateTag}
-              className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#b77717] hover:underline"
-            >
-              <Plus size={12} /> Nova tag
-            </button>
-          </div>
-          {store.tags.length === 0 ? (
-            <p className="text-xs text-[#6b665f]">Não há tags. Crie uma para organizar itens.</p>
-          ) : (
-            <ul className="max-h-80 space-y-1 overflow-y-auto">
-              {store.tags.map((tag) => (
-                <li key={tag.id} className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => onOpenTag(tag.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs hover:bg-[#fff8ea]"
-                  >
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: tag.color }}
-                    />
-                    <span className="min-w-0 flex-1 truncate font-medium text-[#3a164f]">{tag.name}</span>
-                    {tag.discountPercent ? (
-                      <span className="shrink-0 text-[10px] font-semibold text-[#b77717]">
-                        -{tag.discountPercent}%
-                      </span>
-                    ) : null}
-                    <span className="shrink-0 text-[10px] text-[#6b665f]">
-                      {store.nodes.filter((node) => node.tagIds.includes(tag.id)).length} item(ns)
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    title="Mover tag para a lixeira"
-                    aria-label={`Excluir tag ${tag.name}`}
-                    onClick={() => onTrashTag(tag.id)}
-                    className="shrink-0 rounded-full p-1.5 text-[#9b5a50] hover:bg-[#fff0ed] hover:text-[#a0382f]"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <SettingsTopic title="Contas">
+          <AdminAssignment token={token} />
+        </SettingsTopic>
       </div>
     </div>
+  )
+}
+
+type AdminCandidate = {
+  id: string
+  name: string
+  email: string
+  phone: string
+  cpf: string
+  isAdmin: boolean
+  isFixedAdmin: boolean
+}
+
+function AdminAssignment({ token }: { token: string | null }) {
+  const [search, setSearch] = useState('')
+  const [candidates, setCandidates] = useState<AdminCandidate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [confirmTarget, setConfirmTarget] = useState<AdminCandidate | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''
+      setLoading(true)
+      api
+        .get<AdminCandidate[]>(`/customers${query}`, token ?? undefined)
+        .then(setCandidates)
+        .catch(() => setCandidates([]))
+        .finally(() => setLoading(false))
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [search, token])
+
+  async function confirmToggle() {
+    if (!confirmTarget) return
+    setSaving(true)
+    try {
+      await api.put(
+        `/customers/${confirmTarget.id}/admin`,
+        { isAdmin: !confirmTarget.isAdmin },
+        token ?? undefined,
+      )
+      setCandidates((current) =>
+        current.map((candidate) =>
+          candidate.id === confirmTarget.id ? { ...candidate, isAdmin: !candidate.isAdmin } : candidate,
+        ),
+      )
+      setNotice(
+        confirmTarget.isAdmin
+          ? `${confirmTarget.name} nao e mais administrador.`
+          : `${confirmTarget.name} agora e administrador.`,
+      )
+      setConfirmTarget(null)
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Nao foi possivel concluir.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Sem busca, a lista mostra so quem ja e admin (o "quadro" atual de
+  // acesso); buscar entra em qualquer cliente para conceder o cargo.
+  const visibleCandidates = search.trim() ? candidates : candidates.filter((candidate) => candidate.isAdmin)
+
+  return (
+    <div className="organizer-surface p-4">
+      <h3 className="text-sm font-semibold text-[#3a164f]">Acesso ao Admin</h3>
+      <p className="mt-1 text-xs leading-5 text-[#6b665f]">
+        Quem tiver o cargo de administrador consegue entrar aqui e editar o site inteiro. Busque um cliente ja
+        cadastrado para conceder o acesso; a lista abaixo mostra quem ja e administrador.
+      </p>
+
+      <label className="mt-3 flex h-9 items-center rounded-xl border border-stone-200 bg-white px-3 text-[#2a0f3d] focus-within:border-[#d89a28] focus-within:ring-4 focus-within:ring-[#f7dfb1]">
+        <span className="sr-only">Buscar cliente por nome, e-mail ou CPF</span>
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar por nome, e-mail ou CPF"
+          className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-stone-400"
+        />
+        <Search size={14} className="text-[#b77717]" />
+      </label>
+
+      {notice ? <p className="mt-2 text-xs font-medium text-[#0f8a5f]">{notice}</p> : null}
+
+      <div className="mt-3 max-h-72 overflow-y-auto">
+        {loading ? (
+          <p className="px-2 py-3 text-center text-xs text-[#6b665f]">Carregando...</p>
+        ) : visibleCandidates.length === 0 ? (
+          <p className="px-2 py-3 text-center text-xs text-[#6b665f]">
+            {search.trim() ? 'Nenhum cliente encontrado.' : 'Nenhum administrador alem do fixo.'}
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {visibleCandidates.map((candidate) => (
+              <li
+                key={candidate.id}
+                className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-[#fff8ea]"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-[#2a0f3d]">{candidate.name}</p>
+                  <p className="mt-0.5 truncate text-[10px] text-[#6b665f]">
+                    {[candidate.email, candidate.phone, candidate.cpf].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                {candidate.isFixedAdmin ? null : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmTarget(candidate)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                      candidate.isAdmin
+                        ? 'bg-[#fff0ed] text-[#a0382f] hover:bg-[#ffe3de]'
+                        : 'bg-[#eadcf0] text-[#5b247f] hover:bg-[#ddc7ea]'
+                    }`}
+                  >
+                    {candidate.isAdmin ? 'Remover acesso' : 'Tornar admin'}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {confirmTarget ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+        >
+          <button
+            type="button"
+            aria-label="Cancelar"
+            onClick={() => (!saving ? setConfirmTarget(null) : undefined)}
+            className="absolute inset-0 bg-[#081b32]/45 backdrop-blur-[2px]"
+          />
+          <div className="relative z-10 w-full max-w-sm space-y-4 rounded-2xl border border-[#5b247f]/40 bg-white p-5 shadow-[var(--shadow-organizer)]">
+            <div className="flex items-center gap-2 text-[#a0382f]">
+              <ShieldAlert size={18} />
+              <h3 className="text-sm font-semibold uppercase tracking-[0.1em]">Confirmar</h3>
+            </div>
+            <p className="text-sm leading-6 text-[#2a0f3d]">
+              {confirmTarget.isAdmin ? (
+                <>
+                  Remover o acesso de administrador de <strong>{confirmTarget.name}</strong>? A conta deixa de
+                  conseguir entrar no Admin.
+                </>
+              ) : (
+                <>
+                  Tornar <strong>{confirmTarget.name}</strong> administrador? A conta passa a poder entrar no
+                  Admin e editar o site inteiro.
+                </>
+              )}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving}
+                onClick={() => setConfirmTarget(null)}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" disabled={saving} onClick={confirmToggle}>
+                {saving ? 'Salvando...' : 'Confirmar'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function SettingsTopic({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="organizer-eyebrow mb-2 flex w-full items-center gap-1.5 text-left"
+      >
+        <ChevronDown size={13} className={`shrink-0 transition-transform ${open ? '' : '-rotate-90'}`} />
+        <span>{title}</span>
+      </button>
+      {open && <div className="space-y-3">{children}</div>}
+    </section>
   )
 }
 
@@ -1114,10 +1368,410 @@ function TrashModal({
   )
 }
 
+function HistoryModal({
+  activities,
+  onClose,
+  onClearActivities,
+  onOpenActivity,
+}: {
+  activities: OrganizerActivity[]
+  onClose: () => void
+  onClearActivities: () => void
+  onOpenActivity: (targetId: string | null) => void
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="history-modal-title"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+    >
+      <button
+        type="button"
+        aria-label="Fechar histórico"
+        onClick={onClose}
+        className="absolute inset-0 bg-[#081b32]/45 backdrop-blur-[2px]"
+      />
+      <section className="relative z-10 flex max-h-[80dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#5b247f]/40 bg-[var(--color-organizer-bg)] shadow-[var(--shadow-organizer)]">
+        <header className="flex shrink-0 items-center justify-between gap-3 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-4 py-3 text-white">
+          <div className="flex items-center gap-2">
+            <History size={17} className="text-[#e2b04f]" />
+            <h2 id="history-modal-title" className="text-sm font-semibold uppercase tracking-[0.14em]">
+              Histórico
+            </h2>
+          </div>
+          <div className="flex items-center gap-1">
+            {activities.length > 0 && (
+              <button
+                type="button"
+                onClick={onClearActivities}
+                className="rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#e2b04f] hover:bg-white/10"
+              >
+                Limpar
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar"
+              className="rounded-full p-1 hover:bg-white/10"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {activities.length === 0 ? (
+            <EmptyState icon={<History size={28} />} title="Não há nada de novo" />
+          ) : (
+            <ul className="divide-y divide-stone-100">
+              {activities.map((activity) => (
+                <li key={activity.id}>
+                  <button
+                    type="button"
+                    disabled={!activity.targetId}
+                    onClick={() => onOpenActivity(activity.targetId)}
+                    className="block w-full px-4 py-3 text-left hover:bg-[#fff8ea] disabled:cursor-default disabled:hover:bg-transparent"
+                  >
+                    <span className="block truncate text-xs font-semibold text-[#3a164f]">
+                      {activity.label}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[10px] text-[#6b665f]">
+                      {activity.detail} · {formatDate(activity.createdAt)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+type CustomerSummary = {
+  id: string
+  name: string
+  email: string
+  phone: string
+  cpf: string
+  isFixedAdmin: boolean
+}
+
+type CustomerDetail = {
+  name: string
+  email: string
+  phone: string
+  cpf: string
+  addresses: Array<{
+    street: string
+    number: string
+    city: string
+    state: string
+  }>
+  orders: CustomerOrder[]
+}
+
+type OrderPublicDetail = {
+  id: string
+  total: number
+  paymentStatus: string
+  orderStatus: string
+  origin: string
+  createdAt: string
+  shipping: number
+  discount: number
+  items: Array<{ name: string; price: number; quantity: number }>
+}
+
+function CustomersModal({ token, onClose }: { token: string | null; onClose: () => void }) {
+  const format = useCurrency()
+  const [search, setSearch] = useState('')
+  const [customers, setCustomers] = useState<CustomerSummary[]>([])
+  const [loadingList, setLoadingList] = useState(true)
+
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null)
+
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [orderDetail, setOrderDetail] = useState<OrderPublicDetail | null>(null)
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''
+      setLoadingList(true)
+      api
+        .get<CustomerSummary[]>(`/customers${query}`, token ?? undefined)
+        // A conta fixa de administrador nao e um cliente de verdade: so
+        // aparece na gestao de Administradores, nunca aqui.
+        .then((data) => setCustomers(data.filter((customer) => !customer.isFixedAdmin)))
+        .catch(() => setCustomers([]))
+        .finally(() => setLoadingList(false))
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [search, token])
+
+  useEffect(() => {
+    if (!selectedCustomerId) return
+    let cancelled = false
+    api
+      .get<CustomerDetail>(`/customers/${selectedCustomerId}`, token ?? undefined)
+      .then((data) => {
+        if (!cancelled) setCustomerDetail(data)
+      })
+      .catch(() => {
+        if (!cancelled) setCustomerDetail(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCustomerId, token])
+
+  useEffect(() => {
+    if (!selectedOrderId) return
+    let cancelled = false
+    api
+      .get<OrderPublicDetail>(`/order/${selectedOrderId}`)
+      .then((data) => {
+        if (!cancelled) setOrderDetail(data)
+      })
+      .catch(() => {
+        if (!cancelled) setOrderDetail(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedOrderId])
+
+  function openCustomer(id: string) {
+    setCustomerDetail(null)
+    setSelectedCustomerId(id)
+  }
+
+  function openOrder(id: string) {
+    setOrderDetail(null)
+    setSelectedOrderId(id)
+  }
+
+  const view = selectedOrderId ? 'order' : selectedCustomerId ? 'customer' : 'list'
+  const title =
+    view === 'order' ? 'Pedido' : view === 'customer' ? (customerDetail?.name ?? 'Cliente') : 'Clientes'
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="customers-modal-title"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+    >
+      <button
+        type="button"
+        aria-label="Fechar clientes"
+        onClick={onClose}
+        className="absolute inset-0 bg-[#081b32]/45 backdrop-blur-[2px]"
+      />
+      <section className="relative z-10 flex max-h-[80dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#5b247f]/40 bg-[var(--color-organizer-bg)] shadow-[var(--shadow-organizer)]">
+        <header className="flex shrink-0 items-center justify-between gap-3 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-4 py-3 text-white">
+          <div className="flex min-w-0 items-center gap-2">
+            {view !== 'list' ? (
+              <button
+                type="button"
+                aria-label="Voltar"
+                onClick={() => (view === 'order' ? setSelectedOrderId(null) : setSelectedCustomerId(null))}
+                className="shrink-0 rounded-full p-1 hover:bg-white/10"
+              >
+                <ChevronLeft size={18} />
+              </button>
+            ) : (
+              <Users size={17} className="shrink-0 text-[#e2b04f]" />
+            )}
+            <h2
+              id="customers-modal-title"
+              className="truncate text-sm font-semibold uppercase tracking-[0.14em]"
+            >
+              {title}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="shrink-0 rounded-full p-1 hover:bg-white/10"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        {view === 'list' ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="shrink-0 p-3">
+              <label className="flex h-10 items-center rounded-xl border border-stone-200 bg-white px-3 text-[#2a0f3d] focus-within:border-[#d89a28] focus-within:ring-4 focus-within:ring-[#f7dfb1]">
+                <span className="sr-only">Buscar cliente por nome, e-mail ou CPF</span>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar por nome, e-mail ou CPF"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-stone-400"
+                />
+                <Search size={16} className="text-[#b77717]" />
+              </label>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {loadingList ? (
+                <p className="px-4 py-6 text-center text-xs text-[#6b665f]">Carregando...</p>
+              ) : customers.length === 0 ? (
+                <EmptyState icon={<Users size={28} />} title="Nenhum cliente encontrado" />
+              ) : (
+                <ul className="divide-y divide-stone-100">
+                  {customers.map((customer) => (
+                    <li key={customer.id}>
+                      <button
+                        type="button"
+                        onClick={() => openCustomer(customer.id)}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[#fff8ea]"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-[#fff1d6] text-[#b77717]">
+                          <CircleUserRound size={20} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold text-[#2a0f3d]">{customer.name}</p>
+                          <p className="mt-0.5 truncate text-[10px] text-[#6b665f]">
+                            {[customer.email, customer.phone, customer.cpf].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : view === 'customer' ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {!customerDetail ? (
+              <p className="px-4 py-6 text-center text-xs text-[#6b665f]">Carregando...</p>
+            ) : (
+              <>
+                <div className="space-y-1 border-b border-stone-100 px-4 py-3">
+                  <p className="text-[10px] text-[#6b665f]">{customerDetail.email}</p>
+                  <p className="text-[10px] text-[#6b665f]">
+                    {customerDetail.phone} · {customerDetail.cpf}
+                  </p>
+                  {customerDetail.addresses[0] ? (
+                    <p className="text-[10px] text-[#6b665f]">
+                      {customerDetail.addresses[0].street}
+                      {customerDetail.addresses[0].number
+                        ? `, ${customerDetail.addresses[0].number}`
+                        : ''} - {customerDetail.addresses[0].city}/{customerDetail.addresses[0].state}
+                    </p>
+                  ) : null}
+                </div>
+                <p className="organizer-eyebrow px-4 pt-3">Pedidos</p>
+                {customerDetail.orders.length === 0 ? (
+                  <EmptyState icon={<Package size={28} />} title="Nenhum pedido ainda" />
+                ) : (
+                  <ul className="divide-y divide-stone-100">
+                    {customerDetail.orders.map((order) => {
+                      const presentation = getOrderStatusPresentation(order)
+                      return (
+                        <li key={order.id}>
+                          <button
+                            type="button"
+                            onClick={() => openOrder(order.id)}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[#fff8ea]"
+                          >
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-stone-200 bg-[#fff1d6] text-[#b77717]">
+                              {order.previewImageUrl ? (
+                                <img
+                                  src={order.previewImageUrl}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <Package size={16} />
+                              )}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-semibold text-[#2a0f3d]">
+                                {format(order.total)}
+                              </p>
+                              <p className="mt-0.5 truncate text-[10px] text-[#6b665f]">
+                                {order.previewName}
+                                {order.itemCount && order.itemCount > 1 ? ` +${order.itemCount - 1}` : ''}
+                                {' · '}
+                                {formatDate(order.createdAt)}
+                              </p>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold uppercase tracking-wide ring-1 ring-inset ${presentation.className}`}
+                            >
+                              {presentation.label}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {!orderDetail ? (
+              <p className="px-4 py-6 text-center text-xs text-[#6b665f]">Carregando...</p>
+            ) : (
+              <div className="space-y-4 p-4">
+                <div>
+                  <p className="organizer-eyebrow">Itens</p>
+                  <ul className="mt-2 space-y-2">
+                    {orderDetail.items.map((item, index) => (
+                      <li key={index} className="flex items-center justify-between gap-3 text-xs">
+                        <span className="min-w-0 truncate text-[#2a0f3d]">
+                          {item.quantity}x {item.name}
+                        </span>
+                        <span className="shrink-0 font-semibold text-[#2a0f3d]">
+                          {format(item.price * item.quantity)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="space-y-1 border-t border-stone-100 pt-3 text-xs">
+                  <div className="flex items-center justify-between text-[#6b665f]">
+                    <span>Frete</span>
+                    <span>{format(orderDetail.shipping)}</span>
+                  </div>
+                  {orderDetail.discount > 0 ? (
+                    <div className="flex items-center justify-between text-[#6b665f]">
+                      <span>Desconto</span>
+                      <span>- {format(orderDetail.discount)}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex items-center justify-between text-sm font-semibold text-[#2a0f3d]">
+                    <span>Total</span>
+                    <span>{format(orderDetail.total)}</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-[#6b665f]">
+                  {formatDate(orderDetail.createdAt)} ·{' '}
+                  {orderDetail.origin === 'pdv' ? 'Venda no balcão' : 'Pedido online'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
 interface WorkspaceProps {
   selectedNode: OrganizerNode | null
   selectedTag: OrganizerTag | null
   nodes: OrganizerNode[]
+  focusedItemId: string | null
   onSelectNode: (id: string) => void
   onOpenModal: (mode: OrganizerModalMode) => void
   onNavigateBack: (parentId: string) => void
@@ -1128,6 +1782,7 @@ function Workspace({
   selectedNode,
   selectedTag,
   nodes,
+  focusedItemId,
   onSelectNode,
   onOpenModal,
   onNavigateBack,
@@ -1165,6 +1820,32 @@ function Workspace({
       />
     )
 
+  if (selectedNode.type === 'item' && focusedItemId === selectedNode.id) {
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-white">
+        <header className="flex shrink-0 items-center justify-between bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3 py-3 text-white sm:px-4">
+          <button
+            type="button"
+            onClick={() => onNavigateBack(selectedNode.parentId ?? 'home')}
+            className="flex items-center gap-1.5 rounded-full border border-white/30 px-3 py-1.5 text-xs font-semibold hover:bg-white/10"
+          >
+            <ArrowLeft size={14} />
+            Voltar um nível
+          </button>
+          <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#e2b04f]">
+            Página do item
+          </p>
+        </header>
+        <iframe
+          key={selectedNode.id}
+          src={withOrganizerPreview(`/produto/${selectedNode.id}`, true)}
+          title={`Página de ${selectedNode.name}`}
+          className="min-h-0 w-full flex-1 border-0 bg-white"
+        />
+      </div>
+    )
+  }
+
   const workspaceNode =
     selectedNode.type === 'page' || selectedNode.type === 'folder'
       ? selectedNode
@@ -1183,8 +1864,6 @@ function Workspace({
 
   const childNodes = nodes.filter((node) => node.parentId === workspaceNode.id)
   const parent = nodes.find((node) => node.id === workspaceNode.parentId)
-  const page = findOrganizerPage(nodes, workspaceNode)
-  const previewRoute = page?.route
 
   return (
     <div className="p-5">
@@ -1214,32 +1893,13 @@ function Workspace({
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {workspaceNode.type === 'folder' ? (
+        {workspaceNode.type === 'folder' && (
+          <div className="flex flex-wrap gap-2">
             <span className="rounded-full border border-stone-200 bg-[#fff8ea] px-3.5 py-2 text-xs text-[#8b5200]">
               Somente organização
             </span>
-          ) : (
-            <>
-              <StatusPill status={workspaceNode.status} />
-              <a
-                href={previewRoute ?? '/'}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3.5 py-2 text-xs hover:border-[#5b247f]/40 hover:bg-[#eadcf0]"
-              >
-                <Eye size={15} /> Abrir no site
-              </a>
-              <button
-                type="button"
-                onClick={() => onOpenModal('schedule')}
-                className="flex items-center gap-1.5 rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3.5 py-2 text-xs text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
-              >
-                <CalendarClock size={15} /> Agendar
-              </button>
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {workspaceNode.scheduledAt && (
@@ -1611,6 +2271,7 @@ interface InspectorProps {
   onTrashTag: (id: string) => void
   onOpenSchedule: () => void
   onSaved: () => void
+  liveSync?: boolean
 }
 
 function Inspector({
@@ -1626,6 +2287,7 @@ function Inspector({
   onTrashTag,
   onOpenSchedule,
   onSaved,
+  liveSync = false,
 }: InspectorProps) {
   const [nodeDraft, setNodeDraft] = useState(() =>
     node
@@ -1639,6 +2301,7 @@ function Inspector({
           size: node.size ?? 'medium',
           tagIds: node.tagIds,
           itemIds: node.itemIds,
+          sku: node.sku ?? '',
         }
       : null,
   )
@@ -1685,6 +2348,9 @@ function Inspector({
   }
 
   if (!node || !nodeDraft) return null
+  const syncLive = (changes: Partial<OrganizerNode>) => {
+    if (liveSync) onUpdateNode(node.id, changes)
+  }
   const invalidParentIds = new Set([node.id])
   let foundDescendant = true
   while (foundDescendant) {
@@ -1704,7 +2370,7 @@ function Inspector({
     (candidate) =>
       (candidate.type === 'page' || candidate.type === 'folder') && !invalidParentIds.has(candidate.id),
   )
-  const items = nodes.filter((candidate) => candidate.type === 'item')
+  const items = nodes.filter((candidate) => candidate.type === 'item' && findOrganizerPage(nodes, candidate))
   const protectedPage = node.type === 'page' && Boolean(node.immutable)
   const submitNode = (event: FormEvent) => {
     event.preventDefault()
@@ -1719,6 +2385,7 @@ function Inspector({
       size: nodeDraft.size,
       tagIds: nodeDraft.tagIds,
       itemIds: nodeDraft.itemIds,
+      sku: nodeDraft.sku.trim(),
     })
     onSaved()
   }
@@ -1736,6 +2403,7 @@ function Inspector({
     reader.addEventListener('load', () => {
       if (typeof reader.result === 'string') {
         setNodeDraft({ ...nodeDraft, imageUrl: reader.result })
+        syncLive({ imageUrl: reader.result })
       }
     })
     reader.readAsDataURL(file)
@@ -1758,14 +2426,20 @@ function Inspector({
         <input
           value={nodeDraft.name}
           disabled={node.immutable}
-          onChange={(event) => setNodeDraft({ ...nodeDraft, name: event.target.value })}
+          onChange={(event) => {
+            setNodeDraft({ ...nodeDraft, name: event.target.value })
+            syncLive({ name: event.target.value })
+          }}
           className="organizer-input disabled:bg-stone-100 disabled:text-[#6b665f]"
         />
       </Field>
       <Field label="Descrição">
         <textarea
           value={nodeDraft.description}
-          onChange={(event) => setNodeDraft({ ...nodeDraft, description: event.target.value })}
+          onChange={(event) => {
+            setNodeDraft({ ...nodeDraft, description: event.target.value })
+            syncLive({ description: event.target.value })
+          }}
           rows={4}
           className="organizer-input resize-y"
         />
@@ -1774,14 +2448,24 @@ function Inspector({
         <Field label="Status">
           <select
             value={nodeDraft.status}
-            onChange={(event) =>
-              setNodeDraft({ ...nodeDraft, status: event.target.value as OrganizerNode['status'] })
-            }
+            onChange={(event) => {
+              const status = event.target.value as OrganizerNode['status']
+              setNodeDraft({ ...nodeDraft, status })
+              syncLive({ status })
+            }}
             className="organizer-input"
           >
             <option value="draft">Rascunho</option>
             <option value="published">Publicado</option>
             {node.scheduledAt && <option value="scheduled">Agendado</option>}
+            {node.type === 'item' &&
+              organizerItemStatusOptions
+                .filter((value) => value !== 'published')
+                .map((value) => (
+                  <option key={value} value={value}>
+                    {organizerStatusLabels[value]}
+                  </option>
+                ))}
           </select>
         </Field>
       )}
@@ -1824,10 +2508,29 @@ function Inspector({
         <Field label="Preço">
           <input
             value={nodeDraft.price}
-            onChange={(event) => setNodeDraft({ ...nodeDraft, price: event.target.value })}
+            onChange={(event) => {
+              setNodeDraft({ ...nodeDraft, price: event.target.value })
+              syncLive({ price: Number(event.target.value) || 0 })
+            }}
             placeholder="R$ 0,00"
             className="organizer-input"
           />
+        </Field>
+      )}
+      {node.type === 'item' && (
+        <Field label="Código">
+          <input
+            value={nodeDraft.sku}
+            onChange={(event) => {
+              setNodeDraft({ ...nodeDraft, sku: event.target.value })
+              syncLive({ sku: event.target.value })
+            }}
+            placeholder="Código interno do item"
+            className="organizer-input"
+          />
+          <p className="mt-1 text-[10px] text-[#6b665f]">
+            Uso interno: nunca aparece na página pública do item.
+          </p>
         </Field>
       )}
       {node.type === 'highlight' && (
@@ -2123,10 +2826,13 @@ function EmptyState({ icon, title, detail }: { icon: React.ReactNode; title: str
 }
 
 function StatusPill({ status, compact = false }: { status: OrganizerNode['status']; compact?: boolean }) {
-  const colors = {
+  const colors: Record<OrganizerNode['status'], string> = {
     draft: 'bg-stone-100 text-[#6b665f]',
     scheduled: 'bg-[#fff1d6] text-[#8b5700]',
     published: 'bg-[#e5f0e8] text-[#27633a]',
+    'coming-soon': 'bg-[#eadcf0] text-[#5b247f]',
+    'out-of-stock': 'bg-[#fde3e0] text-[#a0382f]',
+    'low-stock': 'bg-[#fff1d6] text-[#8b5700]',
   }
   return (
     <span

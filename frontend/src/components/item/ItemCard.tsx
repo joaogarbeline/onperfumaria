@@ -12,6 +12,7 @@ export type ItemCardContent = {
   price?: number
   tagLabel?: string
   createdAt?: string
+  sku?: string
 }
 
 export function ItemCard({ className = '', item }: { className?: string; item: ItemCardContent }) {

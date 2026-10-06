@@ -20,6 +20,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import atendimentoIcon from '../../../assets/icons/atendente_d_c.png'
 import favoritoIcon from '../../../assets/icons/coracoes_d_c.png'
+import { useAuth } from '../../../contexts/AuthContext'
 import { useOrganizerStore } from '../../../hooks/useOrganizerStore'
 import {
   isOrganizerNodeAvailable,
@@ -64,6 +65,7 @@ export function MobileHeader() {
   const [searchTerm, setSearchTerm] = useState('')
   const navigate = useNavigate()
   const location = useLocation()
+  const { isCustomer, openAuth, requireAuth } = useAuth()
   const { store } = useOrganizerStore()
   const previewMode = isOrganizerPreviewMode(location.search)
   const homePath = withOrganizerPreview('/', previewMode)
@@ -122,11 +124,8 @@ export function MobileHeader() {
                 scrolled ? 'pointer-events-none -translate-y-3 opacity-0' : 'translate-y-0 opacity-100',
               ].join(' ')}
             >
-              <span className="block text-[9px] font-bold uppercase tracking-[0.22em] text-[#d89a28]">
-                Loja Premium
-              </span>
               <span className="block whitespace-nowrap text-xs font-semibold tracking-[0.16em] text-[#FAF6EF]">
-                ON PERFUMARIA
+                <span className="text-[#d89a28]">ON</span> PERFUMARIA
               </span>
             </Link>
 
@@ -171,7 +170,10 @@ export function MobileHeader() {
               </a>
               <button
                 type="button"
-                aria-label="Favoritos (em breve)"
+                aria-label="Favoritos"
+                onClick={() =>
+                  requireAuth(() => navigate('/conta'), 'Entre ou cadastre-se para salvar seus favoritos.')
+                }
                 className="flex h-9 w-9 shrink-0 items-center justify-center text-[#fafaf8]"
               >
                 <img src={favoritoIcon} alt="" aria-hidden="true" className="h-9 w-9 object-contain" />
@@ -234,14 +236,23 @@ export function MobileHeader() {
         >
           <div className="h-full overflow-y-auto px-4 pb-24 pt-5">
             <>
-              <Link
-                to="/login"
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-3 pb-4 text-[#fafaf8]"
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  if (isCustomer) {
+                    navigate('/conta')
+                    return
+                  }
+                  openAuth({ reason: 'Entre ou cadastre-se para acessar sua conta.' })
+                }}
+                className="flex w-full items-center gap-3 pb-4 text-left text-[#fafaf8]"
               >
                 <User size={22} className="shrink-0" />
-                <span className="text-sm font-semibold">Ola. Acesse sua conta</span>
-              </Link>
+                <span className="text-sm font-semibold">
+                  {isCustomer ? 'Minha conta' : 'Ola. Acesse sua conta'}
+                </span>
+              </button>
 
               <div className="flex flex-col gap-4 pb-4">
                 {shortcutLinks.map((item) => (
@@ -266,20 +277,26 @@ export function MobileHeader() {
               </div>
 
               <div className="mt-[5px] flex flex-col items-center gap-3">
-                <Link
-                  to="/login"
-                  onClick={() => setOpen(false)}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    openAuth({ reason: 'Entre ou cadastre-se para acessar sua conta.' })
+                  }}
                   className="w-full max-w-[240px] rounded-[20px] bg-[#fff1d6] py-3 text-center text-sm font-semibold text-[#2a0f3d]"
                 >
                   Entre
-                </Link>
-                <Link
-                  to="/cadastro"
-                  onClick={() => setOpen(false)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    openAuth({ view: 'register', reason: 'Preencha sua ficha de cadastro.' })
+                  }}
                   className="text-sm font-semibold text-[#fafaf8]"
                 >
                   Cadastro
-                </Link>
+                </button>
               </div>
             </>
           </div>
