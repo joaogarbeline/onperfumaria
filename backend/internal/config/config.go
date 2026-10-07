@@ -18,6 +18,10 @@ type Config struct {
 	// Cria a conta de teste do seed_demo.go. So para desenvolvimento.
 	SeedDemoCustomer bool
 	DefaultTaxFee    float64
+	// Garantem a conta fixa de administrador em qualquer ambiente, inclusive
+	// producao. Sem as duas, SeedAdmin nao faz nada.
+	AdminEmail    string
+	AdminPassword string
 
 	SMTPHost     string
 	SMTPPort     string
@@ -42,6 +46,8 @@ func Load() Config {
 		AutoSeed:         getEnv("AUTO_SEED", "true") == "true",
 		SeedDemoCustomer: getEnv("SEED_DEMO_CUSTOMER", "false") == "true",
 		DefaultTaxFee:    getFloatEnv("DEFAULT_TAX_FEE", 4.5),
+		AdminEmail:       getEnv("ADMIN_EMAIL", ""),
+		AdminPassword:    getEnv("ADMIN_PASSWORD", ""),
 
 		SMTPHost:               getEnv("SMTP_HOST", ""),
 		SMTPPort:               getEnv("SMTP_PORT", "587"),

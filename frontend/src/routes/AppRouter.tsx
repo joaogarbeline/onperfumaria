@@ -19,6 +19,11 @@ export function AppRouter() {
         <Route path="/organizador" element={<OrganizerPage />} />
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/comercial" element={<CategoryPage title="Comercial" />} />
+          <Route path="/arabes" element={<CategoryPage title="Árabes" />} />
+          <Route path="/feminino" element={<CategoryPage title="Feminino" />} />
+          <Route path="/masculino" element={<CategoryPage title="Masculino" />} />
+          <Route path="/importados" element={<CategoryPage title="Importados" />} />
           <Route path="/unisex" element={<CategoryPage title="Unisex" />} />
           <Route path="/pagina/:slug" element={<ManagedPage />} />
           <Route path="/produto/:slug" element={<ProductPage />} />

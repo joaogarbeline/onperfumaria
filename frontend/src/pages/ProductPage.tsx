@@ -14,7 +14,7 @@ import { api } from '../services/api'
 import type { Product } from '../types'
 import { itemCardToProduct } from '../utils/productModel'
 
-const PIX_DISCOUNT = 0.05
+const DEFAULT_PIX_DISCOUNT = 0.05
 const INSTALLMENTS = 12
 
 // Modelo unico de pagina de produto: busca o produto real na API e, quando
@@ -62,7 +62,9 @@ export function ProductPage() {
     ? selectedImage
     : allImages[0] || product?.imageUrl || ''
   const total = product ? product.finalPrice * quantity : 0
-  const pixPrice = product ? product.finalPrice * (1 - PIX_DISCOUNT) : 0
+  const pixDiscount =
+    product?.pixDiscountPercent != null ? product.pixDiscountPercent / 100 : DEFAULT_PIX_DISCOUNT
+  const pixPrice = product ? product.finalPrice * (1 - pixDiscount) : 0
   const installmentPrice = product ? product.finalPrice / INSTALLMENTS : 0
 
   const addToCart = () => {
@@ -102,7 +104,7 @@ export function ProductPage() {
       <Reveal>
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
           <div className="space-y-5">
-            <div className="surface-panel p-5">
+            <div>
               {product.discountLabel ? (
                 <Badge tone="amber" className="mb-4">
                   {product.discountLabel}
@@ -174,17 +176,6 @@ export function ProductPage() {
               </div>
             </div>
 
-            <div className="surface-panel p-5">
-              <p className="eyebrow mb-3">Ficha técnica</p>
-              <dl className="divide-y divide-[#ddc7ea]">
-                <InfoRow label="Categoria" value={product.category} />
-                <InfoRow label="Gênero" value={product.gender} />
-                <InfoRow label="Tipo" value={product.productType} />
-                <InfoRow label="Volume" value={product.volumeMl ? `${product.volumeMl} ml` : ''} />
-                <InfoRow label="Marca" value={product.brand} />
-              </dl>
-            </div>
-
             {product.description ? (
               <Accordion title="Detalhes" defaultOpen>
                 <p className="text-sm leading-7 text-[#6b665f]">{product.description}</p>
@@ -212,7 +203,7 @@ export function ProductPage() {
                 ) : null}
                 <p className="text-3xl leading-none text-[#2a0f3d]">{format(product.finalPrice)}</p>
                 <p className="mt-2 text-sm text-[#0f8a5f]">
-                  {format(pixPrice)} à vista no Pix (-{PIX_DISCOUNT * 100}%)
+                  {format(pixPrice)} à vista no Pix (-{Math.round(pixDiscount * 100)}%)
                 </p>
                 <p className="mt-1 text-xs text-[#6b665f]">
                   ou {INSTALLMENTS}x de {format(installmentPrice)} sem juros
@@ -266,16 +257,6 @@ export function ProductPage() {
           </div>
         </section>
       </Reveal>
-    </div>
-  )
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  if (!value) return null
-  return (
-    <div className="flex items-center justify-between gap-4 py-3 text-sm first:pt-0 last:pb-0">
-      <span className="text-[#6b665f]">{label}</span>
-      <span className="font-semibold text-[#2a0f3d]">{value}</span>
     </div>
   )
 }

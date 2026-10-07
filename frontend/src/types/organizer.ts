@@ -24,12 +24,22 @@ export type OrganizerNode = {
   status: OrganizerStatus
   scheduledAt: string
   imageUrl: string
+  /** Galeria completa do item (imageUrl e sempre a primeira). So "item" usa mais de uma. */
+  images?: string[]
   price: number
   size: OrganizerSize
   tagIds: string[]
   itemIds: string[]
   /** Codigo interno do item (so visivel no Organizador, nunca na pagina publica). */
   sku?: string
+  /** Marca do item, usada tambem para alimentar o filtro de marcas do catalogo. */
+  brand?: string
+  /** Volume em ml, usado tambem para alimentar o filtro de volume do catalogo. */
+  volumeMl?: number
+  /** Quantidade em estoque. Ao chegar a 0, o status vira "coming-soon" automaticamente. */
+  stock?: number
+  /** Desconto no Pix em %, especifico do item. Sem valor, a pagina usa o padrao do site. */
+  pixDiscountPercent?: number
   route?: string
   variant?: OrganizerVariant
   builtin?: boolean
@@ -118,6 +128,11 @@ export type ItemWizardDraft = {
   parentId: string
   price: string
   tagId: string
+  stock: string
+  pixDiscountPercent: string
+  brand: string
+  volumeMl: string
+  sku: string
 }
 
 export function emptyItemWizardDraft(parentId: string): ItemWizardDraft {
@@ -129,6 +144,11 @@ export function emptyItemWizardDraft(parentId: string): ItemWizardDraft {
     parentId,
     price: '',
     tagId: '',
+    stock: '',
+    pixDiscountPercent: '',
+    brand: '',
+    volumeMl: '',
+    sku: '',
   }
 }
 

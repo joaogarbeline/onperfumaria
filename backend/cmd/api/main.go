@@ -33,6 +33,10 @@ func main() {
 		}
 	}
 
+	if err := database.SeedAdmin(db, cfg.AdminEmail, cfg.AdminPassword); err != nil {
+		log.Fatalf("admin seed failed: %v", err)
+	}
+
 	router := handlers.NewRouter(cfg, db)
 
 	log.Printf("API listening on :%s", cfg.Port)

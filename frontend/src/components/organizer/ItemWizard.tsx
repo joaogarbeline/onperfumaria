@@ -243,6 +243,85 @@ export function ItemWizard({
                 </select>
               </label>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label>
+                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                  Estoque
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={draft.stock}
+                  onChange={(event) => onDraftChange({ stock: event.target.value })}
+                  placeholder="Quantidade disponível"
+                  className="organizer-input"
+                />
+              </label>
+              <label>
+                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                  Desconto no Pix (%)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={draft.pixDiscountPercent}
+                  onChange={(event) => onDraftChange({ pixDiscountPercent: event.target.value })}
+                  placeholder="5"
+                  className="organizer-input"
+                />
+              </label>
+            </div>
+            <p className="-mt-2 text-[10px] text-[#6b665f]">
+              Estoque: ao chegar a 0, o status muda sozinho para "Em breve". Pix: deixe em branco para usar o
+              padrão do site.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label>
+                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                  Marca
+                </span>
+                <input
+                  value={draft.brand}
+                  onChange={(event) => onDraftChange({ brand: event.target.value })}
+                  placeholder="Nome da marca"
+                  className="organizer-input"
+                />
+              </label>
+              <label>
+                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                  Volume (ml)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={draft.volumeMl}
+                  onChange={(event) => onDraftChange({ volumeMl: event.target.value })}
+                  placeholder="100"
+                  className="organizer-input"
+                />
+              </label>
+            </div>
+            <p className="-mt-2 text-[10px] text-[#6b665f]">
+              Marca e volume aparecem nos filtros do catálogo.
+            </p>
+
+            <label>
+              <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                Código
+              </span>
+              <input
+                value={draft.sku}
+                onChange={(event) => onDraftChange({ sku: event.target.value })}
+                placeholder="Código interno do item"
+                className="organizer-input"
+              />
+              <p className="mt-1 text-[10px] text-[#6b665f]">
+                Uso interno: nunca aparece na página pública do item.
+              </p>
+            </label>
           </div>
         )}
       </div>

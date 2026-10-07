@@ -9,10 +9,15 @@ export type ItemCardContent = {
   name: string
   description?: string
   imageUrl?: string
+  images?: string[]
   price?: number
   tagLabel?: string
   createdAt?: string
   sku?: string
+  brand?: string
+  volumeMl?: number
+  stock?: number
+  pixDiscountPercent?: number
 }
 
 export function ItemCard({ className = '', item }: { className?: string; item: ItemCardContent }) {

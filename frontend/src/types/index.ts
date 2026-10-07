@@ -26,6 +26,8 @@ export type Product = {
   isActive: boolean
   isFeatured: boolean
   isAvailable: boolean
+  /** Desconto no Pix em %, por produto. Sem valor, a pagina usa o padrao do site. */
+  pixDiscountPercent?: number
 }
 
 export type CartItem = Product & {

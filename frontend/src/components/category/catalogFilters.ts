@@ -28,7 +28,9 @@ export type CatalogFilters = {
   sort: CatalogSort
 }
 
-export const catalogVolumeOptions = ['30ml', '50ml', '75ml', '100ml', '150ml']
+export function formatCatalogVolume(volumeMl: number) {
+  return `${volumeMl}ml`
+}
 
 export const emptyCatalogFilters: CatalogFilters = {
   pickupOnly: false,

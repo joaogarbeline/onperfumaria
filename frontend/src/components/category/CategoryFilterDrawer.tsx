@@ -4,8 +4,8 @@ import { createPortal } from 'react-dom'
 import type { ItemCardContent } from '../item/ItemCard'
 import {
   catalogSortLabels,
-  catalogVolumeOptions,
   emptyCatalogFilters,
+  formatCatalogVolume,
   type CatalogFilters,
   type CatalogSort,
 } from './catalogFilters'
@@ -95,14 +95,21 @@ function FilterSections({
   const brands = useMemo(
     () =>
       Array.from(
-        new Set(
-          items.map((item) => item.tagLabel?.trim()).filter((brand): brand is string => Boolean(brand)),
-        ),
+        new Set(items.map((item) => item.brand?.trim()).filter((brand): brand is string => Boolean(brand))),
       ).sort((left, right) => left.localeCompare(right, 'pt-BR')),
     [items],
   )
   const visibleBrands = brands.filter((brand) =>
     brand.toLocaleLowerCase('pt-BR').includes(brandSearch.trim().toLocaleLowerCase('pt-BR')),
+  )
+  const volumes = useMemo(
+    () =>
+      Array.from(
+        new Set(items.map((item) => item.volumeMl).filter((volume): volume is number => Boolean(volume))),
+      )
+        .sort((left, right) => left - right)
+        .map(formatCatalogVolume),
+    [items],
   )
 
   const prices = items.map((item) => item.price ?? 0).filter((price) => price > 0)
@@ -204,14 +211,18 @@ function FilterSections({
       <section className="space-y-3">
         <SectionTitle>Volume</SectionTitle>
         <div>
-          {catalogVolumeOptions.map((volume) => (
-            <CheckRow
-              key={volume}
-              label={volume}
-              checked={filters.volumes.includes(volume)}
-              onToggle={() => onChange({ ...filters, volumes: toggleInList(filters.volumes, volume) })}
-            />
-          ))}
+          {volumes.length > 0 ? (
+            volumes.map((volume) => (
+              <CheckRow
+                key={volume}
+                label={volume}
+                checked={filters.volumes.includes(volume)}
+                onToggle={() => onChange({ ...filters, volumes: toggleInList(filters.volumes, volume) })}
+              />
+            ))
+          ) : (
+            <p className="py-2 text-xs text-[#6b665f]">Nenhum volume cadastrado.</p>
+          )}
         </div>
       </section>
 

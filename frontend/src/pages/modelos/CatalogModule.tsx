@@ -3,7 +3,11 @@ import { useMemo, useState } from 'react'
 import bottleIcon from '../../assets/icons/frasco_d_p.png'
 import type { OrganizerNode } from '../../types/organizer'
 import { CategoryFilterDrawer, CategoryFilterPanel } from '../../components/category/CategoryFilterDrawer'
-import { emptyCatalogFilters, type CatalogFilters } from '../../components/category/catalogFilters'
+import {
+  emptyCatalogFilters,
+  formatCatalogVolume,
+  type CatalogFilters,
+} from '../../components/category/catalogFilters'
 import { ItemCard, type ItemCardContent } from '../../components/item/ItemCard'
 
 const ITEMS_PER_PAGE = 8
@@ -19,7 +23,9 @@ function filterItems(items: ItemCardContent[], filters: CatalogFilters) {
     return (
       (filters.minPrice === null || price >= filters.minPrice) &&
       (filters.maxPrice === null || price <= filters.maxPrice) &&
-      (filters.brands.length === 0 || Boolean(item.tagLabel && filters.brands.includes(item.tagLabel)))
+      (filters.brands.length === 0 || Boolean(item.brand && filters.brands.includes(item.brand))) &&
+      (filters.volumes.length === 0 ||
+        Boolean(item.volumeMl && filters.volumes.includes(formatCatalogVolume(item.volumeMl))))
     )
   })
 
@@ -33,7 +39,7 @@ function filterItems(items: ItemCardContent[], filters: CatalogFilters) {
     return filtered.sort((left, right) => (right.createdAt ?? '').localeCompare(left.createdAt ?? ''))
   }
   if (filters.sort === 'brand') {
-    return filtered.sort((left, right) => (left.tagLabel ?? '').localeCompare(right.tagLabel ?? '', 'pt-BR'))
+    return filtered.sort((left, right) => (left.brand ?? '').localeCompare(right.brand ?? '', 'pt-BR'))
   }
   // "Mais avaliados", "Mais procurado" e "Promocao" ainda nao tem dado de origem
   // (avaliacoes, popularidade e sinalizador de promocao) - mantidos na lista sem reordenar.

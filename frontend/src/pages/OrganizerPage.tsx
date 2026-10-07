@@ -364,15 +364,27 @@ export function OrganizerPage() {
 
   const finishItemWizard = () => {
     if (!wizardDraft || !wizardDraft.name.trim()) return
+    const trackingStock = wizardDraft.stock.trim() !== ''
+    const stockValue = trackingStock ? Math.max(0, Number(wizardDraft.stock) || 0) : undefined
+    // Estoque chegou a zero: o item ja nasce como "Em breve" em vez de ser
+    // publicado sem ter o que vender.
+    const status = trackingStock && stockValue === 0 ? 'coming-soon' : wizardDraft.status
     const id = createNode({
       name: wizardDraft.name,
       type: 'item',
       parentId: wizardDraft.parentId,
       description: wizardDraft.description,
       imageUrl: wizardDraft.photos[0] ?? '',
+      images: wizardDraft.photos,
       price: Number(wizardDraft.price) || 0,
       tagIds: wizardDraft.tagId ? [wizardDraft.tagId] : [],
-      status: wizardDraft.status,
+      status,
+      stock: stockValue,
+      pixDiscountPercent:
+        wizardDraft.pixDiscountPercent.trim() === '' ? undefined : Number(wizardDraft.pixDiscountPercent),
+      brand: wizardDraft.brand.trim(),
+      volumeMl: Number(wizardDraft.volumeMl) || 0,
+      sku: wizardDraft.sku.trim(),
     })
     closeItemWizard()
     setSelection({ kind: 'node', id })
@@ -2297,11 +2309,16 @@ function Inspector({
           status: node.status,
           parentId: node.parentId ?? 'home',
           imageUrl: node.imageUrl ?? '',
+          images: node.images && node.images.length > 0 ? node.images : node.imageUrl ? [node.imageUrl] : [],
           price: String(node.price || ''),
           size: node.size ?? 'medium',
           tagIds: node.tagIds,
           itemIds: node.itemIds,
           sku: node.sku ?? '',
+          brand: node.brand ?? '',
+          volumeMl: String(node.volumeMl || ''),
+          stock: node.stock === undefined ? '' : String(node.stock),
+          pixDiscountPercent: node.pixDiscountPercent === undefined ? '' : String(node.pixDiscountPercent),
         }
       : null,
   )
@@ -2375,17 +2392,29 @@ function Inspector({
   const submitNode = (event: FormEvent) => {
     event.preventDefault()
     if (!nodeDraft.name.trim()) return
+    const trackingStock = nodeDraft.stock.trim() !== ''
+    const stockValue = trackingStock ? Math.max(0, Number(nodeDraft.stock) || 0) : undefined
+    // Estoque chegou a zero: o item sai do ar sozinho como "Em breve" em vez
+    // de continuar publicado sem ter o que vender.
+    const status = trackingStock && stockValue === 0 ? 'coming-soon' : nodeDraft.status
+    const isItem = node.type === 'item'
     onUpdateNode(node.id, {
       name: node.immutable ? node.name : nodeDraft.name.trim(),
       description: nodeDraft.description.trim(),
-      status: nodeDraft.status,
+      status,
       parentId: node.type === 'page' ? null : nodeDraft.parentId,
-      imageUrl: nodeDraft.imageUrl.trim(),
+      imageUrl: isItem ? (nodeDraft.images[0] ?? '') : nodeDraft.imageUrl.trim(),
+      images: isItem ? nodeDraft.images : undefined,
       price: Number(nodeDraft.price) || 0,
       size: nodeDraft.size,
       tagIds: nodeDraft.tagIds,
       itemIds: nodeDraft.itemIds,
       sku: nodeDraft.sku.trim(),
+      brand: nodeDraft.brand.trim(),
+      volumeMl: Number(nodeDraft.volumeMl) || 0,
+      stock: stockValue,
+      pixDiscountPercent:
+        nodeDraft.pixDiscountPercent.trim() === '' ? undefined : Number(nodeDraft.pixDiscountPercent),
     })
     onSaved()
   }
@@ -2407,6 +2436,31 @@ function Inspector({
       }
     })
     reader.readAsDataURL(file)
+  }
+
+  const handleItemPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    Promise.all(
+      Array.from(files).map(
+        (file) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.addEventListener('load', () => resolve(String(reader.result)))
+            reader.addEventListener('error', () => reject(reader.error))
+            reader.readAsDataURL(file)
+          }),
+      ),
+    ).then((newPhotos) => {
+      const nextImages = [...nodeDraft.images, ...newPhotos]
+      setNodeDraft({ ...nodeDraft, images: nextImages })
+      syncLive({ images: nextImages, imageUrl: nextImages[0] ?? '' })
+    })
+  }
+
+  const removeItemPhoto = (index: number) => {
+    const nextImages = nodeDraft.images.filter((_, photoIndex) => photoIndex !== index)
+    setNodeDraft({ ...nodeDraft, images: nextImages })
+    syncLive({ images: nextImages, imageUrl: nextImages[0] ?? '' })
   }
 
   return (
@@ -2485,7 +2539,7 @@ function Inspector({
           </select>
         </Field>
       )}
-      {(node.type === 'item' || node.type === 'highlight') && (
+      {node.type === 'highlight' && (
         <div className="mb-4">
           <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
             Imagem
@@ -2505,6 +2559,49 @@ function Inspector({
         </div>
       )}
       {node.type === 'item' && (
+        <div className="mb-4">
+          <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
+            Fotos
+          </span>
+          {nodeDraft.images.length > 0 && (
+            <div className="mb-2 grid grid-cols-3 gap-2">
+              {nodeDraft.images.map((photo, index) => (
+                <div
+                  key={index}
+                  className="group relative overflow-hidden rounded-xl border border-stone-200"
+                >
+                  <img src={photo} alt="" className="h-16 w-full object-cover" />
+                  <button
+                    type="button"
+                    aria-label="Remover foto"
+                    onClick={() => removeItemPhoto(index)}
+                    className="absolute right-1 top-1 rounded-full bg-white/90 p-0.5 text-[#a0382f] opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-stone-200 px-3 py-2 text-xs hover:border-[#d89a28] hover:bg-[#fff8ea]">
+            <ImageIcon size={15} /> {nodeDraft.images.length > 0 ? 'Adicionar mais fotos' : 'Enviar fotos'}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(event) => {
+                handleItemPhotos(event.target.files)
+                event.target.value = ''
+              }}
+            />
+          </label>
+          <p className="mt-1 text-[10px] text-[#6b665f]">
+            A primeira foto é a capa. Com mais de uma, a página do item mostra o carrossel.
+          </p>
+        </div>
+      )}
+      {node.type === 'item' && (
         <Field label="Preço">
           <input
             value={nodeDraft.price}
@@ -2515,6 +2612,63 @@ function Inspector({
             placeholder="R$ 0,00"
             className="organizer-input"
           />
+        </Field>
+      )}
+      {node.type === 'item' && (
+        <Field label="Estoque">
+          <input
+            type="number"
+            min="0"
+            value={nodeDraft.stock}
+            onChange={(event) => setNodeDraft({ ...nodeDraft, stock: event.target.value })}
+            placeholder="Quantidade disponível"
+            className="organizer-input"
+          />
+          <p className="mt-1 text-[10px] text-[#6b665f]">
+            Vai descontando a cada venda. Ao chegar a 0, o status muda sozinho para "Em breve". Deixe em
+            branco para não controlar estoque.
+          </p>
+        </Field>
+      )}
+      {node.type === 'item' && (
+        <Field label="Desconto no Pix (%)">
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={nodeDraft.pixDiscountPercent}
+            onChange={(event) => setNodeDraft({ ...nodeDraft, pixDiscountPercent: event.target.value })}
+            placeholder="5"
+            className="organizer-input"
+          />
+          <p className="mt-1 text-[10px] text-[#6b665f]">Deixe em branco para usar o padrão do site.</p>
+        </Field>
+      )}
+      {node.type === 'item' && (
+        <Field label="Marca">
+          <input
+            value={nodeDraft.brand}
+            onChange={(event) => {
+              setNodeDraft({ ...nodeDraft, brand: event.target.value })
+              syncLive({ brand: event.target.value })
+            }}
+            placeholder="Nome da marca"
+            className="organizer-input"
+          />
+          <p className="mt-1 text-[10px] text-[#6b665f]">Aparece no filtro de marcas do catálogo.</p>
+        </Field>
+      )}
+      {node.type === 'item' && (
+        <Field label="Volume (ml)">
+          <input
+            type="number"
+            min="0"
+            value={nodeDraft.volumeMl}
+            onChange={(event) => setNodeDraft({ ...nodeDraft, volumeMl: event.target.value })}
+            placeholder="100"
+            className="organizer-input"
+          />
+          <p className="mt-1 text-[10px] text-[#6b665f]">Aparece no filtro de volume do catálogo.</p>
         </Field>
       )}
       {node.type === 'item' && (

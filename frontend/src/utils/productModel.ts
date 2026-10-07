@@ -3,12 +3,13 @@ import type { Product } from '../types'
 
 export function itemCardToProduct(item: ItemCardContent): Product {
   const price = item.price || 0
+  const hasStockTracking = item.stock !== undefined
   return {
     id: item.id,
     sku: item.sku || item.id,
     name: item.name,
     slug: item.id,
-    brand: item.tagLabel || '',
+    brand: item.brand || '',
     category: '',
     description: item.description || '',
     salePrice: price,
@@ -18,16 +19,17 @@ export function itemCardToProduct(item: ItemCardContent): Product {
     discountLabel: '',
     costPrice: 0,
     profitMargin: 0,
-    stockCurrent: 999,
+    stockCurrent: hasStockTracking ? Math.max(0, item.stock ?? 0) : 999,
     stockMinimum: 0,
     weightGrams: 0,
-    volumeMl: 0,
+    volumeMl: item.volumeMl || 0,
     gender: '',
     productType: '',
     imageUrl: item.imageUrl || '',
-    images: item.imageUrl ? [item.imageUrl] : [],
+    images: item.images?.length ? item.images : item.imageUrl ? [item.imageUrl] : [],
     isActive: true,
     isFeatured: false,
-    isAvailable: true,
+    isAvailable: !hasStockTracking || (item.stock ?? 0) > 0,
+    pixDiscountPercent: item.pixDiscountPercent,
   }
 }

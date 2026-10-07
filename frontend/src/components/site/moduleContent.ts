@@ -9,10 +9,15 @@ export function toItemContent(node: OrganizerNode, tags: OrganizerTag[]): ItemCa
     name: node.name,
     description: node.description,
     imageUrl: node.imageUrl,
+    images: node.images,
     price: node.price,
     tagLabel: firstTag?.name,
     createdAt: node.createdAt,
     sku: node.sku,
+    brand: node.brand,
+    volumeMl: node.volumeMl,
+    stock: node.stock,
+    pixDiscountPercent: node.pixDiscountPercent,
   }
 }
 

@@ -136,6 +136,7 @@ export type CreateOrganizerNodeInput = {
   parentId: string | null
   description?: string
   imageUrl?: string
+  images?: string[]
   price?: number
   size?: OrganizerNode['size']
   tagIds?: string[]
@@ -143,6 +144,11 @@ export type CreateOrganizerNodeInput = {
   variant?: OrganizerVariant
   route?: string
   status?: OrganizerStatus
+  sku?: string
+  brand?: string
+  volumeMl?: number
+  stock?: number
+  pixDiscountPercent?: number
 }
 
 export function useOrganizerStore(token?: string) {
@@ -304,6 +310,7 @@ export function useOrganizerStore(token?: string) {
       status: input.status ?? (input.type === 'page' ? 'published' : 'draft'),
       scheduledAt: '',
       imageUrl: input.imageUrl?.trim() ?? '',
+      images: input.images,
       price: input.price ?? 0,
       size: input.size ?? 'medium',
       tagIds: input.tagIds ?? [],
@@ -320,6 +327,11 @@ export function useOrganizerStore(token?: string) {
       route: input.type === 'page' ? pageRoute : undefined,
       createdAt: timestamp,
       updatedAt: timestamp,
+      sku: input.sku,
+      brand: input.brand,
+      volumeMl: input.volumeMl,
+      stock: input.stock,
+      pixDiscountPercent: input.pixDiscountPercent,
     }
 
     setLocalStore((current) =>

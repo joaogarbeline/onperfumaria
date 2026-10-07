@@ -153,7 +153,12 @@ func (s *Service) GetProduct(ctx context.Context, slug string) (*models.Product,
 	if err != nil {
 		return nil, err
 	}
-	return s.decorateProduct(ctx, *product)
+	decorated, err := s.decorateProduct(ctx, *product)
+	if err != nil {
+		return nil, err
+	}
+	s.loadImages(ctx, decorated)
+	return decorated, nil
 }
 
 func (s *Service) StoreHome(ctx context.Context) (map[string]interface{}, error) {
@@ -1112,7 +1117,7 @@ func (s *Service) decorateProducts(ctx context.Context, products []models.Produc
 }
 
 func (s *Service) loadImages(ctx context.Context, product *models.Product) {
-	rows, err := s.db.Query(ctx, `SELECT image_url FROM product_images WHERE product_id = $1 ORDER BY created_at`, product.ID)
+	rows, err := s.db.Query(ctx, `SELECT image_url FROM product_images WHERE product_id = $1 ORDER BY id`, product.ID)
 	if err != nil {
 		return
 	}
@@ -1862,7 +1867,7 @@ func normalizeShippingRules(rules []shippingRule) []shippingRule {
 }
 
 func (s *Service) ListProductImages(ctx context.Context, productID string) ([]map[string]interface{}, error) {
-	rows, err := s.db.Query(ctx, `SELECT id::text, image_url FROM product_images WHERE product_id = $1 ORDER BY created_at`, productID)
+	rows, err := s.db.Query(ctx, `SELECT id::text, image_url FROM product_images WHERE product_id = $1 ORDER BY id`, productID)
 	if err != nil {
 		return nil, err
 	}
