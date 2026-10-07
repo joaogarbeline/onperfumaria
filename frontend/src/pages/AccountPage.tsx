@@ -1,7 +1,7 @@
 import type { FormEvent, ReactNode } from 'react'
 import { MapPin, Package, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { EmptyState } from '../components/EmptyState'
@@ -51,10 +51,16 @@ const emptyAddressForm: AddressForm = {
 export function AccountPage() {
   const { token, scope, logout, openAuth } = useAuth()
   const format = useCurrency()
+  const [searchParams] = useSearchParams()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<AccountTab>('profile')
+  // Permite abrir direto numa aba especifica (ex.: /conta?tab=addresses), usado
+  // pelo menu da conta no rodape mobile.
+  const requestedTab = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<AccountTab>(
+    requestedTab === 'addresses' || requestedTab === 'orders' ? requestedTab : 'profile',
+  )
   const [addressForm, setAddressForm] = useState<AddressForm>(emptyAddressForm)
   const [addressSaving, setAddressSaving] = useState(false)
 

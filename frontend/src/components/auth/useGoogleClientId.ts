@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../services/api'
 
 // O client id vem da config publica da loja, nao do bundle: trocar a
-// credencial e questao de reiniciar o backend, sem rebuild do frontend.
+// credencial em Configuracoes > API no admin basta, sem rebuild nem restart.
 let clientIdPromise: Promise<string> | null = null
 
 function fetchGoogleClientId(): Promise<string> {

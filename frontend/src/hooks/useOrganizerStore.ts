@@ -4,6 +4,7 @@ import { api } from '../services/api'
 import {
   createOrganizerId,
   initialOrganizerStore,
+  itensRootNode,
   type OrganizerActivity,
   type OrganizerContentType,
   type OrganizerNode,
@@ -260,6 +261,19 @@ export function useOrganizerStore(token?: string) {
       if (interval) window.clearInterval(interval)
     }
   }, [isOrganizerRoute])
+
+  // Auto-correcao de uma unica vez: lojas que sincronizaram antes da area
+  // "Itens" existir nao tem esse no. Sem ele, criar subpasta/item fica
+  // impossivel - entao criamos aqui assim que a base real do servidor chega,
+  // em vez de exigir uma migracao manual.
+  useEffect(() => {
+    if (!isOrganizerRoute || !remoteReady) return
+    setLocalStore((current) =>
+      current.nodes.some((node) => node.id === 'itens')
+        ? current
+        : { ...current, nodes: [...current.nodes, itensRootNode] },
+    )
+  }, [isOrganizerRoute, remoteReady])
 
   useEffect(() => {
     if (!isOrganizerRoute || !remoteReady || !pendingLocalSave.current || !hasSyncedWithServer.current) return

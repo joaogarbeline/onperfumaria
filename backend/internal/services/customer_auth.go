@@ -420,7 +420,7 @@ func (s *Service) verifyGoogleCredential(ctx context.Context, credential string)
 	if err := json.NewDecoder(response.Body).Decode(&info); err != nil {
 		return nil, ErrGoogleInvalidToken
 	}
-	if info.Sub == "" || info.Aud != s.cfg.GoogleClientID {
+	if info.Sub == "" || info.Aud != s.resolveGoogleClientID(ctx) {
 		return nil, ErrGoogleInvalidToken
 	}
 	if info.Email == "" || info.EmailVerified != "true" {
@@ -434,7 +434,7 @@ func (s *Service) verifyGoogleCredential(ctx context.Context, credential string)
 // o que a API do Google entrega (nome, e-mail, foto), deixa o resto em branco e
 // avisa o front para abrir a ficha de cadastro com os campos que faltam.
 func (s *Service) GoogleSignIn(ctx context.Context, credential string) (map[string]interface{}, error) {
-	if s.cfg.GoogleClientID == "" {
+	if s.resolveGoogleClientID(ctx) == "" {
 		return nil, ErrGoogleNotConfigured
 	}
 	if strings.TrimSpace(credential) == "" {

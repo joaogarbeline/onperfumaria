@@ -127,6 +127,42 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			data, err := service.CustomerProfile(c.Request.Context(), c.Param("id"), c.GetString("userID"))
 			respond(c, data, err)
 		})
+		// A gaveta "API" guarda tokens e chaves sensiveis (Mercado Pago, Google) e
+		// so o administrador fixo da loja pode ver ou editar - mesmo outro admin
+		// promovido em Contas recebe 403 aqui.
+		api.GET("/admin/api-settings", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			isFixedAdmin, err := service.IsFixedAdmin(c.Request.Context(), c.GetString("userID"))
+			if err != nil || !isFixedAdmin {
+				c.JSON(http.StatusForbidden, gin.H{"message": "acesso restrito ao administrador fixo"})
+				return
+			}
+			data, err := service.GetAPISettings(c.Request.Context())
+			respond(c, data, err)
+		})
+		api.PUT("/admin/api-settings", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			isFixedAdmin, err := service.IsFixedAdmin(c.Request.Context(), c.GetString("userID"))
+			if err != nil || !isFixedAdmin {
+				c.JSON(http.StatusForbidden, gin.H{"message": "acesso restrito ao administrador fixo"})
+				return
+			}
+			var input struct {
+				Key   string `json:"key"`
+				Value string `json:"value"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			allowedKeys := map[string]bool{
+				"mp_access_token": true, "mp_public_key": true, "mp_webhook_secret": true, "google_client_id": true,
+			}
+			if !allowedKeys[input.Key] {
+				c.JSON(http.StatusBadRequest, gin.H{"message": "chave de configuracao invalida"})
+				return
+			}
+			err = service.SaveSetting(c.Request.Context(), input.Key, input.Value)
+			respond(c, gin.H{"success": true}, err)
+		})
 		// So quem ja e admin pode promover outro cliente. A unica excecao e a
 		// loja recem-instalada (nenhum admin ainda): nesse caso a rota libera
 		// uma vez sem token para destravar o primeiro acesso.

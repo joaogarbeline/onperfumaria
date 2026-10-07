@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   CircleUserRound,
   Copy,
+  CreditCard,
   Eye,
   FileText,
   FolderOpen,
@@ -40,7 +41,7 @@ import { ItemWizard } from '../components/organizer/ItemWizard'
 import { useAuth } from '../contexts/AuthContext'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
 import { useCurrency } from '../hooks/useCurrency'
-import { api } from '../services/api'
+import { api, ApiError } from '../services/api'
 import { getOrderStatusPresentation } from '../utils/orders'
 import type { CustomerOrder } from '../types'
 import {
@@ -64,7 +65,7 @@ import type {
 
 type DrawerName = 'left' | 'right'
 type Selection = { kind: 'node'; id: string } | { kind: 'tag'; id: string } | null
-type SectionKey = 'upcoming' | 'recent' | 'organization' | 'tags'
+type SectionKey = 'upcoming' | 'recent' | 'organization' | 'items' | 'tags'
 
 interface DrawerItem {
   id: string
@@ -97,6 +98,30 @@ const nodeIcon = (type: OrganizerContentType, size = 17) => {
   if (type === 'catalog') return <LayoutGrid size={size} />
   if (type === 'highlight') return <Sparkles size={size} />
   return <Package size={size} />
+}
+
+// Monta os filhos de uma raiz da gaveta (pagina em "Pasta Pagina" ou subpasta
+// em "Itens") recursivamente - subpasta aninhada tambem desce, o resto e folha.
+function drawerDescendants(
+  nodes: OrganizerNode[],
+  parentId: string,
+  rootId: string,
+  depth: number,
+): DrawerItem[] {
+  return nodes
+    .filter((node) => node.parentId === parentId)
+    .flatMap((child) => [
+      {
+        id: child.id,
+        label: child.name,
+        detail: organizerTypeLabels[child.type],
+        kind: 'node' as const,
+        depth,
+        parentPageId: rootId,
+        nodeType: child.type,
+      },
+      ...(child.type === 'folder' ? drawerDescendants(nodes, child.id, rootId, depth + 1) : []),
+    ])
 }
 
 export function OrganizerPage() {
@@ -140,6 +165,7 @@ export function OrganizerPage() {
     upcoming: true,
     recent: true,
     organization: true,
+    items: true,
     tags: true,
   })
   const [openPages, setOpenPages] = useState<Record<string, boolean>>({})
@@ -158,37 +184,38 @@ export function OrganizerPage() {
     selectedNode && selectedNode.type === 'item' && focusedItemId === selectedNode.id,
   )
 
+  // "Itens" tem secao propria na gaveta (mesma hierarquia de "Pasta Pagina"),
+  // entao nao entra mais nessa lista de paginas do site.
   const organizationItems = useMemo<DrawerItem[]>(() => {
-    const pages = store.nodes.filter((node) => node.type === 'page')
-    const descendants = (parentId: string, pageId: string, depth: number): DrawerItem[] =>
-      store.nodes
-        .filter((node) => node.parentId === parentId)
-        .flatMap((child) => [
-          {
-            id: child.id,
-            label: child.name,
-            detail: organizerTypeLabels[child.type],
-            kind: 'node' as const,
-            depth,
-            parentPageId: pageId,
-            nodeType: child.type,
-          },
-          ...(child.type === 'folder' ? descendants(child.id, pageId, depth + 1) : []),
-        ])
-    return pages.flatMap((page) => {
-      return [
-        {
-          id: page.id,
-          label: page.name,
-          detail: page.id === 'home' ? 'Página principal · /' : `Página existente · ${page.route ?? '/'}`,
-          kind: 'node' as const,
-          depth: 0,
-          isPage: true,
-          nodeType: 'page' as const,
-        },
-        ...descendants(page.id, page.id, 1),
-      ]
-    })
+    const pages = store.nodes.filter((node) => node.type === 'page' && node.id !== 'itens')
+    return pages.flatMap((page) => [
+      {
+        id: page.id,
+        label: page.name,
+        detail: page.id === 'home' ? 'Página principal · /' : `Página existente · ${page.route ?? '/'}`,
+        kind: 'node' as const,
+        depth: 0,
+        isPage: true,
+        nodeType: 'page' as const,
+      },
+      ...drawerDescendants(store.nodes, page.id, page.id, 1),
+    ])
+  }, [store.nodes])
+
+  const itemsSectionItems = useMemo<DrawerItem[]>(() => {
+    const subfolders = store.nodes.filter((node) => node.type === 'folder' && node.parentId === 'itens')
+    return subfolders.flatMap((folder) => [
+      {
+        id: folder.id,
+        label: folder.name,
+        detail: `${store.nodes.filter((node) => node.parentId === folder.id).length} item(ns)`,
+        kind: 'node' as const,
+        depth: 0,
+        isPage: true,
+        nodeType: 'folder' as const,
+      },
+      ...drawerDescendants(store.nodes, folder.id, folder.id, 1),
+    ])
   }, [store.nodes])
 
   const allSections = useMemo<Record<SectionKey, DrawerItem[]>>(
@@ -211,6 +238,7 @@ export function OrganizerPage() {
         kind: 'activity' as const,
       })),
       organization: organizationItems,
+      items: itemsSectionItems,
       tags: store.tags.map((tag) => ({
         id: tag.id,
         label: tag.name,
@@ -219,7 +247,7 @@ export function OrganizerPage() {
         color: tag.color,
       })),
     }),
-    [organizationItems, store.activities, store.nodes, store.tags],
+    [organizationItems, itemsSectionItems, store.activities, store.nodes, store.tags],
   )
 
   const filteredSections = useMemo(() => {
@@ -232,7 +260,9 @@ export function OrganizerPage() {
             .filter((item) => normalizeOrganizerSearch(`${item.label} ${item.detail}`).includes(query))
             .map((item) => item.id),
         )
-        if (key !== 'organization') {
+        // "Pasta Pagina" e "Itens" tem a mesma hierarquia de 2 niveis (raiz
+        // expansivel + filhos) - as duas usam o mesmo filtro de busca.
+        if (key !== 'organization' && key !== 'items') {
           return [key, items.filter((item) => matchingIds.has(item.id))]
         }
 
@@ -264,6 +294,17 @@ export function OrganizerPage() {
 
   const isMobileViewport = () => window.matchMedia('(max-width: 1023px)').matches
 
+  // No mobile a gaveta esquerda cobre a tela inteira; paineis que abrem no
+  // canvas central (Configuracoes, Modo visitante) ficam escondidos atras
+  // dela se nao for fechada. Os modais (Lixeira, Historico, Clientes) tem
+  // z-index proprio e nao precisam disso.
+  const closeDrawersOnMobile = () => {
+    if (isMobileViewport()) {
+      setLeftOpen(false)
+      setRightOpen(false)
+    }
+  }
+
   const toggleLeftDrawer = () => {
     setLeftOpen((value) => {
       const next = !value
@@ -281,12 +322,6 @@ export function OrganizerPage() {
   }
 
   const selectItem = (item: DrawerItem) => {
-    const closeDrawersOnMobile = () => {
-      if (isMobileViewport()) {
-        setLeftOpen(false)
-        setRightOpen(false)
-      }
-    }
     closeOpenSession()
     if (item.kind === 'tag') {
       setSelection({ kind: 'tag', id: item.id })
@@ -440,10 +475,17 @@ export function OrganizerPage() {
   }> = [
     {
       key: 'organization',
-      label: 'Organização',
+      label: 'Pasta Página',
       empty: searchQuery ? 'Nenhum conteúdo encontrado' : 'Não há páginas',
       onAdd: () => setModalMode('page'),
       addLabel: 'Criar nova página do site',
+    },
+    {
+      key: 'items',
+      label: 'Itens',
+      empty: searchQuery ? 'Nenhum conteúdo encontrado' : 'Não há subpastas',
+      onAdd: () => setModalMode('folder'),
+      addLabel: 'Criar subpasta em Itens',
     },
   ]
 
@@ -488,7 +530,11 @@ export function OrganizerPage() {
     />
   )
 
-  const wizardPages = store.nodes.filter((node) => node.type === 'page')
+  // Item so nasce dentro de uma subpasta de "Itens" - nunca direto numa
+  // pagina do site nem numa subpasta solta em outro lugar.
+  const wizardPages = store.nodes.filter(
+    (node) => node.type === 'folder' && findOrganizerPage(store.nodes, node)?.id === 'itens',
+  )
   const wizardDiscountTags = store.tags.filter((tag) => (tag.discountPercent ?? 0) > 0)
   const rightDrawerVisible = rightOpen && !settingsOpen && !wizardDraft
 
@@ -599,8 +645,13 @@ export function OrganizerPage() {
                             <p className="px-5 py-1 text-[10px] text-[#6b665f]">{section.empty}</p>
                           ) : (
                             items.map((item) => {
+                              // "Pasta Pagina" e "Itens" compartilham a mesma hierarquia de
+                              // 2 niveis (raiz expansivel + filhos), entao usam o mesmo
+                              // tratamento de colapso/expansao aqui.
+                              const isTwoLevelSection =
+                                section.key === 'organization' || section.key === 'items'
                               if (
-                                section.key === 'organization' &&
+                                isTwoLevelSection &&
                                 item.parentPageId &&
                                 !searchQuery &&
                                 (openPages[item.parentPageId] ?? false) === false
@@ -614,9 +665,9 @@ export function OrganizerPage() {
                                 (item.kind !== 'tag' &&
                                   selection?.kind === 'node' &&
                                   selection.id === (item.targetId ?? item.id))
-                              if (section.key === 'organization' && item.isPage) {
+                              if (isTwoLevelSection && item.isPage) {
                                 const pageOpen = openPages[item.id] ?? false
-                                const childCount = organizationItems.filter(
+                                const childCount = allSections[section.key].filter(
                                   (candidate) => candidate.parentPageId === item.id,
                                 ).length
                                 return (
@@ -710,6 +761,7 @@ export function OrganizerPage() {
                       })
                     }
                     setProfileOpen(false)
+                    closeDrawersOnMobile()
                   }}
                   className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
                 >
@@ -721,6 +773,7 @@ export function OrganizerPage() {
                     closeOpenSession()
                     setSettingsOpen(true)
                     setProfileOpen(false)
+                    closeDrawersOnMobile()
                   }}
                   className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
                 >
@@ -933,9 +986,7 @@ export function OrganizerPage() {
           onCreateTag={createTag}
           onSchedule={scheduleNode}
           onCreated={handleCreated}
-          onChooseModule={(type) =>
-            type === 'item' ? openItemWizard(selectedContainerId) : setModalMode(type)
-          }
+          onChooseModule={(type) => setModalMode(type)}
         />
       )}
       {detailNode && (
@@ -1085,11 +1136,169 @@ function SettingsPanel({
           </div>
         </SettingsTopic>
 
+        <ApiSettings token={token} />
+
         <SettingsTopic title="Contas">
           <AdminAssignment token={token} />
         </SettingsTopic>
       </div>
     </div>
+  )
+}
+
+type ApiSettingsState = {
+  mp_access_token: string
+  mp_public_key: string
+  mp_webhook_secret: string
+  google_client_id: string
+}
+
+const emptyApiSettings: ApiSettingsState = {
+  mp_access_token: '',
+  mp_public_key: '',
+  mp_webhook_secret: '',
+  google_client_id: '',
+}
+
+// Gaveta "API": tokens e chaves sensiveis (Mercado Pago, Google). O backend
+// so responde 200 para o administrador fixo - qualquer outro admin recebe
+// 403, e aqui a gaveta simplesmente nao aparece (sem aviso de "sem acesso").
+function ApiSettings({ token }: { token: string | null }) {
+  const [settings, setSettings] = useState<ApiSettingsState>(emptyApiSettings)
+  const [loading, setLoading] = useState(true)
+  const [authorized, setAuthorized] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    api
+      .get<Record<string, string>>('/admin/api-settings', token ?? undefined)
+      .then((data) => {
+        setSettings({
+          mp_access_token: data.mp_access_token ?? '',
+          mp_public_key: data.mp_public_key ?? '',
+          mp_webhook_secret: data.mp_webhook_secret ?? '',
+          google_client_id: data.google_client_id ?? '',
+        })
+        setAuthorized(true)
+      })
+      .catch((err) => {
+        if (!(err instanceof ApiError && err.status === 403)) {
+          setAuthorized(true)
+          setNotice('Nao foi possivel carregar as configuracoes.')
+        }
+      })
+      .finally(() => setLoading(false))
+  }, [token])
+
+  async function handleSave() {
+    setSaving(true)
+    setNotice('')
+    try {
+      await Promise.all(
+        Object.entries(settings).map(([key, value]) =>
+          api.put('/admin/api-settings', { key, value }, token ?? undefined),
+        ),
+      )
+      setNotice('Configuracoes salvas. Passam a valer imediatamente, sem precisar reiniciar o site.')
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Nao foi possivel salvar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!loading && !authorized) {
+    return null
+  }
+
+  return (
+    <SettingsTopic title="API">
+      {loading ? (
+        <div className="organizer-surface p-4">
+          <p className="text-xs text-[#6b665f]">Carregando...</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="organizer-surface p-4">
+            <div className="flex items-center gap-2">
+              <CreditCard size={16} className="text-[#b77717]" />
+              <h3 className="text-sm font-semibold text-[#3a164f]">Mercado Pago</h3>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-[#6b665f]">
+              Cole aqui o Access Token e a Public Key gerados no painel do Mercado Pago. Sem Access Token
+              configurado, o checkout usa um provedor de teste que aprova pedidos sem cobrar de verdade.
+            </p>
+            <div className="mt-3">
+              <Field label="Access Token">
+                <input
+                  type="password"
+                  value={settings.mp_access_token}
+                  onChange={(event) =>
+                    setSettings((current) => ({ ...current, mp_access_token: event.target.value }))
+                  }
+                  placeholder="APP_USR-..."
+                  autoComplete="off"
+                  className="organizer-input"
+                />
+              </Field>
+              <Field label="Public Key">
+                <input
+                  value={settings.mp_public_key}
+                  onChange={(event) =>
+                    setSettings((current) => ({ ...current, mp_public_key: event.target.value }))
+                  }
+                  placeholder="APP_USR-..."
+                  autoComplete="off"
+                  className="organizer-input"
+                />
+              </Field>
+              <Field label="Webhook Secret (opcional)">
+                <input
+                  type="password"
+                  value={settings.mp_webhook_secret}
+                  onChange={(event) =>
+                    setSettings((current) => ({ ...current, mp_webhook_secret: event.target.value }))
+                  }
+                  autoComplete="off"
+                  className="organizer-input"
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div className="organizer-surface p-4">
+            <div className="flex items-center gap-2">
+              <CircleUserRound size={16} className="text-[#b77717]" />
+              <h3 className="text-sm font-semibold text-[#3a164f]">Login com Google</h3>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-[#6b665f]">
+              Client ID OAuth 2.0 criado no Google Cloud Console (tipo "Aplicativo da Web"). Sem ele, o botao
+              "Entrar com Google" fica desativado na loja.
+            </p>
+            <div className="mt-3">
+              <Field label="Client ID">
+                <input
+                  value={settings.google_client_id}
+                  onChange={(event) =>
+                    setSettings((current) => ({ ...current, google_client_id: event.target.value }))
+                  }
+                  placeholder="xxxxxxxxxx.apps.googleusercontent.com"
+                  autoComplete="off"
+                  className="organizer-input"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {notice ? <p className="text-xs font-medium text-[#0f8a5f]">{notice}</p> : null}
+
+          <Button type="button" size="sm" disabled={saving} onClick={handleSave}>
+            {saving ? 'Salvando...' : 'Salvar'}
+          </Button>
+        </div>
+      )}
+    </SettingsTopic>
   )
 }
 
@@ -1876,6 +2085,13 @@ function Workspace({
 
   const childNodes = nodes.filter((node) => node.parentId === workspaceNode.id)
   const parent = nodes.find((node) => node.id === workspaceNode.parentId)
+  // "Itens" e a unica area que guarda subpastas, e uma subpasta so existe
+  // dentro dela - criar item ou subpasta em qualquer pagina do site foi
+  // removido, tudo mora aqui agora.
+  const isItensRoot = workspaceNode.id === 'itens'
+  const isSubfolderUnderItens =
+    workspaceNode.type === 'folder' && findOrganizerPage(nodes, workspaceNode)?.id === 'itens'
+  const isOrganizationOnly = workspaceNode.type === 'folder' || isItensRoot
 
   return (
     <div className="p-5">
@@ -1896,7 +2112,7 @@ function Workspace({
           </div>
           <div className="min-w-0">
             <p className="organizer-eyebrow">
-              {organizerTypeLabels[workspaceNode.type]}
+              {isItensRoot ? 'Área interna' : organizerTypeLabels[workspaceNode.type]}
               {parent ? ` · ${parent.name}` : ''}
             </p>
             <h1 className="truncate text-2xl font-semibold sm:text-3xl">{workspaceNode.name}</h1>
@@ -1905,7 +2121,7 @@ function Workspace({
             </p>
           </div>
         </div>
-        {workspaceNode.type === 'folder' && (
+        {isOrganizationOnly && (
           <div className="flex flex-wrap gap-2">
             <span className="rounded-full border border-stone-200 bg-[#fff8ea] px-3.5 py-2 text-xs text-[#8b5200]">
               Somente organização
@@ -1924,47 +2140,63 @@ function Workspace({
       <section className="mt-8">
         <div className="mb-3">
           <h2 className="text-sm font-semibold">
-            {workspaceNode.type === 'folder' ? 'Adicionar à subpasta' : 'Adicionar à página'}
+            {isItensRoot
+              ? 'Adicionar subpasta'
+              : isSubfolderUnderItens
+                ? 'Adicionar item'
+                : workspaceNode.type === 'folder'
+                  ? 'Adicionar à subpasta'
+                  : 'Adicionar à página'}
           </h2>
           <p className="text-[10px] text-[#6b665f]">Escolha o tipo de conteúdo que será exibido.</p>
         </div>
         <div className="organizer-grid-actions grid gap-3">
-          <QuickAction
-            icon={<Layers3 size={20} />}
-            title="Carrossel"
-            detail="Selecione itens existentes para uma faixa deslizante."
-            onClick={() => onOpenModal('carousel')}
-          />
-          <QuickAction
-            icon={<LayoutGrid size={20} />}
-            title="Catálogo"
-            detail="Monte uma grade de produtos no modelo das páginas de categoria."
-            onClick={() => onOpenModal('catalog')}
-          />
-          <QuickAction
-            icon={<Sparkles size={20} />}
-            title="Destaque"
-            detail="Crie um banner com tamanho e imagem configuráveis."
-            onClick={() => onOpenModal('highlight')}
-          />
-          <QuickAction
-            icon={<Package size={20} />}
-            title="Item"
-            detail="Cadastre um produto com preço, imagem e tags."
-            onClick={() => onOpenModal('item')}
-          />
-          <QuickAction
-            icon={<FolderOpen size={20} />}
-            title="Subpasta"
-            detail="Organize módulos sem criar uma nova página no site."
-            onClick={() => onOpenModal('folder')}
-          />
+          {isItensRoot ? (
+            <QuickAction
+              icon={<FolderOpen size={20} />}
+              title="Subpasta"
+              detail="Organize os itens em grupos dentro de Itens."
+              onClick={() => onOpenModal('folder')}
+            />
+          ) : isSubfolderUnderItens ? (
+            <QuickAction
+              icon={<Package size={20} />}
+              title="Item"
+              detail="Cadastre um produto com preço, imagem e tags."
+              onClick={() => onOpenModal('item')}
+            />
+          ) : (
+            <>
+              <QuickAction
+                icon={<Layers3 size={20} />}
+                title="Carrossel"
+                detail="Selecione itens existentes para uma faixa deslizante."
+                onClick={() => onOpenModal('carousel')}
+              />
+              <QuickAction
+                icon={<LayoutGrid size={20} />}
+                title="Catálogo"
+                detail="Monte uma grade de produtos no modelo das páginas de categoria."
+                onClick={() => onOpenModal('catalog')}
+              />
+              <QuickAction
+                icon={<Sparkles size={20} />}
+                title="Destaque"
+                detail="Crie um banner com tamanho e imagem configuráveis."
+                onClick={() => onOpenModal('highlight')}
+              />
+            </>
+          )}
         </div>
       </section>
       <section className="mt-8">
         <div className="mb-3">
           <h2 className="text-sm font-semibold">
-            {workspaceNode.type === 'folder' ? 'Conteúdo da subpasta' : 'Conteúdo da página'}
+            {isItensRoot
+              ? 'Subpastas'
+              : workspaceNode.type === 'folder'
+                ? 'Conteúdo da subpasta'
+                : 'Conteúdo da página'}
           </h2>
           <p className="text-[10px] text-[#6b665f]">{childNodes.length} bloco(s) organizado(s).</p>
         </div>
@@ -1972,9 +2204,11 @@ function Workspace({
           <EmptyState
             icon={<Layers3 size={28} />}
             title={
-              workspaceNode.type === 'folder'
-                ? 'Esta subpasta ainda está vazia'
-                : 'Esta página ainda está vazia'
+              isItensRoot
+                ? 'Nenhuma subpasta criada ainda'
+                : workspaceNode.type === 'folder'
+                  ? 'Esta subpasta ainda está vazia'
+                  : 'Esta página ainda está vazia'
             }
             detail="Use uma das opções acima para começar."
           />
@@ -2383,10 +2617,21 @@ function Inspector({
       }
     })
   }
-  const containerOptions = nodes.filter(
-    (candidate) =>
-      (candidate.type === 'page' || candidate.type === 'folder') && !invalidParentIds.has(candidate.id),
-  )
+  // Item so pode morar numa subpasta de "Itens"; carrossel/catalogo/destaque
+  // so numa pagina do site (nunca em "Itens" ou nas subpastas dela); subpasta
+  // nao tem escolha, mora sempre em "Itens" (ver OrganizerModal).
+  const containerOptions =
+    node.type === 'item'
+      ? nodes.filter(
+          (candidate) =>
+            candidate.type === 'folder' &&
+            findOrganizerPage(nodes, candidate)?.id === 'itens' &&
+            !invalidParentIds.has(candidate.id),
+        )
+      : nodes.filter(
+          (candidate) =>
+            candidate.type === 'page' && candidate.id !== 'itens' && !invalidParentIds.has(candidate.id),
+        )
   const items = nodes.filter((candidate) => candidate.type === 'item' && findOrganizerPage(nodes, candidate))
   const protectedPage = node.type === 'page' && Boolean(node.immutable)
   const submitNode = (event: FormEvent) => {
@@ -2470,7 +2715,7 @@ function Inspector({
         <span className="text-[10px] uppercase tracking-wider text-[#8b5200]">
           {organizerTypeLabels[node.type]}
         </span>
-        {node.type === 'folder' ? (
+        {node.type === 'folder' || node.id === 'itens' ? (
           <span className="text-[10px] font-semibold text-[#8b5200]">Somente organização</span>
         ) : (
           <StatusPill status={node.status} compact />
@@ -2498,7 +2743,7 @@ function Inspector({
           className="organizer-input resize-y"
         />
       </Field>
-      {node.type !== 'folder' && (
+      {node.type !== 'folder' && node.id !== 'itens' && (
         <Field label="Status">
           <select
             value={nodeDraft.status}
@@ -2523,8 +2768,8 @@ function Inspector({
           </select>
         </Field>
       )}
-      {node.type !== 'page' && (
-        <Field label="Página ou subpasta">
+      {node.type !== 'page' && node.type !== 'folder' && (
+        <Field label={node.type === 'item' ? 'Subpasta' : 'Página'}>
           <select
             value={nodeDraft.parentId}
             onChange={(event) => setNodeDraft({ ...nodeDraft, parentId: event.target.value })}
@@ -2723,7 +2968,7 @@ function Inspector({
           }
         />
       )}
-      {node.type !== 'folder' && (
+      {node.type !== 'folder' && node.id !== 'itens' && (
         <button
           type="button"
           onClick={onOpenSchedule}

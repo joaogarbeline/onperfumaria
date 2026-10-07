@@ -24,11 +24,10 @@ import (
 )
 
 type Service struct {
-	cfg      config.Config
-	db       *pgxpool.Pool
-	repo     *repositories.StoreRepository
-	payments payments.Provider
-	mailer   *mailer.Mailer
+	cfg    config.Config
+	db     *pgxpool.Pool
+	repo   *repositories.StoreRepository
+	mailer *mailer.Mailer
 }
 
 var ErrInvalidCredentials = errors.New("e-mail ou senha invalidos")
@@ -128,16 +127,18 @@ func NewService(cfg config.Config, db *pgxpool.Pool) *Service {
 		}),
 	}
 
-	var mpToken string
-	_ = db.QueryRow(context.Background(), `SELECT value FROM settings WHERE key = 'mp_access_token'`).Scan(&mpToken)
-
-	if mpToken != "" {
-		svc.payments = payments.NewMercadoPagoProvider(mpToken, cfg.FrontendURL)
-	} else {
-		svc.payments = payments.MockProvider{}
-	}
-
 	return svc
+}
+
+// resolvePaymentsProvider reads the current Mercado Pago access token from the
+// database on every call, so changes saved in the admin panel take effect
+// immediately without requiring a backend restart.
+func (s *Service) resolvePaymentsProvider(ctx context.Context) payments.Provider {
+	mpToken, _ := s.GetSetting(ctx, "mp_access_token")
+	if mpToken != "" {
+		return payments.NewMercadoPagoProvider(mpToken, s.cfg.FrontendURL)
+	}
+	return payments.MockProvider{}
 }
 
 func (s *Service) ListProducts(ctx context.Context) ([]models.Product, error) {
@@ -307,14 +308,15 @@ func (s *Service) StoreConfig(ctx context.Context) (map[string]interface{}, erro
 	}
 	options = append(options, map[string]string{"value": "correios", "label": "Correios (PAC/SEDEX)"})
 
-	mpPublicKey, _ := s.GetMPSetting(ctx, "mp_public_key")
+	mpPublicKey, _ := s.GetSetting(ctx, "mp_public_key")
 
-	// O client id do Google sai daqui em vez de ser compilado no bundle: assim
-	// uma unica variavel no backend configura a loja, sem rebuild do frontend.
+	// Client id do Google e access token do Mercado Pago saem do banco (gaveta
+	// "API" do admin) em vez de compilados no bundle: configura a loja sem
+	// rebuild do frontend nem restart do backend.
 	return map[string]interface{}{
 		"shippingOptions": options,
 		"mpPublicKey":     mpPublicKey,
-		"googleClientId":  s.cfg.GoogleClientID,
+		"googleClientId":  s.resolveGoogleClientID(ctx),
 	}, nil
 }
 
@@ -754,7 +756,7 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	if input.PaymentMethodID == "" {
 		return nil, errors.New("selecione uma forma de pagamento")
 	}
-	paymentResult, err := s.payments.CreatePayment(payments.DirectPaymentInput{
+	paymentResult, err := s.resolvePaymentsProvider(ctx).CreatePayment(payments.DirectPaymentInput{
 		Total:           total,
 		Description:     fmt.Sprintf("Pedido On Perfumaria (%d itens)", len(orderItems)),
 		PaymentMethodID: input.PaymentMethodID,
@@ -1296,7 +1298,7 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 		return nil
 	}
 
-	mpAccessToken, err := s.GetMPSetting(ctx, "mp_access_token")
+	mpAccessToken, err := s.GetSetting(ctx, "mp_access_token")
 	if err != nil || mpAccessToken == "" {
 		return fmt.Errorf("mercado pago nao configurado")
 	}
@@ -1359,8 +1361,12 @@ func (s *Service) updateStockForOrder(ctx context.Context, orderID string) {
 	}
 }
 
-func (s *Service) GetMPSettings(ctx context.Context) (map[string]string, error) {
-	rows, err := s.db.Query(ctx, `SELECT key, value FROM settings WHERE key IN ('mp_access_token', 'mp_public_key', 'mp_webhook_secret')`)
+// apiSettingKeys sao as chaves editaveis pela gaveta "API" do admin (restrita
+// ao administrador fixo - ver IsFixedAdmin).
+var apiSettingKeys = []string{"mp_access_token", "mp_public_key", "mp_webhook_secret", "google_client_id"}
+
+func (s *Service) GetAPISettings(ctx context.Context) (map[string]string, error) {
+	rows, err := s.db.Query(ctx, `SELECT key, value FROM settings WHERE key = ANY($1)`, apiSettingKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -1374,27 +1380,41 @@ func (s *Service) GetMPSettings(ctx context.Context) (map[string]string, error) 
 		}
 		settings[key] = value
 	}
-	if _, ok := settings["mp_access_token"]; !ok {
-		settings["mp_access_token"] = ""
-	}
-	if _, ok := settings["mp_public_key"]; !ok {
-		settings["mp_public_key"] = ""
-	}
-	if _, ok := settings["mp_webhook_secret"]; !ok {
-		settings["mp_webhook_secret"] = ""
+	for _, key := range apiSettingKeys {
+		if _, ok := settings[key]; !ok {
+			settings[key] = ""
+		}
 	}
 	return settings, nil
 }
 
-func (s *Service) SaveMPSetting(ctx context.Context, key, value string) error {
+func (s *Service) SaveSetting(ctx context.Context, key, value string) error {
 	_, err := s.db.Exec(ctx, `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`, key, value)
 	return err
 }
 
-func (s *Service) GetMPSetting(ctx context.Context, key string) (string, error) {
+func (s *Service) GetSetting(ctx context.Context, key string) (string, error) {
 	var value string
 	err := s.db.QueryRow(ctx, `SELECT value FROM settings WHERE key = $1`, key).Scan(&value)
 	return value, err
+}
+
+// IsFixedAdmin diz se o cliente e o administrador fixo da loja - a unica
+// conta autorizada a ver e editar a gaveta "API" (tokens e chaves sensiveis).
+func (s *Service) IsFixedAdmin(ctx context.Context, customerID string) (bool, error) {
+	var isFixedAdmin bool
+	err := s.db.QueryRow(ctx, `SELECT is_fixed_admin FROM customers WHERE id = $1`, customerID).Scan(&isFixedAdmin)
+	return isFixedAdmin, err
+}
+
+// resolveGoogleClientID prioriza o valor salvo no admin; sem ele, cai para a
+// variavel de ambiente GOOGLE_CLIENT_ID (usada no dev local via .vscode/.env).
+func (s *Service) resolveGoogleClientID(ctx context.Context) string {
+	value, _ := s.GetSetting(ctx, "google_client_id")
+	if value != "" {
+		return value
+	}
+	return s.cfg.GoogleClientID
 }
 
 func slugify(value string) string {

@@ -183,6 +183,30 @@ const sitePages: OrganizerNode[] = [
   updatedAt: now,
 }))
 
+// Area interna fixa: nao e uma pagina do site (sem rota), serve so para guardar
+// as subpastas que organizam os itens. Criar item ou subpasta em qualquer outro
+// lugar foi removido - tudo migra para ca.
+export const itensRootNode: OrganizerNode = {
+  id: 'itens',
+  name: 'Itens',
+  type: 'page',
+  parentId: null,
+  description: 'Area interna com os itens da loja, organizados em subpastas. Nao aparece no site.',
+  status: 'published',
+  scheduledAt: '',
+  imageUrl: '',
+  price: 0,
+  size: 'large',
+  tagIds: [],
+  itemIds: [],
+  route: undefined,
+  variant: 'standard',
+  builtin: true,
+  immutable: true,
+  createdAt: now,
+  updatedAt: now,
+}
+
 const homeModuleNames = [
   'Visto recentemente',
   'Acabaram de chegar',
@@ -310,7 +334,7 @@ const categoryModules: OrganizerNode[] = sitePages
   ])
 
 export const initialOrganizerStore: OrganizerStore = {
-  nodes: [...sitePages, ...homeModules, ...categoryModules],
+  nodes: [...sitePages, itensRootNode, ...homeModules, ...categoryModules],
   tags: [],
   activities: [],
   trash: [],

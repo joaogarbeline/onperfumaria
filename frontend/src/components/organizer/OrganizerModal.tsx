@@ -1,4 +1,4 @@
-import { CalendarClock, Eye, FolderOpen, Layers3, LayoutGrid, Package, Sparkles, X } from 'lucide-react'
+import { CalendarClock, Eye, Layers3, LayoutGrid, Package, Sparkles, X } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { CreateOrganizerNodeInput } from '../../hooks/useOrganizerStore'
 import {
@@ -32,7 +32,7 @@ type OrganizerModalProps = {
   onCreateTag: (name: string, color: string, discountPercent?: number) => string
   onSchedule: (id: string, date: string) => void
   onCreated: (kind: 'node' | 'tag', id: string) => void
-  onChooseModule: (type: 'folder' | 'carousel' | 'highlight' | 'catalog' | 'item') => void
+  onChooseModule: (type: 'carousel' | 'highlight' | 'catalog') => void
 }
 
 const fieldClass =
@@ -66,9 +66,16 @@ export function OrganizerModal({
   onCreated,
   onChooseModule,
 }: OrganizerModalProps) {
-  const containers = store.nodes.filter((node) => node.type === 'page' || node.type === 'folder')
+  // Subpasta so existe dentro de "Itens" (sem escolha, ver handleSubmit).
+  // Carrossel/catalogo/destaque so numa pagina do site de verdade - nunca em
+  // "Itens" nem nas subpastas dela, que guardam so os itens.
+  const containers = store.nodes.filter(
+    (node) =>
+      (node.type === 'page' && node.id !== 'itens') ||
+      (node.type === 'folder' && findOrganizerPage(store.nodes, node)?.id !== 'itens'),
+  )
   const items = store.nodes.filter((node) => node.type === 'item' && findOrganizerPage(store.nodes, node))
-  const schedulableNodes = store.nodes.filter((node) => node.type !== 'folder')
+  const schedulableNodes = store.nodes.filter((node) => node.type !== 'folder' && node.id !== 'itens')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [route, setRoute] = useState('')
@@ -140,7 +147,9 @@ export function OrganizerModal({
     const id = onCreateNode({
       name,
       type: mode,
-      parentId: mode === 'page' ? null : selectedParent,
+      // Subpasta so existe dentro de "Itens": nao depende do seletor abaixo
+      // (que nem aparece para esse modo), sempre vai para la.
+      parentId: mode === 'page' ? null : mode === 'folder' ? 'itens' : selectedParent,
       description,
       imageUrl,
       price: Number(price) || 0,
@@ -195,7 +204,7 @@ export function OrganizerModal({
         {mode === 'preview' ? (
           <PreviewContent store={store} selectedId={selectedId} />
         ) : mode === 'module-picker' ? (
-          <div className="grid gap-3 overflow-y-auto p-5 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 overflow-y-auto p-5 sm:grid-cols-2 lg:grid-cols-3">
             <ModuleChoice
               icon={<Layers3 size={22} />}
               title="Carrossel"
@@ -215,15 +224,6 @@ export function OrganizerModal({
               }}
             />
             <ModuleChoice
-              icon={<Package size={22} />}
-              title="Item"
-              detail="Um produto com preço, imagem e tags."
-              onClick={() => {
-                onClose()
-                onChooseModule('item')
-              }}
-            />
-            <ModuleChoice
               icon={<LayoutGrid size={22} />}
               title="Catálogo"
               detail="Uma grade paginada no modelo das categorias."
@@ -232,19 +232,10 @@ export function OrganizerModal({
                 onChooseModule('catalog')
               }}
             />
-            <ModuleChoice
-              icon={<FolderOpen size={22} />}
-              title="Subpasta"
-              detail="Organiza módulos dentro da página sem criar outra rota no site."
-              onClick={() => {
-                onClose()
-                onChooseModule('folder')
-              }}
-            />
             <button
               type="button"
               onClick={onClose}
-              className="mt-2 px-4 py-2 text-sm text-[#6b665f] hover:bg-[#fff8ea] sm:col-span-2 lg:col-span-5"
+              className="mt-2 px-4 py-2 text-sm text-[#6b665f] hover:bg-[#fff8ea] sm:col-span-2 lg:col-span-3"
             >
               Criar apenas a página
             </button>
@@ -342,22 +333,24 @@ export function OrganizerModal({
 
                   {mode !== 'page' && mode !== 'tag' ? (
                     <>
-                      <label>
-                        <FieldLabel>Página ou subpasta de destino</FieldLabel>
-                        <select
-                          value={selectedParent}
-                          onChange={(event) => setSelectedParent(event.target.value)}
-                          className={fieldClass}
-                          required
-                        >
-                          {containers.map((container) => (
-                            <option key={container.id} value={container.id}>
-                              {container.type === 'folder' ? '↳ ' : ''}
-                              {container.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      {mode !== 'folder' && (
+                        <label>
+                          <FieldLabel>Página de destino</FieldLabel>
+                          <select
+                            value={selectedParent}
+                            onChange={(event) => setSelectedParent(event.target.value)}
+                            className={fieldClass}
+                            required
+                          >
+                            {containers.map((container) => (
+                              <option key={container.id} value={container.id}>
+                                {container.type === 'folder' ? '↳ ' : ''}
+                                {container.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                       {mode !== 'folder' ? (
                         <label>
                           <FieldLabel>Publicação no site</FieldLabel>
@@ -374,8 +367,8 @@ export function OrganizerModal({
                         </label>
                       ) : (
                         <p className="rounded-xl border border-stone-200 bg-[#fff8ea] px-3 py-2.5 text-xs leading-5 text-[#6b665f]">
-                          A subpasta serve somente para organização. Ela não cria endereço nem aparece na
-                          navegação do site.
+                          Fica dentro de Itens, junto das outras subpastas. Serve só para organizar os itens -
+                          não cria endereço nem aparece na navegação do site.
                         </p>
                       )}
                     </>

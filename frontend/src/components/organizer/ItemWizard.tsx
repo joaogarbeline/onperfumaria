@@ -191,7 +191,7 @@ export function ItemWizard({
               </label>
               <label>
                 <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
-                  Página
+                  Subpasta
                 </span>
                 <select
                   value={draft.parentId}
