@@ -13,7 +13,7 @@ export function MainLayout() {
   const isStandaloneProductPage = location.pathname === '/organizador'
 
   return (
-    <div className="min-h-screen overflow-x-clip text-stone-900">
+    <div className="flex min-h-screen flex-col overflow-x-clip text-stone-900">
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(216,154,40,0.12),_transparent_30%),linear-gradient(180deg,_#f8f5f9_0%,_#eadcf0_45%,_#f8f5f9_100%)]" />
       <div
         aria-hidden="true"
@@ -23,8 +23,8 @@ export function MainLayout() {
       <div
         className={
           isStandaloneProductPage
-            ? 'w-full'
-            : `w-full px-4 pb-10 pt-6 sm:px-6 sm:pt-10 lg:px-8 xl:px-6 ${isMobile ? 'pb-24' : ''}`
+            ? 'w-full flex-1'
+            : `w-full flex-1 px-4 pb-10 pt-6 sm:px-6 sm:pt-10 lg:px-8 xl:px-6 ${isMobile ? 'pb-24' : ''}`
         }
       >
         <main key={location.pathname} className={isStandaloneProductPage ? '' : 'page-enter'}>

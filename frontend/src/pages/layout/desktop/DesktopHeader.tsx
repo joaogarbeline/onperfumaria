@@ -1,27 +1,37 @@
-import { Search, User } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { Bell, LayoutDashboard, LogOut, MapPin, Search, User, UserRound } from 'lucide-react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import atendimentoIcon from '../../../assets/icons/atendente_d_c.png'
 import favoritoIcon from '../../../assets/icons/coracoes_d_c.png'
+import pedidosIcon from '../../../assets/icons/catalogo_d_c.png'
 import sacolaIcon from '../../../assets/icons/sacola_d_c.png'
+import { NotificationsDrawer } from '../../../components/notifications/NotificationsDrawer'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCart } from '../../../contexts/CartContext'
+import { useAdminNotifications } from '../../../hooks/useAdminNotifications'
 import { useOrganizerStore } from '../../../hooks/useOrganizerStore'
+import { useStoreWhatsapp } from '../../../hooks/useStoreWhatsapp'
 import {
   isOrganizerNodeAvailable,
   isOrganizerPreviewMode,
   withOrganizerPreview,
 } from '../../../types/organizer'
 import { Button } from '../../../components/Button'
-import { Carousel } from '../../../components/Carousel'
 
 export function DesktopHeader() {
   const { items } = useCart()
-  const { scope, openAuth, requireAuth } = useAuth()
+  const { scope, token, openAuth, requireAuth, isAdmin, logout } = useAuth()
   const { store } = useOrganizerStore()
+  const storeWhatsapp = useStoreWhatsapp()
+  const { unread, notifications, loading, loadNotifications, markRead } = useAdminNotifications(
+    isAdmin,
+    token,
+  )
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const isCustomer = scope === 'customer'
   const [scrolled, setScrolled] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const count = items.reduce((sum, item) => sum + item.quantity, 0)
   const navigate = useNavigate()
   const location = useLocation()
@@ -63,89 +73,131 @@ export function DesktopHeader() {
   return (
     <header
       className={[
-        'sticky top-0 z-30 overflow-hidden border-b bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] transition duration-300',
+        'sticky top-0 z-30 border-b bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] transition duration-300',
         scrolled
           ? 'border-[#5b247f]/40 shadow-[0_18px_40px_-30px_rgba(58,22,79,0.45)]'
           : 'border-[#3a164f]/40',
       ].join(' ')}
     >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 130 100"
-        className="pointer-events-none absolute -right-4 -top-6 z-0 h-[160px] w-[208px] opacity-10"
-      >
-        <path
-          d="M55 10 h20 v14 l10 10 v56 a4 4 0 0 1 -4 4 h-32 a4 4 0 0 1 -4 -4 v-56 l10 -10 z"
-          fill="none"
-          stroke="#d89a28"
-          strokeWidth={2.5}
-        />
-      </svg>
+      {/* overflow-hidden so na camada decorativa: o menu da conta (que fica
+          num descendente dessa <header>) precisa poder "vazar" por baixo dela
+          sem ser cortado. */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 130 100"
+          className="absolute -right-4 -top-6 z-0 h-[160px] w-[208px] opacity-10"
+        >
+          <path
+            d="M55 10 h20 v14 l10 10 v56 a4 4 0 0 1 -4 4 h-32 a4 4 0 0 1 -4 -4 v-56 l10 -10 z"
+            fill="none"
+            stroke="#d89a28"
+            strokeWidth={2.5}
+          />
+        </svg>
+      </div>
 
       <div className="relative z-10 px-6 py-4">
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(280px,38vw)_minmax(0,1fr)] items-start gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)] xl:gap-6">
+        <div className="flex w-full items-center gap-4 xl:gap-6">
           <Link
             to={homePath}
-            className="flex flex-col justify-center space-y-1.5 self-center justify-self-start rounded-[20px] lg:px-1 xl:px-5"
+            className="flex shrink-0 flex-col justify-center space-y-1.5 self-center rounded-[20px] lg:px-1 xl:px-5"
           >
             <span className="block whitespace-nowrap text-base font-semibold tracking-[0.28em] text-[#FAF6EF] lg:text-lg lg:tracking-[0.38em]">
               <span className="text-[#d89a28]">ON</span> PERFUMARIA
             </span>
           </Link>
 
-          <div className="flex min-w-0 w-full flex-col gap-2">
-            <form
-              onSubmit={handleSearchSubmit}
-              className="flex w-full items-center gap-2 rounded-[20px] bg-[#FAF6EF] py-1.5 pl-4 pr-1.5"
+          <form
+            onSubmit={handleSearchSubmit}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-[20px] bg-[#FAF6EF] py-1.5 pl-4 pr-1.5"
+          >
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Buscar perfumes, marcas..."
+              className="w-full min-w-0 bg-transparent text-sm text-[#2a0f3d] outline-none placeholder:text-[#6b665f]"
+            />
+            <button
+              type="submit"
+              aria-label="Buscar"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[20px] bg-[#FAF6EF] text-[#2a0f3d] ring-1 ring-inset ring-[#2a0f3d]/10 transition hover:bg-white"
             >
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Buscar perfumes, marcas..."
-                className="w-full bg-transparent text-sm text-[#2a0f3d] outline-none placeholder:text-[#6b665f]"
-              />
-              <button
-                type="submit"
-                aria-label="Buscar"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[20px] bg-[#FAF6EF] text-[#2a0f3d] ring-1 ring-inset ring-[#2a0f3d]/10 transition hover:bg-white"
-              >
-                <Search size={16} />
-              </button>
-            </form>
+              <Search size={16} />
+            </button>
+          </form>
 
-            <div
-              className={[
-                'flex items-center justify-center overflow-hidden rounded-[20px] transition-all duration-300 ease-in-out',
-                scrolled ? 'max-h-0 py-0 opacity-0' : 'max-h-16 py-2 opacity-100',
-              ].join(' ')}
-            >
-              <nav aria-label="Páginas do site" className="w-full overflow-hidden">
-                <Carousel
-                  ariaLabel="Páginas do site"
-                  items={customerLinks}
-                  getItemKey={(item) => item.id}
-                  fullBleed={false}
-                  itemClassName="min-w-[88px] shrink-0 text-center"
-                  className="gap-6 px-1 whitespace-nowrap"
-                  renderItem={(item) => (
-                    <NavLink to={item.path} className={navLinkClassName}>
-                      {item.label}
-                    </NavLink>
-                  )}
-                />
-              </nav>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 items-center justify-self-end gap-1 lg:gap-2 xl:gap-3">
-            <div className="flex items-center rounded-[20px] lg:px-1 xl:px-4">
+          <div className="flex shrink-0 items-center gap-1 lg:gap-2 xl:gap-3">
+            <div className="relative flex items-center rounded-[20px] lg:px-1 xl:px-4">
               {isCustomer ? (
-                <Link to="/conta" aria-label="Minha conta" className="inline-flex">
-                  <Button variant="secondary" size="sm">
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    aria-label={accountMenuOpen ? 'Fechar menu da conta' : 'Abrir menu da conta'}
+                    aria-expanded={accountMenuOpen}
+                    onClick={() => setAccountMenuOpen((value) => !value)}
+                  >
                     <User size={16} />
                     <span>Minha conta</span>
                   </Button>
-                </Link>
+
+                  {/* Sempre no DOM: a transicao de escala (origin no topo, "de
+                      cima para baixo") so anima trocando classe, nao
+                      montando/desmontando - igual a versao mobile. */}
+                  <div
+                    role="menu"
+                    aria-label="Menu da conta"
+                    className={`absolute right-0 top-full z-40 mt-2 w-52 origin-top overflow-hidden rounded-[18px] border border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] shadow-[0_20px_50px_-15px_rgba(42,15,61,0.6)] transition-[transform,opacity] duration-200 ease-out ${
+                      accountMenuOpen ? 'scale-y-100 opacity-100' : 'pointer-events-none scale-y-0 opacity-0'
+                    }`}
+                  >
+                    <AccountMenuItem
+                      icon={<UserRound size={16} />}
+                      label="Meus dados"
+                      onClick={() => {
+                        setAccountMenuOpen(false)
+                        navigate('/conta?tab=profile')
+                      }}
+                    />
+                    <AccountMenuItem
+                      icon={<MapPin size={16} />}
+                      label="Enderecos"
+                      onClick={() => {
+                        setAccountMenuOpen(false)
+                        navigate('/conta?tab=addresses')
+                      }}
+                    />
+                    {isAdmin ? (
+                      <AccountMenuItem
+                        icon={<LayoutDashboard size={16} />}
+                        label="Editor"
+                        onClick={() => {
+                          setAccountMenuOpen(false)
+                          navigate('/organizador')
+                        }}
+                      />
+                    ) : null}
+                    <div className="h-px bg-[#fafaf8]/15" />
+                    <AccountMenuItem
+                      icon={<LogOut size={16} />}
+                      label="Sair"
+                      onClick={() => {
+                        setAccountMenuOpen(false)
+                        logout()
+                        navigate('/')
+                      }}
+                    />
+                  </div>
+
+                  {accountMenuOpen ? (
+                    <div
+                      aria-hidden="true"
+                      onClick={() => setAccountMenuOpen(false)}
+                      className="fixed inset-0 z-30"
+                    />
+                  ) : null}
+                </>
               ) : (
                 <Button
                   variant="secondary"
@@ -159,8 +211,43 @@ export function DesktopHeader() {
             </div>
 
             <div className="flex items-center gap-1 rounded-[20px] lg:gap-2 lg:px-1 xl:gap-3 xl:px-3">
+              {isAdmin ? (
+                <button
+                  type="button"
+                  aria-label={notificationsOpen ? 'Fechar notificações' : 'Abrir notificações'}
+                  onClick={() => setNotificationsOpen((value) => !value)}
+                  className="group relative inline-flex shrink-0 items-center"
+                >
+                  <Bell
+                    strokeWidth={1.5}
+                    className="h-6 w-6 shrink-0 text-[#d89a28] lg:h-7 lg:w-7 xl:h-8 xl:w-8"
+                  />
+                  {unread > 0 ? (
+                    <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d89a28] px-1 text-[9px] font-bold text-[#3a164f]">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  ) : null}
+                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#2a0f3d] px-2.5 py-1.5 text-xs font-medium text-[#fafaf8] opacity-0 shadow-lg transition duration-200 group-hover:opacity-100">
+                    Notificações
+                  </span>
+                </button>
+              ) : null}
+              <Link
+                to="/pedidos"
+                aria-label="Pedidos"
+                className="group relative inline-flex shrink-0 items-center"
+              >
+                <img
+                  src={pedidosIcon}
+                  alt=""
+                  className="h-9 w-9 shrink-0 object-contain lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
+                />
+                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#2a0f3d] px-2.5 py-1.5 text-xs font-medium text-[#fafaf8] opacity-0 shadow-lg transition duration-200 group-hover:opacity-100">
+                  Pedidos
+                </span>
+              </Link>
               <a
-                href="https://wa.me/5567999999999"
+                href={`https://wa.me/${storeWhatsapp}`}
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Atendimento via WhatsApp"
@@ -212,7 +299,54 @@ export function DesktopHeader() {
             </div>
           </div>
         </div>
+
+        <div
+          className={[
+            'overflow-hidden transition-all duration-300 ease-in-out',
+            scrolled ? 'max-h-0 opacity-0' : 'max-h-16 opacity-100',
+          ].join(' ')}
+        >
+          <nav
+            aria-label="Páginas do site"
+            className="mt-6 flex w-full items-center justify-center gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] xl:gap-6 [&::-webkit-scrollbar]:hidden"
+          >
+            {customerLinks.map((item) => (
+              <NavLink
+                key={item.id}
+                to={item.path}
+                className={({ isActive }) => `${navLinkClassName({ isActive })} shrink-0`}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
       </div>
+
+      {isAdmin ? (
+        <NotificationsDrawer
+          open={notificationsOpen}
+          onClose={() => setNotificationsOpen(false)}
+          notifications={notifications}
+          loading={loading}
+          loadNotifications={loadNotifications}
+          markRead={markRead}
+        />
+      ) : null}
     </header>
+  )
+}
+
+function AccountMenuItem({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[#fafaf8] transition hover:bg-white/10"
+    >
+      {icon}
+      {label}
+    </button>
   )
 }

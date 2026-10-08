@@ -27,6 +27,13 @@ export const PAYMENT_METHODS_CONFIG = {
   maxInstallments: 12,
 }
 
+/** Telefone salvo sem DDI (so DDD+numero) ganha o 55 do Brasil pro link do wa.me funcionar. */
+export function toWhatsappDigits(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  if (!digits) return ''
+  return digits.length <= 11 ? `55${digits}` : digits
+}
+
 export function formatPhone(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11)
   if (digits.length <= 2) return digits
@@ -58,6 +65,14 @@ export function rejectionMessage(detail?: string): string {
   }
 
   return (detail && reasons[detail]) || 'Pagamento recusado. Verifique os dados do cartao ou tente Pix.'
+}
+
+/** Mensagem pronta pro cliente abrir o WhatsApp da loja depois do pagamento. */
+export function storeWhatsappMessage(deliveryMode: string, orderId: string): string {
+  const orderRef = orderId ? ` (pedido ${orderId.slice(0, 8)})` : ''
+  return deliveryMode === 'pickup'
+    ? `Ola! Acabei de finalizar um pedido${orderRef} e vou retirar na loja. Podemos combinar o horario?`
+    : `Ola! Acabei de finalizar um pedido${orderRef} para entrega. Podemos combinar os detalhes?`
 }
 
 export function paymentReturnMessage(status: string | null) {

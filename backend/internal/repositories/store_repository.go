@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"time"
 
 	"onperfumaria/backend/internal/models"
 
@@ -20,7 +21,8 @@ func (r *StoreRepository) ListProducts(ctx context.Context, includeInactive bool
 	query := `
 		SELECT p.id::text, p.sku, p.name, p.slug, p.brand_id::text, b.name, p.category_id::text, c.name, p.description,
 			p.sale_price, p.promotional_price, p.cost_price, p.profit_margin, p.stock_current, p.stock_minimum,
-			p.weight_grams, p.volume_ml, p.gender, p.product_type, p.image_url, p.is_active, p.is_featured
+			p.weight_grams, p.volume_ml, p.gender, p.product_type, p.image_url, p.is_active, p.is_featured,
+			p.registered_stock, p.created_at
 		FROM products p
 		JOIN brands b ON b.id = p.brand_id
 		JOIN categories c ON c.id = p.category_id`
@@ -51,7 +53,8 @@ func (r *StoreRepository) GetProductBySlug(ctx context.Context, slug string) (*m
 	row := r.db.QueryRow(ctx, `
 		SELECT p.id::text, p.sku, p.name, p.slug, p.brand_id::text, b.name, p.category_id::text, c.name, p.description,
 			p.sale_price, p.promotional_price, p.cost_price, p.profit_margin, p.stock_current, p.stock_minimum,
-			p.weight_grams, p.volume_ml, p.gender, p.product_type, p.image_url, p.is_active, p.is_featured
+			p.weight_grams, p.volume_ml, p.gender, p.product_type, p.image_url, p.is_active, p.is_featured,
+			p.registered_stock, p.created_at
 		FROM products p
 		JOIN brands b ON b.id = p.brand_id
 		JOIN categories c ON c.id = p.category_id
@@ -68,7 +71,8 @@ func (r *StoreRepository) GetProductByID(ctx context.Context, id string) (*model
 	row := r.db.QueryRow(ctx, `
 		SELECT p.id::text, p.sku, p.name, p.slug, p.brand_id::text, b.name, p.category_id::text, c.name, p.description,
 			p.sale_price, p.promotional_price, p.cost_price, p.profit_margin, p.stock_current, p.stock_minimum,
-			p.weight_grams, p.volume_ml, p.gender, p.product_type, p.image_url, p.is_active, p.is_featured
+			p.weight_grams, p.volume_ml, p.gender, p.product_type, p.image_url, p.is_active, p.is_featured,
+			p.registered_stock, p.created_at
 		FROM products p
 		JOIN brands b ON b.id = p.brand_id
 		JOIN categories c ON c.id = p.category_id
@@ -87,6 +91,7 @@ type scanner interface {
 
 func scanProduct(row scanner) (models.Product, error) {
 	var product models.Product
+	var createdAt time.Time
 	err := row.Scan(
 		&product.ID,
 		&product.SKU,
@@ -110,6 +115,9 @@ func scanProduct(row scanner) (models.Product, error) {
 		&product.ImageURL,
 		&product.IsActive,
 		&product.IsFeatured,
+		&product.RegisteredStock,
+		&createdAt,
 	)
+	product.CreatedAt = createdAt.Format(time.RFC3339)
 	return product, err
 }

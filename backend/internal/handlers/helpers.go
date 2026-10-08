@@ -3,11 +3,29 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strings"
 
+	"onperfumaria/backend/internal/auth"
+	"onperfumaria/backend/internal/config"
 	"onperfumaria/backend/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
+
+// optionalCustomerID le o token "Bearer" quando presente, sem exigir login:
+// usada em rotas publicas que personalizam a resposta so quando ha cliente
+// autenticado (ex.: eventos de produto, carrosseis da home).
+func optionalCustomerID(cfg config.Config, c *gin.Context) string {
+	header := c.GetHeader("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		return ""
+	}
+	claims, err := auth.ParseToken(cfg.JWTSecret, strings.TrimPrefix(header, "Bearer "))
+	if err != nil || claims.Scope != "customer" {
+		return ""
+	}
+	return claims.UserID
+}
 
 func respond(c *gin.Context, data interface{}, err error) {
 	if err != nil {

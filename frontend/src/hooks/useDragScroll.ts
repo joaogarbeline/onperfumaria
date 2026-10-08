@@ -71,7 +71,16 @@ export function useDragScroll<T extends HTMLElement>({ loopItemCount = 0 }: { lo
     if (Math.abs(event.clientX - dragState.current.startX) > 3) {
       if (!dragState.current.moved) {
         event.preventDefault()
-        el.setPointerCapture(event.pointerId)
+        // O ponteiro pode ja nao estar mais "ativo" aqui (ex.: um clique bem
+        // rapido que solta antes do primeiro move cruzar o limiar de 3px) -
+        // sem o capture o arrasto ainda funciona normalmente, so perde o
+        // "continuar arrastando fora do elemento". Sem o try/catch, essa
+        // excecao nao tratada travava o carrossel no meio do arrasto.
+        try {
+          el.setPointerCapture(event.pointerId)
+        } catch {
+          // ignorado de proposito, ver comentario acima
+        }
       }
       dragState.current.moved = true
     }

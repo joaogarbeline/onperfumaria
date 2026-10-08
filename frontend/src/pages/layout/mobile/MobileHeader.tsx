@@ -20,8 +20,11 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import atendimentoIcon from '../../../assets/icons/atendente_d_c.png'
 import favoritoIcon from '../../../assets/icons/coracoes_d_c.png'
+import { NotificationsDrawer } from '../../../components/notifications/NotificationsDrawer'
 import { useAuth } from '../../../contexts/AuthContext'
+import { useAdminNotifications } from '../../../hooks/useAdminNotifications'
 import { useOrganizerStore } from '../../../hooks/useOrganizerStore'
+import { useStoreWhatsapp } from '../../../hooks/useStoreWhatsapp'
 import {
   isOrganizerNodeAvailable,
   isOrganizerPreviewMode,
@@ -42,7 +45,6 @@ const accountLinks: { label: string; icon: LucideIcon }[] = [
   { label: 'Avaliacao', icon: ThumbsUp },
   { label: 'Protocolo', icon: FileText },
   { label: 'Favorito', icon: Heart },
-  { label: 'Notificacoes', icon: Bell },
 ]
 
 const discoveryLinks: { label: string; icon: LucideIcon }[] = [
@@ -65,8 +67,14 @@ export function MobileHeader() {
   const [searchTerm, setSearchTerm] = useState('')
   const navigate = useNavigate()
   const location = useLocation()
-  const { isCustomer, openAuth, requireAuth } = useAuth()
+  const { isCustomer, isAdmin, token, openAuth, requireAuth } = useAuth()
   const { store } = useOrganizerStore()
+  const storeWhatsapp = useStoreWhatsapp()
+  const { unread, notifications, loading, loadNotifications, markRead } = useAdminNotifications(
+    isAdmin,
+    token,
+  )
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const previewMode = isOrganizerPreviewMode(location.search)
   const homePath = withOrganizerPreview('/', previewMode)
   const currentPath = location.pathname.length > 1 ? location.pathname.replace(/\/+$/, '') : '/'
@@ -155,7 +163,7 @@ export function MobileHeader() {
           <div className="flex items-center justify-end gap-2">
             <>
               <a
-                href="https://wa.me/5567999999999"
+                href={`https://wa.me/${storeWhatsapp}`}
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Atendimento via WhatsApp"
@@ -266,6 +274,23 @@ export function MobileHeader() {
                 {accountLinks.map((item) => (
                   <DrawerRow key={item.label} {...item} />
                 ))}
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false)
+                      setNotificationsOpen(true)
+                    }}
+                    className="flex items-center justify-between gap-3 text-left"
+                  >
+                    <DrawerRow icon={Bell} label="Notificações" />
+                    {unread > 0 ? (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d89a28] px-1.5 text-[10px] font-bold text-[#3a164f]">
+                        {unread > 99 ? '99+' : unread}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
               </div>
 
               <div className="h-px bg-[#d89a28]" />
@@ -304,6 +329,17 @@ export function MobileHeader() {
       </header>
 
       {open ? <div aria-hidden="true" onClick={() => setOpen(false)} className="fixed inset-0 z-20" /> : null}
+
+      {isAdmin ? (
+        <NotificationsDrawer
+          open={notificationsOpen}
+          onClose={() => setNotificationsOpen(false)}
+          notifications={notifications}
+          loading={loading}
+          loadNotifications={loadNotifications}
+          markRead={markRead}
+        />
+      ) : null}
     </>
   )
 }

@@ -1,16 +1,18 @@
 import type { ReactNode } from 'react'
 import { ChevronDown, Heart, Share2, ShieldCheck, ShoppingBag } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Reveal } from '../components/Reveal'
 import { Skeleton } from '../components/Skeleton'
 import { toItemContent } from '../components/site/moduleContent'
+import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
 import { useCurrency } from '../hooks/useCurrency'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
 import { api } from '../services/api'
+import { trackProductEvent } from '../services/productEvents'
 import type { Product } from '../types'
 import { itemCardToProduct } from '../utils/productModel'
 
@@ -24,6 +26,9 @@ export function ProductPage() {
   const { slug = '' } = useParams()
   const navigate = useNavigate()
   const { addItem } = useCart()
+  const { token } = useAuth()
+  const tokenRef = useRef(token)
+  tokenRef.current = token
   const format = useCurrency()
   const { store } = useOrganizerStore()
   const [product, setProduct] = useState<Product | null>(null)
@@ -38,7 +43,11 @@ export function ProductPage() {
     api
       .get<Product>(`/products/${slug}`)
       .then((result) => {
-        if (!cancelled) setProduct(result)
+        if (cancelled) return
+        setProduct(result)
+        // So registramos visualizacao quando o produto vem do catalogo real
+        // (o resultado alimenta os carrosseis automaticos da home).
+        trackProductEvent(result.id, 'view', tokenRef.current)
       })
       .catch(() => {
         if (cancelled) return

@@ -1,3 +1,4 @@
+import type { ItemCardContent } from '../item/ItemCard'
 import type { OrganizerNode, OrganizerTag } from '../../types/organizer'
 import { BrandMarquee } from '../BrandMarquee'
 import { getRenderableOrganizerItems, isSiteModuleRenderable, toItemContent } from './moduleContent'
@@ -11,6 +12,14 @@ type SiteModuleRendererProps = {
   tags: OrganizerTag[]
   brands?: string[]
   previewMode?: boolean
+  /**
+   * Itens calculados automaticamente por regra (ex.: Produtos em oferta,
+   * Pouco no estoque) para carrosseis da home. Entram sempre depois dos
+   * itens escolhidos manualmente no Organizador.
+   */
+  autoItems?: ItemCardContent[]
+  /** Estrelas fixas em 5/5 nos cards - a home usa, as demais paginas nao. */
+  showRating?: boolean
 }
 
 export function SiteModuleRenderer({
@@ -19,11 +28,18 @@ export function SiteModuleRenderer({
   tags,
   brands = [],
   previewMode = false,
+  autoItems,
+  showRating = false,
 }: SiteModuleRendererProps) {
-  if (!isSiteModuleRenderable(module, nodes, brands, previewMode)) return null
+  const hasAutoItems = Boolean(autoItems?.length)
+  if (!isSiteModuleRenderable(module, nodes, brands, previewMode) && !hasAutoItems) return null
 
   const selectedItems = getRenderableOrganizerItems(module, nodes, previewMode)
-  const itemCards = selectedItems.map((node) => toItemContent(node, tags))
+  const manualItemCards = selectedItems.map((node) => toItemContent(node, tags))
+  const manualIds = new Set(manualItemCards.map((item) => item.id))
+  const itemCards = autoItems
+    ? [...manualItemCards, ...autoItems.filter((item) => !manualIds.has(item.id))]
+    : manualItemCards
 
   if (module.variant === 'brand-marquee') {
     return <BrandMarquee brands={brands} />
@@ -34,8 +50,8 @@ export function SiteModuleRenderer({
   }
 
   if (module.type === 'catalog' || module.variant === 'product-grid') {
-    return <CatalogModule module={module} items={itemCards} />
+    return <CatalogModule module={module} items={itemCards} showRating={showRating} />
   }
 
-  return <CarouselModule module={module} items={itemCards} />
+  return <CarouselModule module={module} items={itemCards} showRating={showRating} />
 }

@@ -1,4 +1,5 @@
 import { CreditCard, Lock, Mail, ShieldCheck, Truck } from 'lucide-react'
+import { useStoreWhatsapp } from '../hooks/useStoreWhatsapp'
 import { InstagramIcon, WhatsAppIcon } from './icons/SocialIcons'
 
 const trustSeals = [
@@ -9,6 +10,7 @@ const trustSeals = [
 ]
 
 export function Footer() {
+  const storeWhatsapp = useStoreWhatsapp()
   return (
     <footer className="relative mt-16 overflow-hidden border-t border-[#5b247f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-[#eadcf0]">
       <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#5b247f]/40 blur-3xl" />
@@ -37,7 +39,7 @@ export function Footer() {
           </p>
           <div className="grid gap-3 text-sm text-[#fafaf8]">
             <a
-              href="https://wa.me/5567991194532"
+              href={`https://wa.me/${storeWhatsapp}`}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-2 transition hover:text-white"

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
+  Bell,
   CalendarClock,
   ChevronDown,
   ChevronLeft,
@@ -19,6 +20,7 @@ import {
   LayoutGrid,
   Layers3,
   LogOut,
+  MessageCircle,
   Package,
   PanelLeft,
   PanelRight,
@@ -38,7 +40,9 @@ import { Link, Navigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { OrganizerModal, type OrganizerModalMode } from '../components/organizer/OrganizerModal'
 import { ItemWizard } from '../components/organizer/ItemWizard'
+import { NotificationsDrawer } from '../components/notifications/NotificationsDrawer'
 import { useAuth } from '../contexts/AuthContext'
+import { useAdminNotifications } from '../hooks/useAdminNotifications'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
 import { useCurrency } from '../hooks/useCurrency'
 import { api, ApiError } from '../services/api'
@@ -142,6 +146,10 @@ export function OrganizerPage() {
     deleteTrashPermanently,
     clearActivities,
   } = useOrganizerStore(token ?? undefined)
+  const { unread, notifications, loading, loadNotifications, markRead } = useAdminNotifications(
+    isAdmin,
+    token,
+  )
 
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
@@ -153,6 +161,7 @@ export function OrganizerPage() {
   const [modalMode, setModalMode] = useState<OrganizerModalMode | null>(null)
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -814,6 +823,22 @@ export function OrganizerPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    closeOpenSession()
+                    setNotificationsOpen(true)
+                    setProfileOpen(false)
+                  }}
+                  className="flex w-full items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-left text-xs hover:bg-[#fff8ea]"
+                >
+                  <Bell size={15} /> Notificações
+                  {unread > 0 ? (
+                    <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d89a28] px-1 text-[9px] font-bold text-[#3a164f]">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
                   onClick={handleLogoff}
                   className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-[#a0382f] hover:bg-[#fff0ed]"
                 >
@@ -1012,6 +1037,14 @@ export function OrganizerPage() {
         />
       )}
       {customersOpen && <CustomersModal token={token} onClose={() => setCustomersOpen(false)} />}
+      <NotificationsDrawer
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        notifications={notifications}
+        loading={loading}
+        loadNotifications={loadNotifications}
+        markRead={markRead}
+      />
     </main>
   )
 }
@@ -1081,6 +1114,7 @@ function SettingsPanel({
               Páginas, itens, tags, agendamentos e lixeira ficam salvos neste navegador.
             </p>
           </div>
+          <StoreWhatsappSettings token={token} />
         </SettingsTopic>
 
         <SettingsTopic title="Ferramentas">
@@ -1142,6 +1176,64 @@ function SettingsPanel({
           <AdminAssignment token={token} />
         </SettingsTopic>
       </div>
+    </div>
+  )
+}
+
+// Numero de WhatsApp da loja: ao contrario da gaveta "API" abaixo, qualquer
+// admin pode ver e editar - nao e um dado sensivel como tokens de pagamento.
+function StoreWhatsappSettings({ token }: { token: string | null }) {
+  const [value, setValue] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    api
+      .get<{ value: string }>('/admin/store-whatsapp', token ?? undefined)
+      .then((data) => setValue(data.value ?? ''))
+      .catch(() => setNotice('Não foi possível carregar o número configurado.'))
+      .finally(() => setLoading(false))
+  }, [token])
+
+  async function handleSave() {
+    setSaving(true)
+    setNotice('')
+    try {
+      await api.put('/admin/store-whatsapp', { value: value.replace(/\D/g, '') }, token ?? undefined)
+      setNotice('WhatsApp da loja salvo.')
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Não foi possível salvar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="organizer-surface p-4">
+      <div className="flex items-center gap-2">
+        <MessageCircle size={16} className="text-[#b77717]" />
+        <h3 className="text-sm font-semibold text-[#3a164f]">WhatsApp da loja</h3>
+      </div>
+      <p className="mt-1 text-xs leading-5 text-[#6b665f]">
+        Numero usado nos botões de atendimento do site e para o cliente combinar entrega ou retirada
+        depois do pagamento. Só números, com DDI e DDD (ex.: 5567999999999).
+      </p>
+      <div className="mt-3">
+        <Field label="Número">
+          <input
+            value={value}
+            disabled={loading}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="5567999999999"
+            className="organizer-input"
+          />
+        </Field>
+      </div>
+      {notice ? <p className="text-xs font-medium text-[#0f8a5f]">{notice}</p> : null}
+      <Button type="button" size="sm" disabled={loading || saving} onClick={handleSave}>
+        {saving ? 'Salvando...' : 'Salvar'}
+      </Button>
     </div>
   )
 }
@@ -2557,6 +2649,9 @@ function Inspector({
       : null,
   )
   const [tagDraft, setTagDraft] = useState(() => (tag ? { name: tag.name, color: tag.color } : null))
+  const [fieldError, setFieldError] = useState<'name' | 'price' | null>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const priceInputRef = useRef<HTMLInputElement>(null)
 
   if (!node && !tag)
     return <InspectorEmpty title="Propriedades" detail="Selecione um conteúdo para editar seus detalhes." />
@@ -2636,7 +2731,19 @@ function Inspector({
   const protectedPage = node.type === 'page' && Boolean(node.immutable)
   const submitNode = (event: FormEvent) => {
     event.preventDefault()
-    if (!nodeDraft.name.trim()) return
+    if (!nodeDraft.name.trim()) {
+      setFieldError('name')
+      nameInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      nameInputRef.current?.focus()
+      return
+    }
+    if (node.type === 'item' && !(Number(nodeDraft.price) > 0)) {
+      setFieldError('price')
+      priceInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      priceInputRef.current?.focus()
+      return
+    }
+    setFieldError(null)
     const trackingStock = nodeDraft.stock.trim() !== ''
     const stockValue = trackingStock ? Math.max(0, Number(nodeDraft.stock) || 0) : undefined
     // Estoque chegou a zero: o item sai do ar sozinho como "Em breve" em vez
@@ -2723,14 +2830,19 @@ function Inspector({
       </div>
       <Field label="Nome">
         <input
+          ref={nameInputRef}
           value={nodeDraft.name}
           disabled={node.immutable}
           onChange={(event) => {
             setNodeDraft({ ...nodeDraft, name: event.target.value })
             syncLive({ name: event.target.value })
+            if (event.target.value.trim()) setFieldError(null)
           }}
-          className="organizer-input disabled:bg-stone-100 disabled:text-[#6b665f]"
+          className={`organizer-input disabled:bg-stone-100 disabled:text-[#6b665f] ${fieldError === 'name' ? 'border-[#a0382f] ring-4 ring-[#a0382f]/15' : ''}`}
         />
+        {fieldError === 'name' ? (
+          <p className="mt-1 text-[10px] font-medium text-[#a0382f]">Informe o nome do item.</p>
+        ) : null}
       </Field>
       <Field label="Descrição">
         <textarea
@@ -2849,14 +2961,19 @@ function Inspector({
       {node.type === 'item' && (
         <Field label="Preço">
           <input
+            ref={priceInputRef}
             value={nodeDraft.price}
             onChange={(event) => {
               setNodeDraft({ ...nodeDraft, price: event.target.value })
               syncLive({ price: Number(event.target.value) || 0 })
+              if (Number(event.target.value) > 0) setFieldError(null)
             }}
             placeholder="R$ 0,00"
-            className="organizer-input"
+            className={`organizer-input ${fieldError === 'price' ? 'border-[#a0382f] ring-4 ring-[#a0382f]/15' : ''}`}
           />
+          {fieldError === 'price' ? (
+            <p className="mt-1 text-[10px] font-medium text-[#a0382f]">Informe o preço de venda.</p>
+          ) : null}
         </Field>
       )}
       {node.type === 'item' && (

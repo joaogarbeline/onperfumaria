@@ -1,6 +1,25 @@
 import type { ItemCardContent } from '../components/item/ItemCard'
 import type { Product } from '../types'
 
+/** Converte um produto do catalogo real para o formato usado pelos cards dos carrosseis. */
+export function productToItemCardContent(product: Product): ItemCardContent {
+  return {
+    id: product.id,
+    name: product.name,
+    description: product.description,
+    imageUrl: product.imageUrl,
+    images: product.images,
+    price: product.finalPrice,
+    tagLabel: product.discountLabel || undefined,
+    createdAt: product.createdAt,
+    sku: product.sku,
+    brand: product.brand,
+    volumeMl: product.volumeMl,
+    stock: product.stockCurrent,
+    pixDiscountPercent: product.pixDiscountPercent,
+  }
+}
+
 export function itemCardToProduct(item: ItemCardContent): Product {
   const price = item.price || 0
   const hasStockTracking = item.stock !== undefined
@@ -21,6 +40,7 @@ export function itemCardToProduct(item: ItemCardContent): Product {
     profitMargin: 0,
     stockCurrent: hasStockTracking ? Math.max(0, item.stock ?? 0) : 999,
     stockMinimum: 0,
+    registeredStock: hasStockTracking ? Math.max(0, item.stock ?? 0) : 999,
     weightGrams: 0,
     volumeMl: item.volumeMl || 0,
     gender: '',

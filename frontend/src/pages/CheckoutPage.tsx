@@ -5,6 +5,7 @@ import {
   Copy,
   CreditCard,
   MapPin,
+  MessageCircle,
   Minus,
   Plus,
   ShoppingBag,
@@ -35,6 +36,7 @@ import {
   PAYMENT_METHODS_CONFIG,
   paymentReturnMessage,
   rejectionMessage,
+  storeWhatsappMessage,
   validateCheckoutForm,
 } from '../utils/checkout'
 
@@ -53,7 +55,11 @@ export function CheckoutPage() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const [config, setConfig] = useState<CheckoutConfig>({ shippingOptions: [], mpPublicKey: '' })
+  const [config, setConfig] = useState<CheckoutConfig>({
+    shippingOptions: [],
+    mpPublicKey: '',
+    storeWhatsapp: '',
+  })
   const [profile, setProfile] = useState<CustomerProfile | null>(null)
   const [form, setForm] = useState<CheckoutForm>(CHECKOUT_INITIAL_FORM)
   const [quote, setQuote] = useState<ShippingQuote | null>(null)
@@ -70,6 +76,7 @@ export function CheckoutPage() {
   const [pixPaid, setPixPaid] = useState(false)
   const [pixCopied, setPixCopied] = useState(false)
   const [paymentError, setPaymentError] = useState('')
+  const [approvedOrderId, setApprovedOrderId] = useState('')
   const [readyBrickKey, setReadyBrickKey] = useState('')
   const [timedOutBrickKey, setTimedOutBrickKey] = useState('')
   const displayMessage = message || paymentReturnMessage(searchParams.get('status'))
@@ -298,6 +305,9 @@ export function CheckoutPage() {
       }
 
       clearCart()
+      if (response.paymentStatus === 'approved') {
+        setApprovedOrderId(response.orderId)
+      }
       setMessage(
         response.paymentStatus === 'approved'
           ? 'Pagamento aprovado! Seu pedido foi confirmado.'
@@ -325,9 +335,24 @@ export function CheckoutPage() {
         }
         action={
           pixPaid ? (
-            <Link to="/">
-              <Button>Voltar ao início</Button>
-            </Link>
+            <div className="flex flex-col items-center gap-3">
+              {config.storeWhatsapp ? (
+                <a
+                  href={`https://wa.me/${config.storeWhatsapp}?text=${encodeURIComponent(
+                    storeWhatsappMessage(deliveryMode, pixData.orderId),
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Button type="button" variant="secondary">
+                    <MessageCircle size={16} /> Falar no WhatsApp
+                  </Button>
+                </a>
+              ) : null}
+              <Link to="/">
+                <Button>Voltar ao início</Button>
+              </Link>
+            </div>
           ) : (
             <div className="flex flex-col items-center gap-4">
               {pixData.qrCodeBase64 ? (
@@ -369,9 +394,24 @@ export function CheckoutPage() {
           'Explore as categorias para adicionar perfumes importados ou árabes antes de seguir para o checkout.'
         }
         action={
-          <Link to="/">
-            <Button>Voltar ao início</Button>
-          </Link>
+          <div className="flex flex-col items-center gap-3">
+            {approvedOrderId && config.storeWhatsapp ? (
+              <a
+                href={`https://wa.me/${config.storeWhatsapp}?text=${encodeURIComponent(
+                  storeWhatsappMessage(deliveryMode, approvedOrderId),
+                )}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Button type="button" variant="secondary">
+                  <MessageCircle size={16} /> Falar no WhatsApp
+                </Button>
+              </a>
+            ) : null}
+            <Link to="/">
+              <Button>Voltar ao início</Button>
+            </Link>
+          </div>
         }
       />
     )

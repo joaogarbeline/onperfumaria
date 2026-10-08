@@ -1,6 +1,9 @@
+import { Star } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../../contexts/AuthContext'
 import { useCart } from '../../contexts/CartContext'
+import { trackProductEvent } from '../../services/productEvents'
 import { itemCardToProduct } from '../../utils/productModel'
 import { itemIcons } from './icons'
 
@@ -20,8 +23,18 @@ export type ItemCardContent = {
   pixDiscountPercent?: number
 }
 
-export function ItemCard({ className = '', item }: { className?: string; item: ItemCardContent }) {
+export function ItemCard({
+  className = '',
+  item,
+  showRating = false,
+}: {
+  className?: string
+  item: ItemCardContent
+  /** Estrelas fixas em 5/5 - so a home usa, enquanto a loja nao tem avaliacoes reais. */
+  showRating?: boolean
+}) {
   const { addItem } = useCart()
+  const { token } = useAuth()
   const [favorited, setFavorited] = useState(false)
   const productName = item.name
   const productPrice = item.price || 0
@@ -29,17 +42,30 @@ export function ItemCard({ className = '', item }: { className?: string; item: I
     ? productPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     : 'Preço não informado'
   const installmentPrice = productPrice / 12
+  const lowStock = typeof item.stock === 'number' && item.stock > 0 && item.stock <= 3
 
   return (
     <Link
       to={`/produto/${item.id}`}
-      className={`block overflow-hidden rounded-[24px] border border-[#e3cfee] bg-white ${className}`}
+      onClick={() => trackProductEvent(item.id, 'click', token)}
+      draggable={false}
+      className={`flex h-full flex-col overflow-hidden rounded-[24px] border border-[#e3cfee] bg-white ${className}`}
     >
-      <div className="relative flex aspect-[3/4] items-center justify-center bg-[#eadcf0] text-[#d89a28]">
+      <div className="relative flex aspect-[3/4] shrink-0 items-center justify-center bg-[#eadcf0] text-[#d89a28]">
         {item.imageUrl ? (
-          <img src={item.imageUrl} alt={productName} className="h-full w-full object-cover" />
+          <img
+            src={item.imageUrl}
+            alt={productName}
+            draggable={false}
+            className="h-full w-full object-cover"
+          />
         ) : (
-          <img src={itemIcons.frascoGold} alt="Frasco de perfume" className="h-10 w-10 object-contain" />
+          <img
+            src={itemIcons.frascoGold}
+            alt="Frasco de perfume"
+            draggable={false}
+            className="h-10 w-10 object-contain"
+          />
         )}
         <button
           type="button"
@@ -60,17 +86,29 @@ export function ItemCard({ className = '', item }: { className?: string; item: I
           />
         </button>
       </div>
-      <div className="space-y-2 p-4">
+      <div className="flex flex-1 flex-col gap-2 p-4">
         {item.tagLabel ? (
-          <span className="inline-block rounded-[14px] bg-[#fff1d6] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#b77717]">
+          <span className="inline-block w-fit rounded-[14px] bg-[#fff1d6] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#b77717]">
             {item.tagLabel}
           </span>
+        ) : null}
+        {showRating ? (
+          <div className="flex items-center gap-0.5" aria-label="Avaliação 5 de 5 estrelas">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Star key={index} size={12} className="fill-[#d89a28] text-[#d89a28]" />
+            ))}
+          </div>
         ) : null}
         <p className="text-sm font-semibold text-[#2a0f3d]">{productName}</p>
         {item.description ? (
           <p className="line-clamp-2 text-xs leading-5 text-[#6b665f]">{item.description}</p>
         ) : null}
-        <div className="flex items-end justify-between">
+        {lowStock ? (
+          <p className="text-[11px] font-semibold text-[#a0382f]">Últimas {item.stock} unidades!</p>
+        ) : null}
+        {/* Preço e botão de comprar sempre no rodapé do card, mesmo quando a
+            tag ou a descrição faltam - assim todo card fica do mesmo tamanho. */}
+        <div className="mt-auto flex items-end justify-between pt-2">
           <div>
             <p className="text-sm font-semibold text-[#2a0f3d]">{displayPrice}</p>
             {productPrice > 0 ? (

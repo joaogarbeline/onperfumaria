@@ -3,6 +3,7 @@ import type { CustomerAddress } from './index'
 export type CheckoutConfig = {
   shippingOptions: Array<{ value: string; label: string }>
   mpPublicKey: string
+  storeWhatsapp: string
 }
 
 export type CustomerProfile = {

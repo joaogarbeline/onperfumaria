@@ -149,10 +149,17 @@ func (s *Service) ListProducts(ctx context.Context) ([]models.Product, error) {
 	return s.decorateProducts(ctx, products)
 }
 
+// GetProduct busca por slug e, se nao achar, tenta pelo id - os carrosseis
+// automaticos da home linkam produtos pelo id (nao tem slug "bonito" ali),
+// entao a pagina de produto precisa resolver os dois casos.
 func (s *Service) GetProduct(ctx context.Context, slug string) (*models.Product, error) {
 	product, err := s.repo.GetProductBySlug(ctx, slug)
 	if err != nil {
-		return nil, err
+		byID, idErr := s.repo.GetProductByID(ctx, slug)
+		if idErr != nil {
+			return nil, err
+		}
+		product = byID
 	}
 	decorated, err := s.decorateProduct(ctx, *product)
 	if err != nil {
@@ -309,6 +316,7 @@ func (s *Service) StoreConfig(ctx context.Context) (map[string]interface{}, erro
 	options = append(options, map[string]string{"value": "correios", "label": "Correios (PAC/SEDEX)"})
 
 	mpPublicKey, _ := s.GetSetting(ctx, "mp_public_key")
+	storeWhatsapp, _ := s.GetSetting(ctx, "store_whatsapp")
 
 	// Client id do Google e access token do Mercado Pago saem do banco (gaveta
 	// "API" do admin) em vez de compilados no bundle: configura a loja sem
@@ -317,6 +325,7 @@ func (s *Service) StoreConfig(ctx context.Context) (map[string]interface{}, erro
 		"shippingOptions": options,
 		"mpPublicKey":     mpPublicKey,
 		"googleClientId":  s.resolveGoogleClientID(ctx),
+		"storeWhatsapp":   storeWhatsapp,
 	}, nil
 }
 
@@ -776,10 +785,10 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 
 	var orderID string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO orders (customer_id, address_id, subtotal, shipping_amount, discount_amount, total_amount, payment_method, payment_status, order_status, origin, mp_preference_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO orders (customer_id, address_id, subtotal, shipping_amount, discount_amount, total_amount, payment_method, payment_status, order_status, origin, mp_preference_id, delivery_mode)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id::text`,
-		customerID, addressID, subtotal, shippingAmount, discount, total, input.PaymentMethodID, paymentResult.Status, orderStatus, origin, mpPaymentID,
+		customerID, addressID, subtotal, shippingAmount, discount, total, input.PaymentMethodID, paymentResult.Status, orderStatus, origin, mpPaymentID, input.DeliveryMode,
 	).Scan(&orderID)
 	if err != nil {
 		return nil, err
@@ -984,8 +993,8 @@ func (s *Service) SaveProduct(ctx context.Context, id string, payload ProductPay
 
 	if id == "" {
 		err := s.db.QueryRow(ctx, `
-			INSERT INTO products (name, sku, slug, brand_id, category_id, description, sale_price, cost_price, profit_margin, stock_current, stock_minimum, weight_grams, volume_ml, gender, product_type, image_url, is_active, is_featured)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $8::numeric = 0 THEN 0 ELSE (($7::numeric - $8::numeric) / $8::numeric) * 100 END, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			INSERT INTO products (name, sku, slug, brand_id, category_id, description, sale_price, cost_price, profit_margin, stock_current, stock_minimum, weight_grams, volume_ml, gender, product_type, image_url, is_active, is_featured, registered_stock)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $8::numeric = 0 THEN 0 ELSE (($7::numeric - $8::numeric) / $8::numeric) * 100 END, $9, $10, $11, $12, $13, $14, $15, $16, $17, $9)
 			RETURNING id::text`,
 			payload.Name, strings.ToUpper(payload.SKU), payload.Slug, payload.BrandID, payload.CategoryID, payload.Description, payload.SalePrice, payload.CostPrice, payload.StockCurrent,
 			payload.StockMinimum, payload.WeightGrams, payload.VolumeML, payload.Gender, payload.ProductType, payload.ImageURL, payload.IsActive, payload.IsFeatured,
@@ -1536,6 +1545,120 @@ func (s *Service) Orders(ctx context.Context, filter OrderFilter) (map[string]in
 	}
 
 	return map[string]interface{}{"orders": orders, "total": total, "page": filter.Page, "limit": filter.Limit}, rows.Err()
+}
+
+// AdminOrderNotifications lista os pedidos online mais recentes para a
+// gaveta de notificacoes do admin. Vendas de balcao (pos_sales) nao entram:
+// quem fez a venda ja sabe dela, nao precisa ser notificado.
+func (s *Service) AdminOrderNotifications(ctx context.Context, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT o.id::text, COALESCE(c.name, 'Consumidor Final'), COALESCE(c.phone, ''), o.total_amount,
+			o.payment_status, o.order_status, COALESCE(o.delivery_mode, ''), o.created_at, (o.admin_read_at IS NOT NULL)
+		FROM orders o
+		LEFT JOIN customers c ON c.id = o.customer_id
+		ORDER BY o.created_at DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	notifications := []map[string]interface{}{}
+	for rows.Next() {
+		var id, name, phone, paymentStatus, orderStatus, deliveryMode string
+		var total float64
+		var createdAt time.Time
+		var read bool
+		if err := rows.Scan(&id, &name, &phone, &total, &paymentStatus, &orderStatus, &deliveryMode, &createdAt, &read); err != nil {
+			return nil, err
+		}
+		notifications = append(notifications, map[string]interface{}{
+			"id": id, "customerName": name, "customerPhone": phone, "total": total,
+			"paymentStatus": paymentStatus, "orderStatus": orderStatus, "deliveryMode": deliveryMode,
+			"createdAt": createdAt, "read": read,
+		})
+	}
+	return notifications, rows.Err()
+}
+
+func (s *Service) AdminUnreadOrderCount(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM orders WHERE admin_read_at IS NULL`).Scan(&count)
+	return count, err
+}
+
+// AdminOrderNotificationDetail devolve nome, telefone e endereco do cliente
+// para o atendente confirmar o pedido no WhatsApp sem precisar abrir a tela
+// de Clientes.
+func (s *Service) AdminOrderNotificationDetail(ctx context.Context, orderID string) (map[string]interface{}, error) {
+	var order struct {
+		ID            string
+		CustomerName  string
+		CustomerPhone string
+		Total         float64
+		PaymentStatus string
+		OrderStatus   string
+		DeliveryMode  string
+		CreatedAt     time.Time
+		Street        string
+		Number        string
+		Neighborhood  string
+		City          string
+		State         string
+		CEP           string
+	}
+	err := s.db.QueryRow(ctx, `
+		SELECT o.id::text, COALESCE(c.name, 'Consumidor Final'), COALESCE(c.phone, ''), o.total_amount,
+			o.payment_status, o.order_status, COALESCE(o.delivery_mode, ''), o.created_at,
+			COALESCE(a.street, ''), COALESCE(a.number, ''), COALESCE(a.neighborhood, ''),
+			COALESCE(a.city, ''), COALESCE(a.state, ''), COALESCE(a.cep, '')
+		FROM orders o
+		LEFT JOIN customers c ON c.id = o.customer_id
+		LEFT JOIN addresses a ON a.id = o.address_id
+		WHERE o.id = $1`, orderID,
+	).Scan(&order.ID, &order.CustomerName, &order.CustomerPhone, &order.Total, &order.PaymentStatus, &order.OrderStatus,
+		&order.DeliveryMode, &order.CreatedAt, &order.Street, &order.Number, &order.Neighborhood, &order.City, &order.State, &order.CEP)
+	if err != nil {
+		return nil, err
+	}
+
+	itemsRows, err := s.db.Query(ctx, `SELECT product_name, unit_price, quantity FROM order_items WHERE order_id = $1`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer itemsRows.Close()
+	items := []map[string]interface{}{}
+	for itemsRows.Next() {
+		var name string
+		var price float64
+		var qty int
+		if err := itemsRows.Scan(&name, &price, &qty); err != nil {
+			continue
+		}
+		items = append(items, map[string]interface{}{"name": name, "price": price, "quantity": qty})
+	}
+
+	return map[string]interface{}{
+		"id": order.ID, "customerName": order.CustomerName, "customerPhone": order.CustomerPhone,
+		"total": order.Total, "paymentStatus": order.PaymentStatus, "orderStatus": order.OrderStatus,
+		"deliveryMode": order.DeliveryMode, "createdAt": order.CreatedAt, "items": items,
+		"address": map[string]interface{}{
+			"street": order.Street, "number": order.Number, "neighborhood": order.Neighborhood,
+			"city": order.City, "state": order.State, "cep": order.CEP,
+		},
+	}, nil
+}
+
+// MarkOrderNotificationRead marca o pedido como lido na gaveta do admin e
+// devolve o contador de nao lidos atualizado.
+func (s *Service) MarkOrderNotificationRead(ctx context.Context, orderID string) (int, error) {
+	if _, err := s.db.Exec(ctx, `UPDATE orders SET admin_read_at = now() WHERE id = $1 AND admin_read_at IS NULL`, orderID); err != nil {
+		return 0, err
+	}
+	return s.AdminUnreadOrderCount(ctx)
 }
 
 func (s *Service) ListBrands(ctx context.Context) ([]map[string]interface{}, error) {

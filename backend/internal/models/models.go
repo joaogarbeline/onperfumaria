@@ -19,6 +19,7 @@ type Product struct {
 	ProfitMargin            float64  `json:"profitMargin"`
 	StockCurrent            int      `json:"stockCurrent"`
 	StockMinimum            int      `json:"stockMinimum"`
+	RegisteredStock         int      `json:"registeredStock"`
 	WeightGrams             int      `json:"weightGrams"`
 	VolumeML                int      `json:"volumeMl"`
 	Gender                  string   `json:"gender"`
@@ -28,4 +29,5 @@ type Product struct {
 	IsActive                bool     `json:"isActive"`
 	IsFeatured              bool     `json:"isFeatured"`
 	IsAvailable             bool     `json:"isAvailable"`
+	CreatedAt               string   `json:"createdAt,omitempty"`
 }

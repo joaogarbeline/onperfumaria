@@ -1,5 +1,5 @@
 import { Camera, ChevronLeft, Plus, X } from 'lucide-react'
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   organizerItemStatusOptions,
   organizerStatusLabels,
@@ -46,6 +46,36 @@ export function ItemWizard({
   onFinish,
 }: ItemWizardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const step1NameInputRef = useRef<HTMLInputElement>(null)
+  const step3NameInputRef = useRef<HTMLInputElement>(null)
+  const priceInputRef = useRef<HTMLInputElement>(null)
+  const [fieldError, setFieldError] = useState<'name' | 'price' | null>(null)
+
+  useEffect(() => {
+    if (fieldError === 'name' && step === 1) {
+      step1NameInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      step1NameInputRef.current?.focus()
+    }
+    if (fieldError === 'price' && step === 3) {
+      priceInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      priceInputRef.current?.focus()
+    }
+  }, [fieldError, step])
+
+  const handleFinish = () => {
+    if (!draft.name.trim()) {
+      setFieldError('name')
+      onStepChange(1)
+      return
+    }
+    if (!(Number(draft.price) > 0)) {
+      setFieldError('price')
+      onStepChange(3)
+      return
+    }
+    setFieldError(null)
+    onFinish()
+  }
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -77,12 +107,19 @@ export function ItemWizard({
           <div className="flex min-h-64 flex-col items-center justify-center text-center">
             <p className="mb-4 text-lg font-semibold text-[#3a164f]">Como chama o perfume?</p>
             <input
+              ref={step1NameInputRef}
               autoFocus
               value={draft.name}
-              onChange={(event) => onDraftChange({ name: event.target.value })}
+              onChange={(event) => {
+                onDraftChange({ name: event.target.value })
+                if (event.target.value.trim()) setFieldError(null)
+              }}
               placeholder="Nome do item"
-              className="organizer-input max-w-xs text-center"
+              className={`organizer-input max-w-xs text-center ${fieldError === 'name' ? 'border-[#a0382f] ring-4 ring-[#a0382f]/15' : ''}`}
             />
+            {fieldError === 'name' ? (
+              <p className="mt-2 text-xs font-medium text-[#a0382f]">Informe o nome do perfume.</p>
+            ) : null}
           </div>
         )}
 
@@ -150,10 +187,17 @@ export function ItemWizard({
                 Nome
               </span>
               <input
+                ref={step3NameInputRef}
                 value={draft.name}
-                onChange={(event) => onDraftChange({ name: event.target.value })}
-                className="organizer-input"
+                onChange={(event) => {
+                  onDraftChange({ name: event.target.value })
+                  if (event.target.value.trim()) setFieldError(null)
+                }}
+                className={`organizer-input ${fieldError === 'name' ? 'border-[#a0382f] ring-4 ring-[#a0382f]/15' : ''}`}
               />
+              {fieldError === 'name' ? (
+                <p className="mt-1 text-[10px] font-medium text-[#a0382f]">Informe o nome do perfume.</p>
+              ) : null}
             </label>
 
             <label>
@@ -212,18 +256,27 @@ export function ItemWizard({
                 <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
                   Valor
                 </span>
-                <div className="flex items-center rounded-xl border border-stone-200 bg-white px-3 focus-within:border-[#d89a28] focus-within:ring-4 focus-within:ring-[#f7dfb1]">
+                <div
+                  className={`flex items-center rounded-xl border bg-white px-3 focus-within:border-[#d89a28] focus-within:ring-4 focus-within:ring-[#f7dfb1] ${fieldError === 'price' ? 'border-[#a0382f] ring-4 ring-[#a0382f]/15' : 'border-stone-200'}`}
+                >
                   <input
+                    ref={priceInputRef}
                     type="number"
                     min="0"
                     step="0.01"
                     value={draft.price}
-                    onChange={(event) => onDraftChange({ price: event.target.value })}
+                    onChange={(event) => {
+                      onDraftChange({ price: event.target.value })
+                      if (Number(event.target.value) > 0) setFieldError(null)
+                    }}
                     placeholder="0,00"
                     className="w-full bg-transparent py-2 text-xs text-[#2a0f3d] outline-none"
                   />
                   <span className="text-[10px] text-[#6b665f]">R$</span>
                 </div>
+                {fieldError === 'price' ? (
+                  <p className="mt-1 text-[10px] font-medium text-[#a0382f]">Informe o preço de venda.</p>
+                ) : null}
               </label>
               <label>
                 <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
@@ -356,7 +409,7 @@ export function ItemWizard({
         {step < 3 ? (
           <button
             type="button"
-            disabled={(step === 1 && !draft.name.trim()) || (step === 2 && draft.photos.length === 0)}
+            disabled={step === 1 && !draft.name.trim()}
             onClick={() => onStepChange((step + 1) as ItemWizardStep)}
             className="rounded-full bg-[#d89a28] px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#c28a1f] disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -365,9 +418,8 @@ export function ItemWizard({
         ) : (
           <button
             type="button"
-            disabled={!draft.name.trim()}
-            onClick={onFinish}
-            className="rounded-full bg-[#d89a28] px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#c28a1f] disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={handleFinish}
+            className="rounded-full bg-[#d89a28] px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#c28a1f]"
           >
             Finalizar
           </button>

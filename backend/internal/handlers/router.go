@@ -47,6 +47,24 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			data, err := service.StoreHome(c.Request.Context())
 			respond(c, data, err)
 		})
+		api.GET("/store/home-carousels", func(c *gin.Context) {
+			sessionID := c.Query("sessionId")
+			data, err := service.HomeCarousels(c.Request.Context(), optionalCustomerID(cfg, c), sessionID)
+			respond(c, data, err)
+		})
+		api.POST("/store/events", func(c *gin.Context) {
+			var input struct {
+				ProductID string `json:"productId"`
+				Type      string `json:"type"`
+				SessionID string `json:"sessionId"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			err := service.RecordProductEvent(c.Request.Context(), optionalCustomerID(cfg, c), input.SessionID, input.ProductID, input.Type)
+			respond(c, true, err)
+		})
 		api.GET("/products", func(c *gin.Context) {
 			data, err := service.ListProducts(c.Request.Context())
 			respond(c, data, err)
@@ -162,6 +180,50 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			}
 			err = service.SaveSetting(c.Request.Context(), input.Key, input.Value)
 			respond(c, gin.H{"success": true}, err)
+		})
+		// Numero de WhatsApp da loja: diferente da gaveta "API" acima, nao e
+		// sensivel, entao qualquer admin (nao so o fixo) pode ver e editar.
+		api.GET("/admin/store-whatsapp", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			// Chave pode nunca ter sido salva ainda - "sem linha" so significa
+			// "numero vazio", nao um erro (mesma convencao de StoreConfig/GetAPISettings).
+			value, _ := service.GetSetting(c.Request.Context(), "store_whatsapp")
+			respond(c, gin.H{"value": value}, nil)
+		})
+		api.PUT("/admin/store-whatsapp", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			var input struct {
+				Value string `json:"value"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			err := service.SaveSetting(c.Request.Context(), "store_whatsapp", input.Value)
+			respond(c, gin.H{"success": true}, err)
+		})
+		// Gaveta de notificacoes do admin: pedidos recentes com contador de
+		// nao lidos, perto dos botoes Editor/Sair no topo da loja.
+		api.GET("/admin/notifications", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			limit, _ := strconv.Atoi(c.DefaultQuery("limit", "30"))
+			data, err := service.AdminOrderNotifications(c.Request.Context(), limit)
+			respond(c, data, err)
+		})
+		api.GET("/admin/notifications/unread-count", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			count, err := service.AdminUnreadOrderCount(c.Request.Context())
+			respond(c, gin.H{"unread": count}, err)
+		})
+		api.POST("/admin/notifications/:id/read", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			detail, err := service.AdminOrderNotificationDetail(c.Request.Context(), c.Param("id"))
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
+				return
+			}
+			unread, err := service.MarkOrderNotificationRead(c.Request.Context(), c.Param("id"))
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+				return
+			}
+			detail["unread"] = unread
+			respond(c, detail, nil)
 		})
 		// So quem ja e admin pode promover outro cliente. A unica excecao e a
 		// loja recem-instalada (nenhum admin ainda): nesse caso a rota libera

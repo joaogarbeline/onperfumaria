@@ -17,6 +17,7 @@ export type Product = {
   profitMargin: number
   stockCurrent: number
   stockMinimum: number
+  registeredStock: number
   weightGrams: number
   volumeMl: number
   gender: string
@@ -28,6 +29,7 @@ export type Product = {
   isAvailable: boolean
   /** Desconto no Pix em %, por produto. Sem valor, a pagina usa o padrao do site. */
   pixDiscountPercent?: number
+  createdAt?: string
 }
 
 export type CartItem = Product & {
