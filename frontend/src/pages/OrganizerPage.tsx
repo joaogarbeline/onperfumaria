@@ -87,6 +87,14 @@ interface DrawerItem {
 const MIN_RIGHT_WIDTH = 210
 const MAX_RIGHT_WIDTH = 760
 
+// Abaixo do breakpoint "lg" as gavetas viram overlay em tela cheia (ver
+// classes lg:relative/lg:w-[...] nos <aside> delas) - comecar as duas
+// abertas nesse tamanho tampa toda a area de visualizacao. No mobile so a
+// area de visualizacao abre; o usuario abre cada gaveta quando precisar.
+function isDesktopViewport() {
+  return typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+}
+
 const formatDate = (value?: string) => {
   if (!value) return 'Sem data definida'
   return new Intl.DateTimeFormat('pt-BR', {
@@ -151,8 +159,8 @@ export function OrganizerPage() {
     token,
   )
 
-  const [leftOpen, setLeftOpen] = useState(true)
-  const [rightOpen, setRightOpen] = useState(true)
+  const [leftOpen, setLeftOpen] = useState(isDesktopViewport)
+  const [rightOpen, setRightOpen] = useState(isDesktopViewport)
   const [rightWidth, setRightWidth] = useState(250)
   const [rightResizing, setRightResizing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')

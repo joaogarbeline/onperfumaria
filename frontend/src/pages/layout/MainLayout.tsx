@@ -10,7 +10,7 @@ export function MainLayout() {
   const location = useLocation()
   const isMobile = useIsMobile()
   const { modal } = useAuth()
-  const isStandaloneProductPage = location.pathname === '/organizador'
+  const isStandaloneProductPage = location.pathname === '/admin'
 
   return (
     <div className="flex min-h-screen flex-col overflow-x-clip text-stone-900">

@@ -16,7 +16,7 @@ export function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/organizador" element={<OrganizerPage />} />
+        <Route path="/admin" element={<OrganizerPage />} />
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/comercial" element={<CategoryPage title="Comercial" />} />

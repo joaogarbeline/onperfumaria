@@ -174,7 +174,7 @@ export function DesktopHeader() {
                         label="Editor"
                         onClick={() => {
                           setAccountMenuOpen(false)
-                          navigate('/organizador')
+                          navigate('/admin')
                         }}
                       />
                     ) : null}

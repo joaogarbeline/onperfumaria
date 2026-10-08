@@ -159,7 +159,7 @@ export function useOrganizerStore(token?: string) {
   const pendingLocalSave = useRef(false)
   const localRevision = useRef(0)
   const hasSyncedWithServer = useRef(false)
-  const isOrganizerRoute = window.location.pathname === '/organizador'
+  const isOrganizerRoute = window.location.pathname === '/admin'
   // Salvar (PUT) agora exige o token de administrador; ler (GET) continua
   // publico porque o site inteiro depende da estrutura para renderizar.
   const tokenRef = useRef(token)

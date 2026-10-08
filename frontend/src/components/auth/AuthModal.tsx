@@ -34,7 +34,7 @@ export function AuthModal() {
     (nextToken: string) => {
       const hadPendingAction = completeAuth(nextToken)
       if (!hadPendingAction && decodeTokenRole(nextToken) === 'admin') {
-        navigate('/organizador')
+        navigate('/admin')
       }
     },
     [completeAuth, navigate],

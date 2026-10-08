@@ -84,7 +84,7 @@ export function MobileBottomNav() {
                 label="Editor"
                 onClick={() => {
                   setAccountMenuOpen(false)
-                  navigate('/organizador')
+                  navigate('/admin')
                 }}
               />
             ) : null}
