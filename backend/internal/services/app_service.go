@@ -1554,11 +1554,15 @@ func (s *Service) AdminOrderNotifications(ctx context.Context, limit int) ([]map
 	if limit <= 0 || limit > 100 {
 		limit = 30
 	}
+	// So pedidos ja pagos viram notificacao - antes disso o pedido so fica
+	// salvo no historico (tabela orders), sem alertar o atendente pra
+	// contatar um cliente que ainda nem concluiu o pagamento.
 	rows, err := s.db.Query(ctx, `
 		SELECT o.id::text, COALESCE(c.name, 'Consumidor Final'), COALESCE(c.phone, ''), o.total_amount,
 			o.payment_status, o.order_status, COALESCE(o.delivery_mode, ''), o.created_at, (o.admin_read_at IS NOT NULL)
 		FROM orders o
 		LEFT JOIN customers c ON c.id = o.customer_id
+		WHERE o.order_status = 'pago'
 		ORDER BY o.created_at DESC
 		LIMIT $1`, limit)
 	if err != nil {
@@ -1586,7 +1590,7 @@ func (s *Service) AdminOrderNotifications(ctx context.Context, limit int) ([]map
 
 func (s *Service) AdminUnreadOrderCount(ctx context.Context) (int, error) {
 	var count int
-	err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM orders WHERE admin_read_at IS NULL`).Scan(&count)
+	err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM orders WHERE admin_read_at IS NULL AND order_status = 'pago'`).Scan(&count)
 	return count, err
 }
 

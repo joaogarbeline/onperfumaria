@@ -453,7 +453,6 @@ export function AuthModal() {
 
           {step === 'password' ? (
             <PasswordStep
-              identity={identity}
               password={password}
               error={fieldErrors.password}
               loading={loading}
@@ -659,7 +658,6 @@ function IdentifyStep({
 }
 
 function PasswordStep({
-  identity,
   password,
   error,
   loading,
@@ -670,7 +668,6 @@ function PasswordStep({
   onBack,
   onForgot,
 }: {
-  identity: AuthIdentity | null
   password: string
   error?: string
   loading: boolean
@@ -683,12 +680,6 @@ function PasswordStep({
 }) {
   return (
     <form onSubmit={onSubmit}>
-      <p className="mb-3 text-sm leading-6 text-[#6b665f]">
-        {identity?.firstName ? `Ola, ${identity.firstName}. ` : ''}
-        Conta encontrada{identity?.maskedEmail ? ` (${identity.maskedEmail})` : ''}. Digite sua senha para
-        entrar.
-      </p>
-
       <InlineField
         label="Senha"
         type={showPassword ? 'text' : 'password'}
