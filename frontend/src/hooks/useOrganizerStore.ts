@@ -18,6 +18,18 @@ import {
 const STORAGE_KEY = 'on-perfumaria-organizer-v1'
 const SYNC_EVENT = 'on-perfumaria-organizer-sync'
 const VISIBLE_RECENT_LIMIT = 7
+// A pagina do admin monta varias instancias independentes deste hook ao
+// mesmo tempo (preview do site reaproveita Home/Header/etc, cada um com seu
+// proprio polling). Esse timestamp e por modulo (nao por instancia) para que
+// uma edicao feita em QUALQUER instancia faca TODAS as outras pausarem a
+// aplicacao de respostas remotas por um tempo - senao o polling de uma
+// instancia so-leitura pode aplicar um GET desatualizado e, via
+// SYNC_EVENT/localStorage, sobrescrever a edicao que acabou de ser salva.
+let lastLocalEditAt = 0
+const REMOTE_APPLY_COOLDOWN_MS = 4_000
+function withinEditCooldown() {
+  return Date.now() - lastLocalEditAt < REMOTE_APPLY_COOLDOWN_MS
+}
 
 function storesAreEqual(left: OrganizerStore, right: OrganizerStore) {
   return JSON.stringify(left) === JSON.stringify(right)
@@ -159,6 +171,8 @@ export function useOrganizerStore(token?: string) {
   const pendingLocalSave = useRef(false)
   const localRevision = useRef(0)
   const hasSyncedWithServer = useRef(false)
+  const isPutInFlight = useRef(false)
+  const latestSnapshotToPut = useRef<OrganizerStore | null>(null)
   const isOrganizerRoute = window.location.pathname === '/admin'
   // Salvar (PUT) agora exige o token de administrador; ler (GET) continua
   // publico porque o site inteiro depende da estrutura para renderizar.
@@ -177,6 +191,7 @@ export function useOrganizerStore(token?: string) {
       if (!storesAreEqual(current, next)) {
         pendingLocalSave.current = true
         localRevision.current += 1
+        lastLocalEditAt = Date.now()
       }
       return next
     })
@@ -189,11 +204,11 @@ export function useOrganizerStore(token?: string) {
   useEffect(() => {
     const handleSync = (event: Event) => {
       const nextStore = (event as CustomEvent<OrganizerStore>).detail
-      if (!nextStore || pendingLocalSave.current) return
+      if (!nextStore || pendingLocalSave.current || withinEditCooldown()) return
       setStore((current) => (storesAreEqual(current, nextStore) ? current : nextStore))
     }
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== STORAGE_KEY || !event.newValue || pendingLocalSave.current) return
+      if (event.key !== STORAGE_KEY || !event.newValue || pendingLocalSave.current || withinEditCooldown()) return
       const nextStore = loadOrganizerStore()
       setStore((current) => (storesAreEqual(current, nextStore) ? current : nextStore))
     }
@@ -221,7 +236,7 @@ export function useOrganizerStore(token?: string) {
       // (loadOrganizerStore ainda nao confirmou os dados reais) - uma edicao feita
       // nesse instante nao pode bloquear a chegada dos dados reais do servidor,
       // senao esse esqueleto acaba sendo salvo por cima deles.
-      if (pendingLocalSave.current && hasSyncedWithServer.current) return
+      if (hasSyncedWithServer.current && (pendingLocalSave.current || withinEditCooldown())) return
       hasSyncedWithServer.current = true
 
       if (isOrganizerRoute) {
@@ -278,17 +293,38 @@ export function useOrganizerStore(token?: string) {
   useEffect(() => {
     if (!isOrganizerRoute || !remoteReady || !pendingLocalSave.current || !hasSyncedWithServer.current) return
 
-    const snapshot = store
     const timeout = window.setTimeout(() => {
-      void api
-        .put<OrganizerStore>('/organizer', snapshot, tokenRef.current)
-        .then(() => {
-          if (storesAreEqual(storeRef.current, snapshot)) pendingLocalSave.current = false
-        })
-        .catch(() => undefined)
+      latestSnapshotToPut.current = storeRef.current
+      void flushPendingPut()
     }, 250)
     return () => window.clearTimeout(timeout)
   }, [isOrganizerRoute, remoteReady, store])
+
+  // So um PUT pode estar em voo por vez - caso contrario, dois salvamentos
+  // disparados em sequencia rapida podem terminar fora de ordem na rede, e o
+  // mais antigo (com dados desatualizados) sobrescreveria o mais novo no
+  // servidor mesmo chegando depois. Aqui, qualquer edicao que aconteca
+  // enquanto um PUT esta em voo so atualiza "o que falta mandar", e o loop
+  // sempre envia por ultimo o estado mais recente conhecido.
+  async function flushPendingPut() {
+    if (isPutInFlight.current) return
+    isPutInFlight.current = true
+    try {
+      while (latestSnapshotToPut.current) {
+        const snapshot = latestSnapshotToPut.current
+        latestSnapshotToPut.current = null
+        try {
+          await api.put<OrganizerStore>('/organizer', snapshot, tokenRef.current)
+          if (storesAreEqual(storeRef.current, snapshot)) pendingLocalSave.current = false
+        } catch {
+          // Mantem pendingLocalSave true; a proxima edicao (ou o proprio
+          // usuario salvando de novo) tenta reenviar.
+        }
+      }
+    } finally {
+      isPutInFlight.current = false
+    }
+  }
 
   function createNode(input: CreateOrganizerNodeInput) {
     const timestamp = new Date().toISOString()
