@@ -81,7 +81,6 @@ function loadOrganizerStore(): OrganizerStore {
         ...node,
         description: node.description ?? defaults?.description ?? '',
         status: node.status ?? defaults?.status ?? 'draft',
-        scheduledAt: node.scheduledAt ?? '',
         imageUrl: node.imageUrl ?? '',
         price: Number(node.price) || 0,
         size: node.size ?? defaults?.size ?? 'medium',
@@ -358,7 +357,6 @@ export function useOrganizerStore(token?: string) {
       parentId: input.type === 'page' ? null : input.parentId,
       description: input.description?.trim() ?? '',
       status: input.status ?? (input.type === 'page' ? 'published' : 'draft'),
-      scheduledAt: '',
       imageUrl: input.imageUrl?.trim() ?? '',
       images: input.images,
       price: input.price ?? 0,
@@ -443,23 +441,6 @@ export function useOrganizerStore(token?: string) {
     })
   }
 
-  function scheduleNode(id: string, scheduledAt: string) {
-    const existing = store.nodes.find((node) => node.id === id)
-    if (!existing) return
-    updateNode(id, { scheduledAt, status: 'scheduled' }, false)
-    setLocalStore((current) =>
-      withActivity(current, activity(`${existing.name} agendado`, 'Publicação programada', id)),
-    )
-  }
-
-  function setNodeStatus(id: string, status: OrganizerStatus) {
-    const existing = store.nodes.find((node) => node.id === id)
-    if (!existing) return
-    updateNode(id, { status, scheduledAt: status === 'scheduled' ? existing.scheduledAt : '' }, false)
-    setLocalStore((current) =>
-      withActivity(current, activity(`${existing.name}: ${status}`, 'Situação alterada', id)),
-    )
-  }
 
   function recordAccess(id: string, label: string) {
     setLocalStore((current) => withActivity(current, activity(label, 'Aberto no organizador', id)))
@@ -645,8 +626,6 @@ export function useOrganizerStore(token?: string) {
     createTag,
     updateNode,
     updateTag,
-    scheduleNode,
-    setNodeStatus,
     recordAccess,
     duplicateNode,
     moveNode,

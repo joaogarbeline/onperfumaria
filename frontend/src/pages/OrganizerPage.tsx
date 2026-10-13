@@ -5,7 +5,6 @@ import {
   ArrowDown,
   ArrowUp,
   Bell,
-  CalendarClock,
   ChevronDown,
   ChevronLeft,
   CircleUserRound,
@@ -21,6 +20,7 @@ import {
   Layers3,
   LogOut,
   MessageCircle,
+  MoreHorizontal,
   Package,
   PanelLeft,
   PanelRight,
@@ -51,6 +51,7 @@ import type { CustomerOrder } from '../types'
 import {
   emptyItemWizardDraft,
   findOrganizerPage,
+  generateItemSku,
   organizerItemStatusOptions,
   organizerStatusLabels,
   organizerTypeLabels,
@@ -69,7 +70,7 @@ import type {
 
 type DrawerName = 'left' | 'right'
 type Selection = { kind: 'node'; id: string } | { kind: 'tag'; id: string } | null
-type SectionKey = 'upcoming' | 'recent' | 'organization' | 'items' | 'tags'
+type SectionKey = 'recent' | 'organization' | 'items' | 'tags'
 
 interface DrawerItem {
   id: string
@@ -144,7 +145,6 @@ export function OrganizerPage() {
     createTag,
     updateNode,
     updateTag,
-    scheduleNode,
     recordAccess,
     duplicateNode,
     moveNode,
@@ -179,7 +179,6 @@ export function OrganizerPage() {
   const [visitorPreview, setVisitorPreview] = useState<{ name: string; route: string } | null>(null)
   const [notice, setNotice] = useState('')
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
-    upcoming: true,
     recent: true,
     organization: true,
     items: true,
@@ -197,9 +196,6 @@ export function OrganizerPage() {
     selectedNode?.type === 'page' || selectedNode?.type === 'folder'
       ? selectedNode.id
       : (selectedNode?.parentId ?? 'home')
-  const isItemPageFocused = Boolean(
-    selectedNode && selectedNode.type === 'item' && focusedItemId === selectedNode.id,
-  )
 
   // "Itens" tem secao propria na gaveta (mesma hierarquia de "Pasta Pagina"),
   // entao nao entra mais nessa lista de paginas do site.
@@ -237,16 +233,6 @@ export function OrganizerPage() {
 
   const allSections = useMemo<Record<SectionKey, DrawerItem[]>>(
     () => ({
-      upcoming: store.nodes
-        .filter((node) => node.type !== 'folder' && node.status === 'scheduled' && node.scheduledAt)
-        .sort((a, b) => new Date(a.scheduledAt ?? '').getTime() - new Date(b.scheduledAt ?? '').getTime())
-        .map((node) => ({
-          id: `upcoming-${node.id}`,
-          targetId: node.id,
-          label: node.name,
-          detail: formatDate(node.scheduledAt),
-          kind: 'node' as const,
-        })),
       recent: store.activities.slice(0, 7).map((activity) => ({
         id: activity.id,
         targetId: activity.targetId,
@@ -395,7 +381,10 @@ export function OrganizerPage() {
   }
 
   const openItemWizard = (parentId: string) => {
-    setWizardDraft(emptyItemWizardDraft(parentId))
+    const folder = store.nodes.find((node) => node.id === parentId)
+    const defaultPlacementIds =
+      folder?.defaultPlacementEnabled && folder.defaultPlacementIds ? folder.defaultPlacementIds : []
+    setWizardDraft(emptyItemWizardDraft(parentId, defaultPlacementIds))
     setWizardStep(1)
   }
 
@@ -436,7 +425,11 @@ export function OrganizerPage() {
         wizardDraft.pixDiscountPercent.trim() === '' ? undefined : Number(wizardDraft.pixDiscountPercent),
       brand: wizardDraft.brand.trim(),
       volumeMl: Number(wizardDraft.volumeMl) || 0,
-      sku: wizardDraft.sku.trim(),
+      sku: wizardDraft.sku.trim() || generateItemSku(),
+    })
+    wizardDraft.placementIds.forEach((blockId) => {
+      const block = store.nodes.find((candidate) => candidate.id === blockId)
+      if (block) updateNode(blockId, { itemIds: [...block.itemIds, id] })
     })
     closeItemWizard()
     setSelection({ kind: 'node', id })
@@ -473,13 +466,11 @@ export function OrganizerPage() {
     setSelection({ kind, id })
     if (modalMode === 'page') setModalMode('module-picker')
     showNotice(
-      modalMode === 'schedule'
-        ? 'Publicação agendada com sucesso.'
-        : modalMode === 'page'
-          ? 'Página criada. Escolha o primeiro módulo.'
-          : kind === 'tag'
-            ? 'Tag criada com sucesso.'
-            : 'Conteúdo criado com sucesso.',
+      modalMode === 'page'
+        ? 'Página criada. Escolha o primeiro módulo.'
+        : kind === 'tag'
+          ? 'Tag criada com sucesso.'
+          : 'Conteúdo criado com sucesso.',
     )
   }
 
@@ -547,11 +538,6 @@ export function OrganizerPage() {
     />
   )
 
-  // Item so nasce dentro de uma subpasta de "Itens" - nunca direto numa
-  // pagina do site nem numa subpasta solta em outro lugar.
-  const wizardPages = store.nodes.filter(
-    (node) => node.type === 'folder' && findOrganizerPage(store.nodes, node)?.id === 'itens',
-  )
   const wizardDiscountTags = store.tags.filter((tag) => (tag.discountPercent ?? 0) > 0)
   const rightDrawerVisible = rightOpen && !settingsOpen && !wizardDraft
 
@@ -878,7 +864,7 @@ export function OrganizerPage() {
                     setWizardDraft((current) => (current ? { ...current, ...changes } : current))
                   }
                   onStepChange={setWizardStep}
-                  pages={wizardPages}
+                  nodes={store.nodes}
                   discountTags={wizardDiscountTags}
                   onCancel={closeItemWizard}
                   onFinish={finishItemWizard}
@@ -927,7 +913,7 @@ export function OrganizerPage() {
                   workspaceElement
                 ) : (
                   <Inspector
-                    key={`${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
+                    key={`${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}`}
                     node={selectedNode}
                     tag={selectedTag}
                     nodes={store.nodes}
@@ -952,9 +938,7 @@ export function OrganizerPage() {
                       setSelection({ kind: 'node', id: 'home' })
                       showNotice('Tag movida para a lixeira.')
                     }}
-                    onOpenSchedule={() => setModalMode('schedule')}
                     onSaved={() => showNotice('Alterações salvas.')}
-                    liveSync={isItemPageFocused}
                   />
                 )}
               </div>
@@ -971,7 +955,7 @@ export function OrganizerPage() {
                   workspaceElement
                 ) : (
                   <Inspector
-                    key={`mobile-${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}-${selectedNode?.updatedAt ?? selectedTag?.updatedAt ?? ''}`}
+                    key={`mobile-${selection?.kind ?? 'none'}-${selection && 'id' in selection ? selection.id : ''}`}
                     node={selectedNode}
                     tag={selectedTag}
                     nodes={store.nodes}
@@ -991,9 +975,7 @@ export function OrganizerPage() {
                       moveTagToTrash(id)
                       setSelection({ kind: 'node', id: 'home' })
                     }}
-                    onOpenSchedule={() => setModalMode('schedule')}
                     onSaved={() => showNotice('Alterações salvas.')}
-                    liveSync={isItemPageFocused}
                   />
                 )}
               </div>
@@ -1017,7 +999,6 @@ export function OrganizerPage() {
           onClose={() => setModalMode(null)}
           onCreateNode={createNode}
           onCreateTag={createTag}
-          onSchedule={scheduleNode}
           onCreated={handleCreated}
           onChooseModule={(type) => setModalMode(type)}
         />
@@ -2205,90 +2186,96 @@ function Workspace({
           Voltar um nível
         </button>
       )}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="mt-1 rounded-full bg-[#fff1d6] p-3 text-[#b77717]">
-            {nodeIcon(workspaceNode.type, 22)}
-          </div>
-          <div className="min-w-0">
-            <p className="organizer-eyebrow">
-              {isItensRoot ? 'Área interna' : organizerTypeLabels[workspaceNode.type]}
-              {parent ? ` · ${parent.name}` : ''}
-            </p>
+      {isSubfolderUnderItens ? (
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-full bg-[#fff1d6] p-3 text-[#b77717]">
+              {nodeIcon(workspaceNode.type, 22)}
+            </div>
             <h1 className="truncate text-2xl font-semibold sm:text-3xl">{workspaceNode.name}</h1>
-            <p className="mt-1 max-w-2xl text-sm text-[#6b665f]">
-              {workspaceNode.description || 'Sem descrição. Edite as propriedades na gaveta direita.'}
-            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => onOpenModal('item')}
+            aria-label="Adicionar item"
+            title="Adicionar item"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-white shadow-[var(--shadow-organizer)] hover:brightness-95"
+          >
+            <Plus size={20} />
+          </button>
         </div>
-        {isOrganizationOnly && (
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-stone-200 bg-[#fff8ea] px-3.5 py-2 text-xs text-[#8b5200]">
-              Somente organização
-            </span>
+      ) : (
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="mt-1 rounded-full bg-[#fff1d6] p-3 text-[#b77717]">
+              {nodeIcon(workspaceNode.type, 22)}
+            </div>
+            <div className="min-w-0">
+              <p className="organizer-eyebrow">
+                {isItensRoot ? 'Área interna' : organizerTypeLabels[workspaceNode.type]}
+                {parent ? ` · ${parent.name}` : ''}
+              </p>
+              <h1 className="truncate text-2xl font-semibold sm:text-3xl">{workspaceNode.name}</h1>
+              <p className="mt-1 max-w-2xl text-sm text-[#6b665f]">
+                {workspaceNode.description || 'Sem descrição. Edite as propriedades na gaveta direita.'}
+              </p>
+            </div>
           </div>
-        )}
-      </div>
-
-      {workspaceNode.scheduledAt && (
-        <div className="mt-5 flex items-center gap-2 rounded-xl border-l-4 border-[#d89a28] bg-[#fff8ea] px-4 py-3 text-xs">
-          <CalendarClock size={16} className="text-[#b77717]" /> Publicação programada para{' '}
-          {formatDate(workspaceNode.scheduledAt)}.
+          {isOrganizationOnly && (
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full border border-stone-200 bg-[#fff8ea] px-3.5 py-2 text-xs text-[#8b5200]">
+                Somente organização
+              </span>
+            </div>
+          )}
         </div>
       )}
 
-      <section className="mt-8">
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold">
-            {isItensRoot
-              ? 'Adicionar subpasta'
-              : isSubfolderUnderItens
-                ? 'Adicionar item'
+      {!isSubfolderUnderItens && (
+        <section className="mt-8">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold">
+              {isItensRoot
+                ? 'Adicionar subpasta'
                 : workspaceNode.type === 'folder'
                   ? 'Adicionar à subpasta'
                   : 'Adicionar à página'}
-          </h2>
-          <p className="text-[10px] text-[#6b665f]">Escolha o tipo de conteúdo que será exibido.</p>
-        </div>
-        <div className="organizer-grid-actions grid gap-3">
-          {isItensRoot ? (
-            <QuickAction
-              icon={<FolderOpen size={20} />}
-              title="Subpasta"
-              detail="Organize os itens em grupos dentro de Itens."
-              onClick={() => onOpenModal('folder')}
-            />
-          ) : isSubfolderUnderItens ? (
-            <QuickAction
-              icon={<Package size={20} />}
-              title="Item"
-              detail="Cadastre um produto com preço, imagem e tags."
-              onClick={() => onOpenModal('item')}
-            />
-          ) : (
-            <>
+            </h2>
+            <p className="text-[10px] text-[#6b665f]">Escolha o tipo de conteúdo que será exibido.</p>
+          </div>
+          <div className="organizer-grid-actions grid gap-3">
+            {isItensRoot ? (
               <QuickAction
-                icon={<Layers3 size={20} />}
-                title="Carrossel"
-                detail="Selecione itens existentes para uma faixa deslizante."
-                onClick={() => onOpenModal('carousel')}
+                icon={<FolderOpen size={20} />}
+                title="Subpasta"
+                detail="Organize os itens em grupos dentro de Itens."
+                onClick={() => onOpenModal('folder')}
               />
-              <QuickAction
-                icon={<LayoutGrid size={20} />}
-                title="Catálogo"
-                detail="Monte uma grade de produtos no modelo das páginas de categoria."
-                onClick={() => onOpenModal('catalog')}
-              />
-              <QuickAction
-                icon={<Sparkles size={20} />}
-                title="Destaque"
-                detail="Crie um banner com tamanho e imagem configuráveis."
-                onClick={() => onOpenModal('highlight')}
-              />
-            </>
-          )}
-        </div>
-      </section>
+            ) : (
+              <>
+                <QuickAction
+                  icon={<Layers3 size={20} />}
+                  title="Carrossel"
+                  detail="Selecione itens existentes para uma faixa deslizante."
+                  onClick={() => onOpenModal('carousel')}
+                />
+                <QuickAction
+                  icon={<LayoutGrid size={20} />}
+                  title="Catálogo"
+                  detail="Monte uma grade de produtos no modelo das páginas de categoria."
+                  onClick={() => onOpenModal('catalog')}
+                />
+                <QuickAction
+                  icon={<Sparkles size={20} />}
+                  title="Destaque"
+                  detail="Crie um banner com tamanho e imagem configuráveis."
+                  onClick={() => onOpenModal('highlight')}
+                />
+              </>
+            )}
+          </div>
+        </section>
+      )}
       <section className="mt-8">
         <div className="mb-3">
           <h2 className="text-sm font-semibold">
@@ -2615,9 +2602,7 @@ interface InspectorProps {
   onMoveNode: (id: string, direction: 'up' | 'down') => void
   onTrashNode: (id: string) => void
   onTrashTag: (id: string) => void
-  onOpenSchedule: () => void
   onSaved: () => void
-  liveSync?: boolean
 }
 
 function Inspector({
@@ -2631,9 +2616,7 @@ function Inspector({
   onMoveNode,
   onTrashNode,
   onTrashTag,
-  onOpenSchedule,
   onSaved,
-  liveSync = false,
 }: InspectorProps) {
   const [nodeDraft, setNodeDraft] = useState(() =>
     node
@@ -2653,13 +2636,25 @@ function Inspector({
           volumeMl: String(node.volumeMl || ''),
           stock: node.stock === undefined ? '' : String(node.stock),
           pixDiscountPercent: node.pixDiscountPercent === undefined ? '' : String(node.pixDiscountPercent),
+          defaultPlacementIds: node.defaultPlacementIds ?? [],
+          defaultPlacementEnabled: node.defaultPlacementEnabled ?? false,
         }
       : null,
   )
   const [tagDraft, setTagDraft] = useState(() => (tag ? { name: tag.name, color: tag.color } : null))
   const [fieldError, setFieldError] = useState<'name' | 'price' | null>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [appearsOpen, setAppearsOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const priceInputRef = useRef<HTMLInputElement>(null)
+
+  // Subpasta nao tem mais campo de descricao no formulario - apaga valores
+  // que ja estivessem salvos de antes dessa mudanca.
+  useEffect(() => {
+    if (node && node.type === 'folder' && node.description) {
+      onUpdateNode(node.id, { description: '' })
+    }
+  }, [node, onUpdateNode])
 
   if (!node && !tag)
     return <InspectorEmpty title="Propriedades" detail="Selecione um conteúdo para editar seus detalhes." />
@@ -2702,9 +2697,7 @@ function Inspector({
   }
 
   if (!node || !nodeDraft) return null
-  const syncLive = (changes: Partial<OrganizerNode>) => {
-    if (liveSync) onUpdateNode(node.id, changes)
-  }
+  const syncLive = (changes: Partial<OrganizerNode>) => onUpdateNode(node.id, changes)
   const invalidParentIds = new Set([node.id])
   let foundDescendant = true
   while (foundDescendant) {
@@ -2735,7 +2728,6 @@ function Inspector({
           (candidate) =>
             candidate.type === 'page' && candidate.id !== 'itens' && !invalidParentIds.has(candidate.id),
         )
-  const items = nodes.filter((candidate) => candidate.type === 'item' && findOrganizerPage(nodes, candidate))
   const protectedPage = node.type === 'page' && Boolean(node.immutable)
   const submitNode = (event: FormEvent) => {
     event.preventDefault()
@@ -2780,9 +2772,73 @@ function Inspector({
   }
   const toggleInList = (key: 'tagIds' | 'itemIds', id: string) => {
     const current = nodeDraft[key]
-    setNodeDraft({
-      ...nodeDraft,
-      [key]: current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+    const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+    setNodeDraft({ ...nodeDraft, [key]: next })
+    syncLive({ [key]: next })
+  }
+
+  // Mesma regra do submitNode (estoque zerado tira o item do ar sozinho),
+  // só que aplicada a cada digitação em vez de só no submit - precisa ficar
+  // igual nos dois lugares para o comportamento nao divergir.
+  const commitStock = (rawValue: string) => {
+    const trackingStock = rawValue.trim() !== ''
+    const stockValue = trackingStock ? Math.max(0, Number(rawValue) || 0) : undefined
+    const status = trackingStock && stockValue === 0 ? 'coming-soon' : nodeDraft.status
+    setNodeDraft({ ...nodeDraft, stock: rawValue, status })
+    syncLive({ stock: stockValue, status })
+  }
+
+  // Blocos de carrossel/catalogo (em qualquer pagina) onde este item pode
+  // aparecer - alimenta o campo "Aparece em" no formulario do item. Marcar
+  // ou desmarcar atualiza o OUTRO node (o bloco) na hora, nao o item.
+  // Subpasta usa a mesma lista para configurar o "aparece em" padrao que
+  // todo item novo criado dentro dela ja nasce com (ver openItemWizard).
+  const placementBlocks =
+    node.type === 'item' || node.type === 'folder'
+      ? nodes.filter((candidate) => candidate.type === 'carousel' || candidate.type === 'catalog')
+      : []
+  const placementsByPage = new Map<string, OrganizerNode[]>()
+  placementBlocks.forEach((block) => {
+    const pageName = nodes.find((candidate) => candidate.id === block.parentId)?.name ?? 'Outros'
+    const list = placementsByPage.get(pageName) ?? []
+    list.push(block)
+    placementsByPage.set(pageName, list)
+  })
+  const togglePlacement = (blockId: string) => {
+    const block = nodes.find((candidate) => candidate.id === blockId)
+    if (!block) return
+    const current = block.itemIds
+    const next = current.includes(node.id)
+      ? current.filter((value) => value !== node.id)
+      : [...current, node.id]
+    onUpdateNode(blockId, { itemIds: next })
+  }
+  const toggleDefaultPlacement = (blockId: string) => {
+    const current = nodeDraft.defaultPlacementIds
+    const next = current.includes(blockId)
+      ? current.filter((value) => value !== blockId)
+      : [...current, blockId]
+    setNodeDraft({ ...nodeDraft, defaultPlacementIds: next })
+    syncLive({ defaultPlacementIds: next })
+  }
+
+  // O bloco "Pouco no estoque" se preenche sozinho pelo status do item, ao
+  // contrario de todos os outros blocos (que sao 100% manuais via "Aparece
+  // em"). Entra quando o status vira low-stock, sai quando deixa de ser.
+  const syncLowStockPlacement = (nextStatus: OrganizerNode['status']) => {
+    const lowStockBlocks = nodes.filter(
+      (candidate) =>
+        (candidate.type === 'carousel' || candidate.type === 'catalog') &&
+        candidate.name === 'Pouco no estoque',
+    )
+    lowStockBlocks.forEach((block) => {
+      const current = block.itemIds
+      const shouldInclude = nextStatus === 'low-stock'
+      const included = current.includes(node.id)
+      if (shouldInclude === included) return
+      onUpdateNode(block.id, {
+        itemIds: shouldInclude ? [...current, node.id] : current.filter((value) => value !== node.id),
+      })
     })
   }
 
@@ -2852,17 +2908,81 @@ function Inspector({
           <p className="mt-1 text-[10px] font-medium text-[#a0382f]">Informe o nome do item.</p>
         ) : null}
       </Field>
-      <Field label="Descrição">
-        <textarea
-          value={nodeDraft.description}
-          onChange={(event) => {
-            setNodeDraft({ ...nodeDraft, description: event.target.value })
-            syncLive({ description: event.target.value })
-          }}
-          rows={4}
-          className="organizer-input resize-y"
-        />
-      </Field>
+      {node.type === 'folder' && (
+        <div className="mb-4 rounded-xl border border-stone-200 bg-white">
+          <label className="flex items-center gap-2 border-b border-stone-100 px-3 py-2.5 text-xs">
+            <input
+              type="checkbox"
+              checked={nodeDraft.defaultPlacementEnabled}
+              onChange={(event) => {
+                const checked = event.target.checked
+                setNodeDraft({ ...nodeDraft, defaultPlacementEnabled: checked })
+                syncLive({ defaultPlacementEnabled: checked })
+              }}
+              className="accent-[#d89a28]"
+            />
+            <span className="font-medium text-[#3a164f]">Tornar padrão para novos itens</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => setAppearsOpen((value) => !value)}
+            aria-expanded={appearsOpen}
+            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
+              Aparece em
+            </span>
+            <ChevronDown
+              size={15}
+              className={`shrink-0 text-[#6b665f] transition-transform ${appearsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {appearsOpen && (
+            <div className="max-h-48 overflow-y-auto border-t border-stone-200">
+              {placementBlocks.length === 0 ? (
+                <p className="p-2.5 text-[10px] text-[#6b665f]">
+                  Nenhum carrossel ou catálogo criado ainda nas páginas do site.
+                </p>
+              ) : (
+                Array.from(placementsByPage.entries()).map(([pageName, blocks]) => (
+                  <div key={pageName}>
+                    <div className="bg-[#fff1d6] px-2.5 py-1.5 text-[10px] font-semibold text-[#8b5200]">
+                      {pageName}
+                    </div>
+                    {blocks.map((block) => (
+                      <label
+                        key={block.id}
+                        className="flex items-center gap-2 border-t border-stone-100 px-2.5 py-1.5 pl-5 text-xs"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={nodeDraft.defaultPlacementIds.includes(block.id)}
+                          onChange={() => toggleDefaultPlacement(block.id)}
+                          className="accent-[#d89a28]"
+                        />
+                        <span className="truncate">{block.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {node.type !== 'folder' && (
+        <Field label="Descrição">
+          <textarea
+            value={nodeDraft.description}
+            onChange={(event) => {
+              setNodeDraft({ ...nodeDraft, description: event.target.value })
+              syncLive({ description: event.target.value })
+            }}
+            rows={4}
+            className="organizer-input resize-y"
+          />
+        </Field>
+      )}
       {node.type !== 'folder' && node.id !== 'itens' && (
         <Field label="Status">
           <select
@@ -2871,12 +2991,12 @@ function Inspector({
               const status = event.target.value as OrganizerNode['status']
               setNodeDraft({ ...nodeDraft, status })
               syncLive({ status })
+              if (node.type === 'item') syncLowStockPlacement(status)
             }}
             className="organizer-input"
           >
             <option value="draft">Rascunho</option>
             <option value="published">Publicado</option>
-            {node.scheduledAt && <option value="scheduled">Agendado</option>}
             {node.type === 'item' &&
               organizerItemStatusOptions
                 .filter((value) => value !== 'published')
@@ -2888,11 +3008,14 @@ function Inspector({
           </select>
         </Field>
       )}
-      {node.type !== 'page' && node.type !== 'folder' && (
-        <Field label={node.type === 'item' ? 'Subpasta' : 'Página'}>
+      {node.type !== 'page' && node.type !== 'folder' && node.type !== 'item' && (
+        <Field label="Página">
           <select
             value={nodeDraft.parentId}
-            onChange={(event) => setNodeDraft({ ...nodeDraft, parentId: event.target.value })}
+            onChange={(event) => {
+              setNodeDraft({ ...nodeDraft, parentId: event.target.value })
+              syncLive({ parentId: event.target.value })
+            }}
             className="organizer-input"
           >
             {containerOptions.map((container) => (
@@ -2924,49 +3047,6 @@ function Inspector({
         </div>
       )}
       {node.type === 'item' && (
-        <div className="mb-4">
-          <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
-            Fotos
-          </span>
-          {nodeDraft.images.length > 0 && (
-            <div className="mb-2 grid grid-cols-3 gap-2">
-              {nodeDraft.images.map((photo, index) => (
-                <div
-                  key={index}
-                  className="group relative overflow-hidden rounded-xl border border-stone-200"
-                >
-                  <img src={photo} alt="" className="h-16 w-full object-cover" />
-                  <button
-                    type="button"
-                    aria-label="Remover foto"
-                    onClick={() => removeItemPhoto(index)}
-                    className="absolute right-1 top-1 rounded-full bg-white/90 p-0.5 text-[#a0382f] opacity-0 transition-opacity group-hover:opacity-100"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-stone-200 px-3 py-2 text-xs hover:border-[#d89a28] hover:bg-[#fff8ea]">
-            <ImageIcon size={15} /> {nodeDraft.images.length > 0 ? 'Adicionar mais fotos' : 'Enviar fotos'}
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="sr-only"
-              onChange={(event) => {
-                handleItemPhotos(event.target.files)
-                event.target.value = ''
-              }}
-            />
-          </label>
-          <p className="mt-1 text-[10px] text-[#6b665f]">
-            A primeira foto é a capa. Com mais de uma, a página do item mostra o carrossel.
-          </p>
-        </div>
-      )}
-      {node.type === 'item' && (
         <Field label="Preço">
           <input
             ref={priceInputRef}
@@ -2985,77 +3065,14 @@ function Inspector({
         </Field>
       )}
       {node.type === 'item' && (
-        <Field label="Estoque">
-          <input
-            type="number"
-            min="0"
-            value={nodeDraft.stock}
-            onChange={(event) => setNodeDraft({ ...nodeDraft, stock: event.target.value })}
-            placeholder="Quantidade disponível"
-            className="organizer-input"
-          />
-          <p className="mt-1 text-[10px] text-[#6b665f]">
-            Vai descontando a cada venda. Ao chegar a 0, o status muda sozinho para "Em breve". Deixe em
-            branco para não controlar estoque.
-          </p>
-        </Field>
-      )}
-      {node.type === 'item' && (
-        <Field label="Desconto no Pix (%)">
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={nodeDraft.pixDiscountPercent}
-            onChange={(event) => setNodeDraft({ ...nodeDraft, pixDiscountPercent: event.target.value })}
-            placeholder="5"
-            className="organizer-input"
-          />
-          <p className="mt-1 text-[10px] text-[#6b665f]">Deixe em branco para usar o padrão do site.</p>
-        </Field>
-      )}
-      {node.type === 'item' && (
-        <Field label="Marca">
-          <input
-            value={nodeDraft.brand}
-            onChange={(event) => {
-              setNodeDraft({ ...nodeDraft, brand: event.target.value })
-              syncLive({ brand: event.target.value })
-            }}
-            placeholder="Nome da marca"
-            className="organizer-input"
-          />
-          <p className="mt-1 text-[10px] text-[#6b665f]">Aparece no filtro de marcas do catálogo.</p>
-        </Field>
-      )}
-      {node.type === 'item' && (
-        <Field label="Volume (ml)">
-          <input
-            type="number"
-            min="0"
-            value={nodeDraft.volumeMl}
-            onChange={(event) => setNodeDraft({ ...nodeDraft, volumeMl: event.target.value })}
-            placeholder="100"
-            className="organizer-input"
-          />
-          <p className="mt-1 text-[10px] text-[#6b665f]">Aparece no filtro de volume do catálogo.</p>
-        </Field>
-      )}
-      {node.type === 'item' && (
-        <Field label="Código">
-          <input
-            value={nodeDraft.sku}
-            onChange={(event) => {
-              setNodeDraft({ ...nodeDraft, sku: event.target.value })
-              syncLive({ sku: event.target.value })
-            }}
-            placeholder="Código interno do item"
-            className="organizer-input"
-          />
-          <p className="mt-1 text-[10px] text-[#6b665f]">
-            Uso interno: nunca aparece na página pública do item.
-          </p>
-        </Field>
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+          <span className="flex items-center gap-2 text-xs font-medium text-[#3a164f]">
+            <Package size={15} className="text-[#b77717]" /> Estoque
+          </span>
+          <span className="text-sm font-semibold text-[#2a0f3d]">
+            {nodeDraft.stock.trim() === '' ? 'Não controlado' : nodeDraft.stock}
+          </span>
+        </div>
       )}
       {node.type === 'highlight' && (
         <Field label="Tamanho">
@@ -3080,30 +3097,56 @@ function Inspector({
           onToggle={(id) => toggleInList('tagIds', id)}
         />
       )}
-      {(node.type === 'carousel' || node.type === 'catalog') && (
-        <ItemCardChoiceList
-          label={node.type === 'catalog' ? 'Produtos do catálogo' : 'Itens do carrossel'}
-          items={items}
-          selected={nodeDraft.itemIds}
-          onToggle={(id) => toggleInList('itemIds', id)}
-          empty={
-            node.type === 'catalog'
-              ? 'Crie itens antes de preencher o catálogo.'
-              : 'Crie itens antes de preencher o carrossel.'
-          }
-        />
+      {node.type === 'item' && nodeDraft.status !== 'draft' && (
+        <div className="mb-4 rounded-xl border border-stone-200 bg-white">
+          <button
+            type="button"
+            onClick={() => setAppearsOpen((value) => !value)}
+            aria-expanded={appearsOpen}
+            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
+              Aparece em
+            </span>
+            <ChevronDown
+              size={15}
+              className={`shrink-0 text-[#6b665f] transition-transform ${appearsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {appearsOpen && (
+            <div className="max-h-48 overflow-y-auto border-t border-stone-200">
+              {placementBlocks.length === 0 ? (
+                <p className="p-2.5 text-[10px] text-[#6b665f]">
+                  Nenhum carrossel ou catálogo criado ainda nas páginas do site.
+                </p>
+              ) : (
+                Array.from(placementsByPage.entries()).map(([pageName, blocks]) => (
+                  <div key={pageName}>
+                    <div className="bg-[#fff1d6] px-2.5 py-1.5 text-[10px] font-semibold text-[#8b5200]">
+                      {pageName}
+                    </div>
+                    {blocks.map((block) => (
+                      <label
+                        key={block.id}
+                        className="flex items-center gap-2 border-t border-stone-100 px-2.5 py-1.5 pl-5 text-xs"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={block.itemIds.includes(node.id)}
+                          onChange={() => togglePlacement(block.id)}
+                          className="accent-[#d89a28]"
+                        />
+                        <span className="truncate">{block.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       )}
-      {node.type !== 'folder' && node.id !== 'itens' && (
-        <button
-          type="button"
-          onClick={onOpenSchedule}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-stone-200 px-3 py-2 text-xs hover:border-[#d89a28] hover:bg-[#fff8ea]"
-        >
-          <CalendarClock size={15} />
-          {node.scheduledAt ? formatDate(node.scheduledAt) : 'Agendar publicação'}
-        </button>
-      )}
-      {!node.immutable && !protectedPage && (
+      {node.type !== 'item' && node.type !== 'folder' && !node.immutable && !protectedPage && (
         <div className="mt-2 grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -3121,14 +3164,54 @@ function Inspector({
           </button>
         </div>
       )}
-      <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
-        <button
-          type="submit"
-          className="flex items-center justify-center gap-2 rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3 py-2.5 text-xs font-medium text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
-        >
-          <Save size={15} /> Salvar alterações
-        </button>
-        {!node.immutable && !protectedPage && (
+      {node.type === 'item' ? (
+        !node.immutable && !protectedPage ? (
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              title="Mais opções"
+              aria-label="Mais opções"
+              onClick={() => setMoreOpen(true)}
+              className="rounded-full border border-stone-200 p-2.5 hover:border-[#5b247f]/40 hover:bg-[#eadcf0]"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            <button
+              type="button"
+              title="Duplicar"
+              aria-label="Duplicar conteúdo"
+              onClick={() => onDuplicate(node.id)}
+              className="rounded-full border border-stone-200 p-2.5 hover:border-[#5b247f]/40 hover:bg-[#eadcf0]"
+            >
+              <Copy size={16} />
+            </button>
+          </div>
+        ) : null
+      ) : node.type === 'folder' ? (
+        !node.immutable && !protectedPage ? (
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              title="Duplicar"
+              aria-label="Duplicar conteúdo"
+              onClick={() => onDuplicate(node.id)}
+              className="rounded-full border border-stone-200 p-2.5 hover:border-[#5b247f]/40 hover:bg-[#eadcf0]"
+            >
+              <Copy size={16} />
+            </button>
+            <button
+              type="button"
+              title="Mover para a lixeira"
+              aria-label="Mover para a lixeira"
+              onClick={() => onTrashNode(node.id)}
+              className="rounded-full border border-stone-200 p-2.5 text-[#a0382f] hover:border-[#a0382f]/40 hover:bg-[#fff0ed]"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ) : null
+      ) : !node.immutable && !protectedPage ? (
+        <div className="mt-5 flex justify-end">
           <button
             type="button"
             title="Duplicar"
@@ -3138,9 +3221,9 @@ function Inspector({
           >
             <Copy size={16} />
           </button>
-        )}
-      </div>
-      {!node.immutable && !protectedPage && (
+        </div>
+      ) : null}
+      {node.type !== 'item' && node.type !== 'folder' && !node.immutable && !protectedPage && (
         <button
           type="button"
           onClick={() => onTrashNode(node.id)}
@@ -3148,6 +3231,264 @@ function Inspector({
         >
           <Trash2 size={15} /> Mover para a lixeira
         </button>
+      )}
+      {node.type === 'item' && moreOpen && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Fechar"
+            onClick={() => setMoreOpen(false)}
+            className="absolute inset-0 bg-[#081b32]/45 backdrop-blur-[2px]"
+          />
+          <section className="relative z-10 flex max-h-[80dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#5b247f]/40 bg-[var(--color-organizer-bg)] shadow-[var(--shadow-organizer)]">
+            <header className="flex shrink-0 items-center justify-between gap-3 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-4 py-3 text-white">
+              <div className="flex items-center gap-2">
+                <MoreHorizontal size={17} className="text-[#e2b04f]" />
+                <h2 className="text-sm font-semibold uppercase tracking-[0.14em]">Mais opções</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                aria-label="Fechar"
+                className="rounded-full p-1 hover:bg-white/10"
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <Field label="Nome">
+                <input
+                  value={nodeDraft.name}
+                  onChange={(event) => {
+                    setNodeDraft({ ...nodeDraft, name: event.target.value })
+                    syncLive({ name: event.target.value })
+                    if (event.target.value.trim()) setFieldError(null)
+                  }}
+                  className={`organizer-input ${fieldError === 'name' ? 'border-[#a0382f] ring-4 ring-[#a0382f]/15' : ''}`}
+                />
+                {fieldError === 'name' ? (
+                  <p className="mt-1 text-[10px] font-medium text-[#a0382f]">Informe o nome do item.</p>
+                ) : null}
+              </Field>
+              <Field label="Descrição">
+                <textarea
+                  value={nodeDraft.description}
+                  onChange={(event) => {
+                    setNodeDraft({ ...nodeDraft, description: event.target.value })
+                    syncLive({ description: event.target.value })
+                  }}
+                  rows={4}
+                  className="organizer-input resize-y"
+                />
+              </Field>
+              <Field label="Status">
+                <select
+                  value={nodeDraft.status}
+                  onChange={(event) => {
+                    const status = event.target.value as OrganizerNode['status']
+                    setNodeDraft({ ...nodeDraft, status })
+                    syncLive({ status })
+                    syncLowStockPlacement(status)
+                  }}
+                  className="organizer-input"
+                >
+                  <option value="draft">Rascunho</option>
+                  <option value="published">Publicado</option>
+                  {organizerItemStatusOptions
+                    .filter((value) => value !== 'published')
+                    .map((value) => (
+                      <option key={value} value={value}>
+                        {organizerStatusLabels[value]}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              <Field label="Preço">
+                <input
+                  ref={priceInputRef}
+                  value={nodeDraft.price}
+                  onChange={(event) => {
+                    setNodeDraft({ ...nodeDraft, price: event.target.value })
+                    syncLive({ price: Number(event.target.value) || 0 })
+                    if (Number(event.target.value) > 0) setFieldError(null)
+                  }}
+                  placeholder="R$ 0,00"
+                  className={`organizer-input ${fieldError === 'price' ? 'border-[#a0382f] ring-4 ring-[#a0382f]/15' : ''}`}
+                />
+                {fieldError === 'price' ? (
+                  <p className="mt-1 text-[10px] font-medium text-[#a0382f]">Informe o preço de venda.</p>
+                ) : null}
+              </Field>
+              <div className="mb-4">
+                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
+                  Fotos
+                </span>
+                {nodeDraft.images.length > 0 && (
+                  <div className="mb-2 grid grid-cols-3 gap-2">
+                    {nodeDraft.images.map((photo, index) => (
+                      <div
+                        key={index}
+                        className="group relative overflow-hidden rounded-xl border border-stone-200"
+                      >
+                        <img src={photo} alt="" className="h-16 w-full object-cover" />
+                        <button
+                          type="button"
+                          aria-label="Remover foto"
+                          onClick={() => removeItemPhoto(index)}
+                          className="absolute right-1 top-1 rounded-full bg-white/90 p-0.5 text-[#a0382f] opacity-0 transition-opacity group-hover:opacity-100"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-stone-200 px-3 py-2 text-xs hover:border-[#d89a28] hover:bg-[#fff8ea]">
+                  <ImageIcon size={15} /> {nodeDraft.images.length > 0 ? 'Adicionar mais fotos' : 'Enviar fotos'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="sr-only"
+                    onChange={(event) => {
+                      handleItemPhotos(event.target.files)
+                      event.target.value = ''
+                    }}
+                  />
+                </label>
+              </div>
+              <Field label="Estoque">
+                <input
+                  type="number"
+                  min="0"
+                  value={nodeDraft.stock}
+                  onChange={(event) => commitStock(event.target.value)}
+                  placeholder="Quantidade disponível"
+                  className="organizer-input"
+                />
+              </Field>
+              <Field label="Desconto no Pix (%)">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={nodeDraft.pixDiscountPercent}
+                  onChange={(event) => {
+                    setNodeDraft({ ...nodeDraft, pixDiscountPercent: event.target.value })
+                    syncLive({
+                      pixDiscountPercent:
+                        event.target.value.trim() === '' ? undefined : Number(event.target.value),
+                    })
+                  }}
+                  placeholder="5"
+                  className="organizer-input"
+                />
+              </Field>
+              <Field label="Marca">
+                <input
+                  value={nodeDraft.brand}
+                  onChange={(event) => {
+                    setNodeDraft({ ...nodeDraft, brand: event.target.value })
+                    syncLive({ brand: event.target.value })
+                  }}
+                  placeholder="Nome da marca"
+                  className="organizer-input"
+                />
+              </Field>
+              <Field label="Volume (ml)">
+                <input
+                  type="number"
+                  min="0"
+                  value={nodeDraft.volumeMl}
+                  onChange={(event) => {
+                    setNodeDraft({ ...nodeDraft, volumeMl: event.target.value })
+                    syncLive({ volumeMl: Number(event.target.value) || 0 })
+                  }}
+                  placeholder="100"
+                  className="organizer-input"
+                />
+              </Field>
+              <Field label="Código">
+                <input
+                  value={nodeDraft.sku}
+                  onChange={(event) => {
+                    setNodeDraft({ ...nodeDraft, sku: event.target.value })
+                    syncLive({ sku: event.target.value })
+                  }}
+                  onBlur={() => {
+                    if (nodeDraft.sku.trim()) return
+                    const generated = generateItemSku()
+                    setNodeDraft({ ...nodeDraft, sku: generated })
+                    syncLive({ sku: generated })
+                  }}
+                  placeholder="Código interno do item"
+                  className="organizer-input"
+                />
+              </Field>
+              {nodeDraft.status !== 'draft' && (
+                <div className="mb-4 rounded-xl border border-stone-200 bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setAppearsOpen((value) => !value)}
+                    aria-expanded={appearsOpen}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
+                      Aparece em
+                    </span>
+                    <ChevronDown
+                      size={15}
+                      className={`shrink-0 text-[#6b665f] transition-transform ${appearsOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  {appearsOpen && (
+                    <div className="max-h-48 overflow-y-auto border-t border-stone-200">
+                      {placementBlocks.length === 0 ? (
+                        <p className="p-2.5 text-[10px] text-[#6b665f]">
+                          Nenhum carrossel ou catálogo criado ainda nas páginas do site.
+                        </p>
+                      ) : (
+                        Array.from(placementsByPage.entries()).map(([pageName, blocks]) => (
+                          <div key={pageName}>
+                            <div className="bg-[#fff1d6] px-2.5 py-1.5 text-[10px] font-semibold text-[#8b5200]">
+                              {pageName}
+                            </div>
+                            {blocks.map((block) => (
+                              <label
+                                key={block.id}
+                                className="flex items-center gap-2 border-t border-stone-100 px-2.5 py-1.5 pl-5 text-xs"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={block.itemIds.includes(node.id)}
+                                  onChange={() => togglePlacement(block.id)}
+                                  className="accent-[#d89a28]"
+                                />
+                                <span className="truncate">{block.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {!node.immutable && !protectedPage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    onTrashNode(node.id)
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-[#a0382f] hover:bg-[#fff0ed]"
+                >
+                  <Trash2 size={15} /> Mover para a lixeira
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
       )}
     </form>
   )
@@ -3199,77 +3540,6 @@ function ChoiceList({
           ))
         )}
       </div>
-    </fieldset>
-  )
-}
-
-function ItemCardChoiceList({
-  label,
-  items,
-  selected,
-  onToggle,
-  empty,
-}: {
-  label: string
-  items: OrganizerNode[]
-  selected: string[]
-  onToggle: (id: string) => void
-  empty: string
-}) {
-  return (
-    <fieldset className="mb-4">
-      <legend className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
-        {label} · {selected.length} selecionado(s)
-      </legend>
-      {items.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-stone-200 bg-[#fff8ea] p-3 text-[10px] text-[#6b665f]">
-          {empty}
-        </p>
-      ) : (
-        <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-          {items.map((item) => {
-            const checked = selected.includes(item.id)
-            return (
-              <label
-                key={item.id}
-                className={`flex cursor-pointer gap-3 rounded-xl border p-2 transition ${
-                  checked
-                    ? 'border-[#d89a28] bg-[#fff8ea] shadow-sm'
-                    : 'border-stone-200 bg-white hover:border-[#d89a28]'
-                }`}
-              >
-                <span className="flex h-16 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#fff1d6] text-[#b77717]">
-                  {item.imageUrl ? (
-                    <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <Package size={22} />
-                  )}
-                </span>
-                <span className="min-w-0 flex-1 py-0.5">
-                  <span className="block truncate text-xs font-semibold text-[#3a164f]">{item.name}</span>
-                  <span className="mt-1 block text-[10px] text-[#6b665f]">
-                    {item.price > 0
-                      ? item.price.toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })
-                      : 'Preço não informado'}
-                  </span>
-                  <span className="mt-1.5 flex items-center gap-1.5 text-[10px] font-medium text-[#b77717]">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => onToggle(item.id)}
-                      className="accent-[#d89a28]"
-                    />
-                    {checked ? 'Usando neste módulo' : 'Adicionar ao módulo'}
-                  </span>
-                </span>
-              </label>
-            )
-          })}
-        </div>
-      )}
     </fieldset>
   )
 }
@@ -3352,7 +3622,6 @@ function EmptyState({ icon, title, detail }: { icon: React.ReactNode; title: str
 function StatusPill({ status, compact = false }: { status: OrganizerNode['status']; compact?: boolean }) {
   const colors: Record<OrganizerNode['status'], string> = {
     draft: 'bg-stone-100 text-[#6b665f]',
-    scheduled: 'bg-[#fff1d6] text-[#8b5700]',
     published: 'bg-[#e5f0e8] text-[#27633a]',
     'coming-soon': 'bg-[#eadcf0] text-[#5b247f]',
     'out-of-stock': 'bg-[#fde3e0] text-[#a0382f]',

@@ -15,7 +15,6 @@ const ITEMS_PER_PAGE = 8
 type CatalogModuleProps = {
   module: OrganizerNode
   items: ItemCardContent[]
-  showRating?: boolean
 }
 
 function filterItems(items: ItemCardContent[], filters: CatalogFilters) {
@@ -47,7 +46,7 @@ function filterItems(items: ItemCardContent[], filters: CatalogFilters) {
   return filtered
 }
 
-export function CatalogModule({ module, items, showRating = false }: CatalogModuleProps) {
+export function CatalogModule({ module, items }: CatalogModuleProps) {
   const [page, setPage] = useState(0)
   const [filterOpen, setFilterOpen] = useState(false)
   const [filters, setFilters] = useState<CatalogFilters>(emptyCatalogFilters)
@@ -118,7 +117,7 @@ export function CatalogModule({ module, items, showRating = false }: CatalogModu
         {visibleItems.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-3 lg:gap-5 xl:grid-cols-4">
             {visibleItems.map((item) => (
-              <ItemCard key={item.id} item={item} showRating={showRating} />
+              <ItemCard key={item.id} item={item} />
             ))}
           </div>
         ) : (

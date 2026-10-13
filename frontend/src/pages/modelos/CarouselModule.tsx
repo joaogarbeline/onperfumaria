@@ -6,10 +6,9 @@ import { ItemCard, type ItemCardContent } from '../../components/item/ItemCard'
 type CarouselModuleProps = {
   module: OrganizerNode
   items: ItemCardContent[]
-  showRating?: boolean
 }
 
-export function CarouselModule({ module, items, showRating = false }: CarouselModuleProps) {
+export function CarouselModule({ module, items }: CarouselModuleProps) {
   if (module.variant === 'banner-carousel') {
     const banners: Array<ItemCardContent | null> = items.length > 0 ? items : module.imageUrl ? [null] : []
 
@@ -68,9 +67,7 @@ export function CarouselModule({ module, items, showRating = false }: CarouselMo
         fullBleed
         itemClassName="shrink-0"
         className="gap-4 px-4 pb-2 sm:px-0 lg:gap-5"
-        renderItem={(item) => (
-          <ItemCard className="w-[200px] sm:w-[220px] lg:w-[240px]" item={item} showRating={showRating} />
-        )}
+        renderItem={(item) => <ItemCard className="w-[200px] sm:w-[220px] lg:w-[240px]" item={item} />}
       />
     </section>
   )

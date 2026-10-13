@@ -1,4 +1,4 @@
-import { CalendarClock, Eye, Layers3, LayoutGrid, Package, Sparkles, X } from 'lucide-react'
+import { Eye, Layers3, LayoutGrid, Package, Sparkles, X } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { CreateOrganizerNodeInput } from '../../hooks/useOrganizerStore'
 import {
@@ -17,7 +17,6 @@ import {
 export type OrganizerModalMode =
   | OrganizerContentType
   | 'tag'
-  | 'schedule'
   | 'preview'
   | 'module-picker'
   | null
@@ -30,7 +29,6 @@ type OrganizerModalProps = {
   onClose: () => void
   onCreateNode: (input: CreateOrganizerNodeInput) => string
   onCreateTag: (name: string, color: string, discountPercent?: number) => string
-  onSchedule: (id: string, date: string) => void
   onCreated: (kind: 'node' | 'tag', id: string) => void
   onChooseModule: (type: 'carousel' | 'highlight' | 'catalog') => void
 }
@@ -46,14 +44,6 @@ function FieldLabel({ children }: { children: ReactNode }) {
   )
 }
 
-function tomorrowAtNine() {
-  const date = new Date()
-  date.setDate(date.getDate() + 1)
-  date.setHours(9, 0, 0, 0)
-  const offset = date.getTimezoneOffset()
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16)
-}
-
 export function OrganizerModal({
   mode,
   store,
@@ -62,7 +52,6 @@ export function OrganizerModal({
   onClose,
   onCreateNode,
   onCreateTag,
-  onSchedule,
   onCreated,
   onChooseModule,
 }: OrganizerModalProps) {
@@ -75,7 +64,6 @@ export function OrganizerModal({
       (node.type === 'folder' && findOrganizerPage(store.nodes, node)?.id !== 'itens'),
   )
   const items = store.nodes.filter((node) => node.type === 'item' && findOrganizerPage(store.nodes, node))
-  const schedulableNodes = store.nodes.filter((node) => node.type !== 'folder' && node.id !== 'itens')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [route, setRoute] = useState('')
@@ -93,12 +81,6 @@ export function OrganizerModal({
   const [itemIds, setItemIds] = useState<string[]>([])
   const [color, setColor] = useState('#d89a28')
   const [discountPercent, setDiscountPercent] = useState('')
-  const [scheduleTarget, setScheduleTarget] = useState(
-    schedulableNodes.some((node) => node.id === selectedId)
-      ? (selectedId ?? '')
-      : (schedulableNodes[0]?.id ?? ''),
-  )
-  const [scheduledAt, setScheduledAt] = useState(tomorrowAtNine)
   const suggestedRoute = `/pagina/${
     name
       .normalize('NFD')
@@ -111,13 +93,11 @@ export function OrganizerModal({
   const title =
     mode === 'tag'
       ? 'Criar tag'
-      : mode === 'schedule'
-        ? 'Agendar publicação'
-        : mode === 'preview'
-          ? 'Pré-visualização do site'
-          : mode === 'module-picker'
-            ? 'Escolha o primeiro módulo'
-            : `Criar ${organizerTypeLabels[mode].toLocaleLowerCase('pt-BR')}`
+      : mode === 'preview'
+        ? 'Pré-visualização do site'
+        : mode === 'module-picker'
+          ? 'Escolha o primeiro módulo'
+          : `Criar ${organizerTypeLabels[mode].toLocaleLowerCase('pt-BR')}`
 
   function toggleValue(values: string[], value: string, setter: (next: string[]) => void) {
     setter(values.includes(value) ? values.filter((item) => item !== value) : [...values, value])
@@ -132,14 +112,6 @@ export function OrganizerModal({
       const id = onCreateTag(name, color, discountPercent ? Number(discountPercent) : undefined)
       onClose()
       onCreated('tag', id)
-      return
-    }
-
-    if (mode === 'schedule') {
-      if (!scheduleTarget || !scheduledAt) return
-      onSchedule(scheduleTarget, new Date(scheduledAt).toISOString())
-      onClose()
-      onCreated('node', scheduleTarget)
       return
     }
 
@@ -188,7 +160,6 @@ export function OrganizerModal({
         <header className="flex items-center justify-between bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-5 py-4 text-[#fafaf8]">
           <div className="flex items-center gap-3">
             {mode === 'preview' ? <Eye size={19} className="text-[#e2b04f]" /> : null}
-            {mode === 'schedule' ? <CalendarClock size={19} className="text-[#e2b04f]" /> : null}
             <h2 className="font-sans text-base font-semibold tracking-normal">{title}</h2>
           </div>
           <button
@@ -243,38 +214,8 @@ export function OrganizerModal({
         ) : (
           <form onSubmit={handleSubmit} className="min-h-0 overflow-y-auto p-5">
             <div className="grid gap-4">
-              {mode === 'schedule' ? (
-                <>
-                  <label>
-                    <FieldLabel>Conteúdo</FieldLabel>
-                    <select
-                      value={scheduleTarget}
-                      onChange={(event) => setScheduleTarget(event.target.value)}
-                      className={fieldClass}
-                      required
-                    >
-                      {schedulableNodes.map((node) => (
-                        <option key={node.id} value={node.id}>
-                          {node.name} - {organizerTypeLabels[node.type]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <FieldLabel>Data e horário</FieldLabel>
-                    <input
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(event) => setScheduledAt(event.target.value)}
-                      className={fieldClass}
-                      required
-                    />
-                  </label>
-                </>
-              ) : (
-                <>
-                  <label>
-                    <FieldLabel>Nome</FieldLabel>
+              <label>
+                <FieldLabel>Nome</FieldLabel>
                     <input
                       value={name}
                       onChange={(event) => setName(event.target.value)}
@@ -486,8 +427,6 @@ export function OrganizerModal({
                       onToggle={(id) => toggleValue(itemIds, id, setItemIds)}
                     />
                   ) : null}
-                </>
-              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-2 border-t border-stone-200/80 pt-4">
@@ -502,7 +441,7 @@ export function OrganizerModal({
                 type="submit"
                 className="rounded-full bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[var(--shadow-organizer)] hover:brightness-110"
               >
-                {mode === 'schedule' ? 'Agendar' : 'Criar'}
+                Criar
               </button>
             </div>
           </form>

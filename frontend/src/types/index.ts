@@ -1,3 +1,5 @@
+import type { OrganizerStatus } from './organizer'
+
 export type Product = {
   id: string
   sku: string
@@ -30,6 +32,8 @@ export type Product = {
   /** Desconto no Pix em %, por produto. Sem valor, a pagina usa o padrao do site. */
   pixDiscountPercent?: number
   createdAt?: string
+  /** So existe pra itens vindos do Organizador - produtos do catalogo real nao tem. */
+  status?: OrganizerStatus
 }
 
 export type CartItem = Product & {

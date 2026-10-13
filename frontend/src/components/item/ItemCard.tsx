@@ -1,9 +1,10 @@
-import { Star } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useCart } from '../../contexts/CartContext'
 import { trackProductEvent } from '../../services/productEvents'
+import type { OrganizerStatus } from '../../types/organizer'
+import { getItemStatusPresentation } from '../../utils/itemStatus'
 import { itemCardToProduct } from '../../utils/productModel'
 import { itemIcons } from './icons'
 
@@ -21,18 +22,10 @@ export type ItemCardContent = {
   volumeMl?: number
   stock?: number
   pixDiscountPercent?: number
+  status?: OrganizerStatus
 }
 
-export function ItemCard({
-  className = '',
-  item,
-  showRating = false,
-}: {
-  className?: string
-  item: ItemCardContent
-  /** Estrelas fixas em 5/5 - so a home usa, enquanto a loja nao tem avaliacoes reais. */
-  showRating?: boolean
-}) {
+export function ItemCard({ className = '', item }: { className?: string; item: ItemCardContent }) {
   const { addItem } = useCart()
   const { token } = useAuth()
   const [favorited, setFavorited] = useState(false)
@@ -42,14 +35,15 @@ export function ItemCard({
     ? productPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     : 'Preço não informado'
   const installmentPrice = productPrice / 12
-  const lowStock = typeof item.stock === 'number' && item.stock > 0 && item.stock <= 3
+  const statusPresentation = getItemStatusPresentation(item.status)
+  const showStockCount = statusPresentation.showStockCount && typeof item.stock === 'number' && item.stock > 0
 
   return (
     <Link
       to={`/produto/${item.id}`}
       onClick={() => trackProductEvent(item.id, 'click', token)}
       draggable={false}
-      className={`flex h-full flex-col overflow-hidden rounded-[24px] border border-[#e3cfee] bg-white ${className}`}
+      className={`flex h-full flex-col overflow-hidden rounded-[24px] border border-[#e3cfee] bg-white ${statusPresentation.grayscale ? 'grayscale' : ''} ${className}`}
     >
       <div className="relative flex aspect-[3/4] shrink-0 items-center justify-center bg-[#eadcf0] text-[#d89a28]">
         {item.imageUrl ? (
@@ -92,26 +86,21 @@ export function ItemCard({
             {item.tagLabel}
           </span>
         ) : null}
-        {showRating ? (
-          <div className="flex items-center gap-0.5" aria-label="Avaliação 5 de 5 estrelas">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <Star key={index} size={12} className="fill-[#d89a28] text-[#d89a28]" />
-            ))}
-          </div>
-        ) : null}
         <p className="text-sm font-semibold text-[#2a0f3d]">{productName}</p>
         {item.description ? (
           <p className="line-clamp-2 text-xs leading-5 text-[#6b665f]">{item.description}</p>
         ) : null}
-        {lowStock ? (
+        {showStockCount ? (
           <p className="text-[11px] font-semibold text-[#a0382f]">Últimas {item.stock} unidades!</p>
         ) : null}
         {/* Preço e botão de comprar sempre no rodapé do card, mesmo quando a
             tag ou a descrição faltam - assim todo card fica do mesmo tamanho. */}
         <div className="mt-auto flex items-end justify-between pt-2">
           <div>
-            <p className="text-sm font-semibold text-[#2a0f3d]">{displayPrice}</p>
-            {productPrice > 0 ? (
+            <p className="text-sm font-semibold text-[#2a0f3d]">
+              {statusPresentation.priceOverrideText ?? displayPrice}
+            </p>
+            {!statusPresentation.priceOverrideText && productPrice > 0 ? (
               <p className="mt-1 text-xs text-[#6b665f]">
                 ou 12x de{' '}
                 {installmentPrice.toLocaleString('pt-BR', {
@@ -124,6 +113,7 @@ export function ItemCard({
           <div className="group relative">
             <button
               type="button"
+              disabled={Boolean(statusPresentation.priceOverrideText)}
               onClick={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
@@ -131,7 +121,7 @@ export function ItemCard({
               }}
               onKeyDown={(event) => event.stopPropagation()}
               aria-label="Colocar na sacola"
-              className="flex h-9 w-9 items-center justify-center"
+              className="flex h-9 w-9 items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"
             >
               <img src={itemIcons.compra} alt="" className="h-7 w-7 object-contain" />
             </button>

@@ -180,7 +180,7 @@ func (s *Service) StoreHome(ctx context.Context) (map[string]interface{}, error)
 		"subtitle": "",
 		"imageUrl": "",
 		"ctaLabel": "Explorar produtos",
-		"ctaLink":  "/comercial",
+		"ctaLink":  "/",
 	}
 	var title, subtitle, imageURL, ctaLabel, ctaLink string
 	if err := s.db.QueryRow(ctx, `SELECT title, subtitle, image_url, cta_label, cta_link FROM banners WHERE is_active = true ORDER BY created_at DESC LIMIT 1`).Scan(

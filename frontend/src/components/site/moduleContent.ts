@@ -18,6 +18,7 @@ export function toItemContent(node: OrganizerNode, tags: OrganizerTag[]): ItemCa
     volumeMl: node.volumeMl,
     stock: node.stock,
     pixDiscountPercent: node.pixDiscountPercent,
+    status: node.status,
   }
 }
 

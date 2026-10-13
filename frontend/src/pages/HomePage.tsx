@@ -85,7 +85,6 @@ export function HomePage() {
             brands={brands}
             previewMode={previewMode}
             autoItems={autoItemsByModuleId[module.id]}
-            showRating
           />
         </Reveal>
       ))}

@@ -18,8 +18,6 @@ type SiteModuleRendererProps = {
    * itens escolhidos manualmente no Organizador.
    */
   autoItems?: ItemCardContent[]
-  /** Estrelas fixas em 5/5 nos cards - a home usa, as demais paginas nao. */
-  showRating?: boolean
 }
 
 export function SiteModuleRenderer({
@@ -29,7 +27,6 @@ export function SiteModuleRenderer({
   brands = [],
   previewMode = false,
   autoItems,
-  showRating = false,
 }: SiteModuleRendererProps) {
   const hasAutoItems = Boolean(autoItems?.length)
   if (!isSiteModuleRenderable(module, nodes, brands, previewMode) && !hasAutoItems) return null
@@ -50,8 +47,8 @@ export function SiteModuleRenderer({
   }
 
   if (module.type === 'catalog' || module.variant === 'product-grid') {
-    return <CatalogModule module={module} items={itemCards} showRating={showRating} />
+    return <CatalogModule module={module} items={itemCards} />
   }
 
-  return <CarouselModule module={module} items={itemCards} showRating={showRating} />
+  return <CarouselModule module={module} items={itemCards} />
 }

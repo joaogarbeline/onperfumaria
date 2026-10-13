@@ -17,6 +17,7 @@ export function productToItemCardContent(product: Product): ItemCardContent {
     volumeMl: product.volumeMl,
     stock: product.stockCurrent,
     pixDiscountPercent: product.pixDiscountPercent,
+    status: product.status,
   }
 }
 
@@ -51,5 +52,6 @@ export function itemCardToProduct(item: ItemCardContent): Product {
     isFeatured: false,
     isAvailable: !hasStockTracking || (item.stock ?? 0) > 0,
     pixDiscountPercent: item.pixDiscountPercent,
+    status: item.status,
   }
 }

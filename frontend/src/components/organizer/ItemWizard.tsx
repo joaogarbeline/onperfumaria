@@ -1,4 +1,4 @@
-import { Camera, ChevronLeft, Plus, X } from 'lucide-react'
+import { Camera, ChevronDown, ChevronLeft, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import {
   organizerItemStatusOptions,
@@ -15,7 +15,7 @@ interface ItemWizardProps {
   draft: ItemWizardDraft
   onDraftChange: (changes: Partial<ItemWizardDraft>) => void
   onStepChange: (step: ItemWizardStep) => void
-  pages: OrganizerNode[]
+  nodes: OrganizerNode[]
   discountTags: OrganizerTag[]
   onCancel: () => void
   onFinish: () => void
@@ -40,7 +40,7 @@ export function ItemWizard({
   draft,
   onDraftChange,
   onStepChange,
-  pages,
+  nodes,
   discountTags,
   onCancel,
   onFinish,
@@ -50,6 +50,26 @@ export function ItemWizard({
   const step3NameInputRef = useRef<HTMLInputElement>(null)
   const priceInputRef = useRef<HTMLInputElement>(null)
   const [fieldError, setFieldError] = useState<'name' | 'price' | null>(null)
+  const [appearsOpen, setAppearsOpen] = useState(false)
+
+  // Mesma logica da gaveta "Aparece em" do painel de propriedades, so que
+  // aqui o item ainda nao existe - as selecoes ficam no draft e so viram
+  // itemIds reais dos blocos quando o cadastro e finalizado.
+  const placementBlocks = nodes.filter((candidate) => candidate.type === 'carousel' || candidate.type === 'catalog')
+  const placementsByPage = new Map<string, OrganizerNode[]>()
+  placementBlocks.forEach((block) => {
+    const pageName = nodes.find((candidate) => candidate.id === block.parentId)?.name ?? 'Outros'
+    const list = placementsByPage.get(pageName) ?? []
+    list.push(block)
+    placementsByPage.set(pageName, list)
+  })
+  const togglePlacement = (blockId: string) => {
+    const current = draft.placementIds
+    const next = current.includes(blockId)
+      ? current.filter((value) => value !== blockId)
+      : [...current, blockId]
+    onDraftChange({ placementIds: next })
+  }
 
   useEffect(() => {
     if (fieldError === 'name' && step === 1) {
@@ -216,40 +236,72 @@ export function ItemWizard({
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-3">
-              <label>
-                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
-                  Status
-                </span>
-                <select
-                  value={draft.status}
-                  onChange={(event) => onDraftChange({ status: event.target.value as OrganizerStatus })}
-                  className="organizer-input"
+            <label>
+              <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
+                Status
+              </span>
+              <select
+                value={draft.status}
+                onChange={(event) => onDraftChange({ status: event.target.value as OrganizerStatus })}
+                className="organizer-input"
+              >
+                {organizerItemStatusOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {organizerStatusLabels[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {draft.status !== 'draft' && (
+              <div className="rounded-xl border border-stone-200 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setAppearsOpen((value) => !value)}
+                  aria-expanded={appearsOpen}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
                 >
-                  {organizerItemStatusOptions.map((value) => (
-                    <option key={value} value={value}>
-                      {organizerStatusLabels[value]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b665f]">
-                  Subpasta
-                </span>
-                <select
-                  value={draft.parentId}
-                  onChange={(event) => onDraftChange({ parentId: event.target.value })}
-                  className="organizer-input"
-                >
-                  {pages.map((page) => (
-                    <option key={page.id} value={page.id}>
-                      {page.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b665f]">
+                    Aparece em
+                  </span>
+                  <ChevronDown
+                    size={15}
+                    className={`shrink-0 text-[#6b665f] transition-transform ${appearsOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {appearsOpen && (
+                  <div className="max-h-48 overflow-y-auto border-t border-stone-200">
+                    {placementBlocks.length === 0 ? (
+                      <p className="p-2.5 text-[10px] text-[#6b665f]">
+                        Nenhum carrossel ou catálogo criado ainda nas páginas do site.
+                      </p>
+                    ) : (
+                      Array.from(placementsByPage.entries()).map(([pageName, blocks]) => (
+                        <div key={pageName}>
+                          <div className="bg-[#fff1d6] px-2.5 py-1.5 text-[10px] font-semibold text-[#8b5200]">
+                            {pageName}
+                          </div>
+                          {blocks.map((block) => (
+                            <label
+                              key={block.id}
+                              className="flex items-center gap-2 border-t border-stone-100 px-2.5 py-1.5 pl-5 text-xs"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={draft.placementIds.includes(block.id)}
+                                onChange={() => togglePlacement(block.id)}
+                                className="accent-[#d89a28]"
+                              />
+                              <span className="truncate">{block.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <label>

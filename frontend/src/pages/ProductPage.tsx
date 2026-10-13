@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ChevronDown, Heart, Share2, ShieldCheck, ShoppingBag } from 'lucide-react'
+import { ChevronDown, FlaskConical, Heart, Share2, ShieldCheck, ShoppingBag } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
@@ -14,6 +14,7 @@ import { useOrganizerStore } from '../hooks/useOrganizerStore'
 import { api } from '../services/api'
 import { trackProductEvent } from '../services/productEvents'
 import type { Product } from '../types'
+import { getItemStatusPresentation } from '../utils/itemStatus'
 import { itemCardToProduct } from '../utils/productModel'
 
 const DEFAULT_PIX_DISCOUNT = 0.05
@@ -70,6 +71,7 @@ export function ProductPage() {
   const displayedImage = allImages.includes(selectedImage)
     ? selectedImage
     : allImages[0] || product?.imageUrl || ''
+  const statusPresentation = getItemStatusPresentation(product?.status)
   const total = product ? product.finalPrice * quantity : 0
   const pixDiscount =
     product?.pixDiscountPercent != null ? product.pixDiscountPercent / 100 : DEFAULT_PIX_DISCOUNT
@@ -119,9 +121,9 @@ export function ProductPage() {
                   {product.discountLabel}
                 </Badge>
               ) : null}
-              <div className={`grid gap-3 ${allImages.length > 1 ? 'lg:grid-cols-[80px_1fr]' : ''}`}>
+              <div className={`grid gap-3 ${allImages.length > 1 ? 'sm:grid-cols-[80px_1fr]' : ''}`}>
                 {allImages.length > 1 ? (
-                  <div className="hidden max-h-[420px] shrink-0 flex-col gap-3 overflow-y-auto pr-1 lg:flex">
+                  <div className="hidden max-h-[420px] shrink-0 flex-col gap-3 overflow-y-auto pr-1 sm:flex">
                     {allImages.map((img: string, i: number) => (
                       <button
                         key={i}
@@ -137,52 +139,54 @@ export function ProductPage() {
                     ))}
                   </div>
                 ) : null}
-                <div className={allImages.length > 1 ? 'lg:col-start-2' : ''}>
-                  <div className="relative overflow-hidden rounded-[30px] bg-[#eadcf0] p-3">
-                    <div className="absolute right-5 top-5 z-10 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleShare}
-                        aria-label="Compartilhar produto"
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[#6b665f] shadow-sm transition hover:text-[#3a164f]"
-                      >
-                        <Share2 size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFavorited((value) => !value)}
-                        aria-label={favorited ? 'Remover dos favoritos' : 'Favoritar'}
-                        aria-pressed={favorited}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[#6b665f] shadow-sm transition hover:text-[#a0382f]"
-                      >
-                        <Heart size={18} className={favorited ? 'fill-[#a0382f] text-[#a0382f]' : ''} />
-                      </button>
-                    </div>
+                <div
+                  className={`relative overflow-hidden rounded-[30px] ${displayedImage ? '' : 'bg-[#eadcf0] p-3'} ${statusPresentation.grayscale ? 'grayscale' : ''}`}
+                >
+                  <div className="absolute right-5 top-5 z-10 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleShare}
+                      aria-label="Compartilhar produto"
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[#6b665f] shadow-sm transition hover:text-[#3a164f]"
+                    >
+                      <Share2 size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFavorited((value) => !value)}
+                      aria-label={favorited ? 'Remover dos favoritos' : 'Favoritar'}
+                      aria-pressed={favorited}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[#6b665f] shadow-sm transition hover:text-[#a0382f]"
+                    >
+                      <Heart size={18} className={favorited ? 'fill-[#a0382f] text-[#a0382f]' : ''} />
+                    </button>
+                  </div>
+                  {displayedImage ? (
                     <img
                       src={displayedImage}
                       alt={product.name}
-                      className="h-full min-h-[320px] w-full rounded-[24px] object-cover sm:min-h-[360px]"
+                      className="h-full min-h-[260px] w-full object-cover sm:min-h-[300px]"
                     />
-                  </div>
-                  {allImages.length > 1 ? (
-                    <div className="mt-4 flex gap-3 overflow-x-auto pb-1 lg:hidden">
-                      {allImages.map((img: string, i: number) => (
-                        <button
-                          key={i}
-                          onClick={() => setSelectedImage(img)}
-                          className={`shrink-0 overflow-hidden rounded-[16px] border-2 transition ${img === displayedImage ? 'border-[#b77717]' : 'border-transparent hover:border-[#ddc7ea]'}`}
-                        >
-                          <img
-                            src={img}
-                            alt={`${product.name} ${i + 1}`}
-                            className="h-16 w-16 object-cover"
-                          />
-                        </button>
-                      ))}
+                  ) : (
+                    <div className="flex h-full min-h-[260px] w-full items-center justify-center rounded-[24px] sm:min-h-[300px]">
+                      <FlaskConical size={48} className="text-[#b77717]/50" />
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </div>
+              {allImages.length > 1 ? (
+                <div className="mt-3 flex gap-3 overflow-x-auto pb-1 sm:hidden">
+                  {allImages.map((img: string, i: number) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedImage(img)}
+                      className={`shrink-0 overflow-hidden rounded-[16px] border-2 transition ${img === displayedImage ? 'border-[#b77717]' : 'border-transparent hover:border-[#ddc7ea]'}`}
+                    >
+                      <img src={img} alt={`${product.name} ${i + 1}`} className="h-16 w-16 object-cover" />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             {product.description ? (
@@ -202,21 +206,33 @@ export function ProductPage() {
             </p>
 
             <div className="mt-4 border-t border-[#ddc7ea] pt-4">
-              <Badge tone={product.isAvailable ? 'success' : 'neutral'}>
-                {product.isAvailable ? `${product.stockCurrent} unidades` : 'Indisponível'}
+              <Badge tone={statusPresentation.priceOverrideText ? 'neutral' : product.isAvailable ? 'success' : 'neutral'}>
+                {statusPresentation.priceOverrideText
+                  ? statusPresentation.availableLabel
+                  : statusPresentation.showStockCount
+                    ? `${product.stockCurrent} unidades`
+                    : product.isAvailable
+                      ? 'Disponível'
+                      : 'Indisponível'}
               </Badge>
 
               <div className="mt-3">
-                {product.finalPrice < product.salePrice ? (
-                  <p className="text-sm text-stone-400 line-through">{format(product.salePrice)}</p>
-                ) : null}
-                <p className="text-3xl leading-none text-[#2a0f3d]">{format(product.finalPrice)}</p>
-                <p className="mt-2 text-sm text-[#0f8a5f]">
-                  {format(pixPrice)} à vista no Pix (-{Math.round(pixDiscount * 100)}%)
-                </p>
-                <p className="mt-1 text-xs text-[#6b665f]">
-                  ou {INSTALLMENTS}x de {format(installmentPrice)} sem juros
-                </p>
+                {statusPresentation.priceOverrideText ? (
+                  <p className="text-3xl leading-none text-[#2a0f3d]">{statusPresentation.priceOverrideText}</p>
+                ) : (
+                  <>
+                    {product.finalPrice < product.salePrice ? (
+                      <p className="text-sm text-stone-400 line-through">{format(product.salePrice)}</p>
+                    ) : null}
+                    <p className="text-3xl leading-none text-[#2a0f3d]">{format(product.finalPrice)}</p>
+                    <p className="mt-2 text-sm text-[#0f8a5f]">
+                      {format(pixPrice)} à vista no Pix (-{Math.round(pixDiscount * 100)}%)
+                    </p>
+                    <p className="mt-1 text-xs text-[#6b665f]">
+                      ou {INSTALLMENTS}x de {format(installmentPrice)} sem juros
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -244,7 +260,7 @@ export function ProductPage() {
               <Button
                 size="lg"
                 fullWidth
-                disabled={!product.isAvailable}
+                disabled={!product.isAvailable || Boolean(statusPresentation.priceOverrideText)}
                 onClick={() => {
                   addToCart()
                   navigate('/checkout')
@@ -256,11 +272,15 @@ export function ProductPage() {
                 variant="secondary"
                 size="lg"
                 fullWidth
-                disabled={!product.isAvailable}
+                disabled={!product.isAvailable || Boolean(statusPresentation.priceOverrideText)}
                 onClick={addToCart}
               >
                 <ShoppingBag size={18} />
-                {product.isAvailable ? 'Adicionar ao carrinho' : 'Produto indisponível'}
+                {statusPresentation.priceOverrideText
+                  ? statusPresentation.availableLabel
+                  : product.isAvailable
+                    ? 'Adicionar ao carrinho'
+                    : 'Produto indisponível'}
               </Button>
             </div>
           </div>

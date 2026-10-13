@@ -1,7 +1,6 @@
 export type OrganizerContentType = 'page' | 'folder' | 'carousel' | 'highlight' | 'catalog' | 'item'
 export type OrganizerStatus =
   | 'draft'
-  | 'scheduled'
   | 'published'
   | 'coming-soon'
   | 'out-of-stock'
@@ -22,7 +21,6 @@ export type OrganizerNode = {
   parentId: string | null
   description: string
   status: OrganizerStatus
-  scheduledAt: string
   imageUrl: string
   /** Galeria completa do item (imageUrl e sempre a primeira). So "item" usa mais de uma. */
   images?: string[]
@@ -30,6 +28,12 @@ export type OrganizerNode = {
   size: OrganizerSize
   tagIds: string[]
   itemIds: string[]
+  /** So "folder" usa - carrosseis/catalogos pre-marcados em "Aparece em" para
+   * todo item novo criado dentro dela (economiza marcar de novo toda vez). */
+  defaultPlacementIds?: string[]
+  /** So "folder" usa - liga/desliga o preenchimento automatico acima sem
+   * perder a selecao ja marcada. */
+  defaultPlacementEnabled?: boolean
   /** Codigo interno do item (so visivel no Organizador, nunca na pagina publica). */
   sku?: string
   /** Marca do item, usada tambem para alimentar o filtro de marcas do catalogo. */
@@ -91,7 +95,6 @@ export const organizerTypeLabels: Record<OrganizerContentType, string> = {
 
 export const organizerStatusLabels: Record<OrganizerStatus, string> = {
   draft: 'Rascunho',
-  scheduled: 'Agendado',
   published: 'Publicado',
   'coming-soon': 'Em breve',
   'out-of-stock': 'Esgotado',
@@ -133,9 +136,10 @@ export type ItemWizardDraft = {
   brand: string
   volumeMl: string
   sku: string
+  placementIds: string[]
 }
 
-export function emptyItemWizardDraft(parentId: string): ItemWizardDraft {
+export function emptyItemWizardDraft(parentId: string, placementIds: string[] = []): ItemWizardDraft {
   return {
     name: '',
     photos: [],
@@ -149,6 +153,7 @@ export function emptyItemWizardDraft(parentId: string): ItemWizardDraft {
     brand: '',
     volumeMl: '',
     sku: '',
+    placementIds,
   }
 }
 
@@ -156,7 +161,6 @@ const now = new Date().toISOString()
 
 const sitePages: OrganizerNode[] = [
   ['home', 'Home', '/'],
-  ['comercial', 'Comercial', '/comercial'],
   ['arabes', 'Árabes', '/arabes'],
   ['feminino', 'Feminino', '/feminino'],
   ['masculino', 'Masculino', '/masculino'],
@@ -169,7 +173,6 @@ const sitePages: OrganizerNode[] = [
   parentId: null,
   description: `Página ${name} existente no site.`,
   status: 'published',
-  scheduledAt: '',
   imageUrl: '',
   price: 0,
   size: 'large',
@@ -193,7 +196,6 @@ export const itensRootNode: OrganizerNode = {
   parentId: null,
   description: 'Area interna com os itens da loja, organizados em subpastas. Nao aparece no site.',
   status: 'published',
-  scheduledAt: '',
   imageUrl: '',
   price: 0,
   size: 'large',
@@ -225,7 +227,6 @@ const homeModules: OrganizerNode[] = [
     parentId: 'home',
     description: 'Carrossel de destaques exibido no topo da página inicial.',
     status: 'published',
-    scheduledAt: '',
     imageUrl: '',
     price: 0,
     size: 'large',
@@ -243,7 +244,6 @@ const homeModules: OrganizerNode[] = [
     parentId: 'home',
     description: 'Carrossel de produtos da página inicial.',
     status: 'published' as const,
-    scheduledAt: '',
     imageUrl: '',
     price: 0,
     size: 'medium' as const,
@@ -261,7 +261,6 @@ const homeModules: OrganizerNode[] = [
     parentId: 'home',
     description: 'Faixa de marcas exibida entre os carrosséis da página inicial.',
     status: 'published',
-    scheduledAt: '',
     imageUrl: '',
     price: 0,
     size: 'medium',
@@ -279,7 +278,6 @@ const homeModules: OrganizerNode[] = [
     parentId: 'home',
     description: 'Carrossel de produtos da página inicial.',
     status: 'published' as const,
-    scheduledAt: '',
     imageUrl: '',
     price: 0,
     size: 'medium' as const,
@@ -302,7 +300,6 @@ const categoryModules: OrganizerNode[] = sitePages
       parentId: page.id,
       description: `Banner principal da página ${page.name}.`,
       status: 'published' as const,
-      scheduledAt: '',
       imageUrl: '',
       price: 0,
       size: 'large' as const,
@@ -320,7 +317,6 @@ const categoryModules: OrganizerNode[] = sitePages
       parentId: page.id,
       description: `Grade de produtos da página ${page.name}.`,
       status: 'published' as const,
-      scheduledAt: '',
       imageUrl: '',
       price: 0,
       size: 'medium' as const,
@@ -345,6 +341,17 @@ export function createOrganizerId(prefix: string) {
   return `${prefix}-${id}`
 }
 
+// Codigo interno curto para itens que o usuario deixou em branco - so
+// precisa ser unico o bastante pra nao colidir em uso normal, nunca aparece
+// na pagina publica do item (e so pra controle interno/planilha).
+export function generateItemSku() {
+  const random =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+      : Math.random().toString(36).slice(2, 10)
+  return `SKU-${random}`.toUpperCase()
+}
+
 export function normalizeOrganizerSearch(value: string) {
   return value
     .normalize('NFD')
@@ -353,10 +360,8 @@ export function normalizeOrganizerSearch(value: string) {
     .trim()
 }
 
-export function isOrganizerNodeVisible(node: OrganizerNode, referenceDate = new Date()) {
-  if (node.status === 'draft') return false
-  if (node.status !== 'scheduled') return true
-  return Boolean(node.scheduledAt) && new Date(node.scheduledAt).getTime() <= referenceDate.getTime()
+export function isOrganizerNodeVisible(node: OrganizerNode) {
+  return node.status !== 'draft'
 }
 
 export function isOrganizerPreviewMode(search: string) {

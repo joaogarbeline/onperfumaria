@@ -19,7 +19,6 @@ export function AppRouter() {
         <Route path="/admin" element={<OrganizerPage />} />
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />
-          <Route path="/comercial" element={<CategoryPage title="Comercial" />} />
           <Route path="/arabes" element={<CategoryPage title="Árabes" />} />
           <Route path="/feminino" element={<CategoryPage title="Feminino" />} />
           <Route path="/masculino" element={<CategoryPage title="Masculino" />} />

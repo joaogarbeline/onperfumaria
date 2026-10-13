@@ -11,7 +11,6 @@ import { isSiteModuleRenderable } from '../site/moduleContent'
 import { SiteModuleRenderer } from '../site/SiteModuleRenderer'
 
 const pageIds: Record<string, string> = {
-  comercial: 'comercial',
   arabes: 'arabes',
   feminino: 'feminino',
   masculino: 'masculino',

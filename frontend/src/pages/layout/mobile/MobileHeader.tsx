@@ -93,7 +93,10 @@ export function MobileHeader() {
     }))
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12)
+    // Limiares diferentes pra recolher (40) e pra expandir de volta (8): com
+    // um unico valor, parar de rolar bem no limiar fica trocando de estado
+    // sem parar (o menu "treme" abrindo e fechando).
+    const onScroll = () => setScrolled((current) => (current ? window.scrollY > 8 : window.scrollY > 40))
     onScroll()
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
