@@ -42,7 +42,11 @@ export function itemCardToProduct(item: ItemCardContent): Product {
     stockCurrent: hasStockTracking ? Math.max(0, item.stock ?? 0) : 999,
     stockMinimum: 0,
     registeredStock: hasStockTracking ? Math.max(0, item.stock ?? 0) : 999,
-    weightGrams: 0,
+    // Organizador nao tem campo de peso (so volume) - usa o volume em ml como
+    // aproximacao em gramas (perfume e liquido, densidade proxima da agua) e
+    // cai num valor minimo de seguranca sem isso, senao o frete fica de graca
+    // (mesma regra usada no calculo do pedido no backend).
+    weightGrams: item.volumeMl && item.volumeMl > 0 ? item.volumeMl : 200,
     volumeMl: item.volumeMl || 0,
     gender: '',
     productType: '',

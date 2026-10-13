@@ -664,7 +664,9 @@ export function CheckoutPage() {
                   <div className="surface-soft p-4">
                     <p className="eyebrow mb-1">Entrega escolhida</p>
                     <p className="text-sm text-[#2a0f3d]">
-                      {activeQuote?.label || 'Selecione na etapa anterior'}
+                      {deliveryOptions.find((option) => option.value === deliveryMode)?.label ||
+                        activeQuote?.label ||
+                        'Selecione na etapa anterior'}
                     </p>
                     {activeQuote && !isCampoGrande ? (
                       <p className="text-sm text-[#6b665f]">{format(activeQuote.amount)}</p>
