@@ -233,7 +233,13 @@ export function CheckoutPage() {
   const addressErrors = validation.errors.filter((error) => error !== 'Selecione a entrega')
   const step2Valid = addressErrors.length === 0
   const step3Valid = Boolean(deliveryMode) && (deliveryMode !== 'correios' || Boolean(selectedCorreios))
-  const showBrick = !missingRequiredFields && !!config.mpPublicKey
+  // O formulario do Mercado Pago so existe na etapa 4: o contador que avisa
+  // "nao foi possivel carregar" precisa nascer junto com ele. Sem o
+  // activeStep aqui, a contagem comecava assim que a ficha ficava valida (na
+  // etapa do carrinho/endereco) e estourava enquanto o cliente ainda escolhia
+  // a entrega - ai a etapa de pagamento ja abria com o erro, sem nunca ter
+  // tentado montar o formulario.
+  const showBrick = activeStep === 4 && !missingRequiredFields && !!config.mpPublicKey
   const brickKey = showBrick ? total.toFixed(2) : ''
   const brickReady = readyBrickKey === brickKey
   const brickTimedOut = timedOutBrickKey === brickKey
@@ -256,7 +262,10 @@ export function CheckoutPage() {
 
   useEffect(() => {
     if (!showBrick) return
-    const timeout = window.setTimeout(() => setTimedOutBrickKey(brickKey), 10000)
+    // Voltar uma etapa e tentar de novo precisa dar outra chance ao
+    // formulario, em vez de repetir o aviso da tentativa anterior.
+    setTimedOutBrickKey('')
+    const timeout = window.setTimeout(() => setTimedOutBrickKey(brickKey), 15000)
     return () => window.clearTimeout(timeout)
   }, [brickKey, showBrick])
 
