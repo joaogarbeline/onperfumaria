@@ -693,18 +693,42 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	}
 
 	type itemSummary struct {
-		ProductID string
-		Name      string
-		UnitPrice float64
-		Quantity  int
-		LineTotal float64
-		Weight    int
+		ProductID       *string
+		OrganizerItemID *string
+		Name            string
+		UnitPrice       float64
+		Quantity        int
+		LineTotal       float64
+		Weight          int
 	}
 
 	subtotal := 0.0
 	weight := 0
 	orderItems := make([]itemSummary, 0, len(input.Items))
 	for _, item := range input.Items {
+		// Itens do Organizador usam o prefixo "item-" (ver createOrganizerId no
+		// frontend) e nunca existem na tabela "products" - resolver contra o
+		// Organizador em vez de tentar (e falhar) a busca de catalogo.
+		if strings.HasPrefix(item.ProductID, "item-") {
+			summary, err := s.resolveOrganizerCheckoutItem(ctx, item.ProductID, item.Quantity)
+			if err != nil {
+				return nil, err
+			}
+			lineTotal := summary.UnitPrice * float64(item.Quantity)
+			subtotal += lineTotal
+			weight += summary.Weight * item.Quantity
+			organizerItemID := summary.ID
+			orderItems = append(orderItems, itemSummary{
+				OrganizerItemID: &organizerItemID,
+				Name:            summary.Name,
+				UnitPrice:       summary.UnitPrice,
+				Quantity:        item.Quantity,
+				LineTotal:       lineTotal,
+				Weight:          summary.Weight,
+			})
+			continue
+		}
+
 		product, err := s.repo.GetProductByID(ctx, item.ProductID)
 		if err != nil {
 			return nil, err
@@ -720,8 +744,9 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 		lineTotal := product.FinalPrice * float64(item.Quantity)
 		subtotal += lineTotal
 		weight += product.WeightGrams * item.Quantity
+		productID := product.ID
 		orderItems = append(orderItems, itemSummary{
-			ProductID: product.ID,
+			ProductID: &productID,
 			Name:      product.Name,
 			UnitPrice: product.FinalPrice,
 			Quantity:  item.Quantity,
@@ -795,8 +820,8 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	}
 
 	for _, item := range orderItems {
-		if _, err := tx.Exec(ctx, `INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity, line_total) VALUES ($1, $2, $3, $4, $5, $6)`,
-			orderID, item.ProductID, item.Name, item.UnitPrice, item.Quantity, item.LineTotal); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO order_items (order_id, product_id, organizer_item_id, product_name, unit_price, quantity, line_total) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			orderID, item.ProductID, item.OrganizerItemID, item.Name, item.UnitPrice, item.Quantity, item.LineTotal); err != nil {
 			return nil, err
 		}
 	}
@@ -1353,21 +1378,39 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 }
 
 func (s *Service) updateStockForOrder(ctx context.Context, orderID string) {
-	rows, err := s.db.Query(ctx, `SELECT product_id, quantity FROM order_items WHERE order_id = $1`, orderID)
+	rows, err := s.db.Query(ctx, `SELECT product_id, organizer_item_id, quantity FROM order_items WHERE order_id = $1`, orderID)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+
+	type productDecrement struct {
+		ID       string
+		Quantity int
+	}
+	var productDecrements []productDecrement
+	organizerDecrements := map[string]int{}
 
 	for rows.Next() {
-		var productID string
+		var productID, organizerItemID *string
 		var quantity int
-		if err := rows.Scan(&productID, &quantity); err != nil {
+		if err := rows.Scan(&productID, &organizerItemID, &quantity); err != nil {
 			continue
 		}
-		s.db.Exec(ctx, `UPDATE products SET stock_current = stock_current - $2 WHERE id = $1 AND stock_current >= $2`, productID, quantity)
-		s.db.Exec(ctx, `INSERT INTO stock_movements (product_id, movement_type, quantity, reason) VALUES ($1, 'sale', $2, 'Venda online MP')`, productID, quantity)
+		if productID != nil {
+			productDecrements = append(productDecrements, productDecrement{ID: *productID, Quantity: quantity})
+		}
+		if organizerItemID != nil {
+			organizerDecrements[*organizerItemID] += quantity
+		}
 	}
+	rows.Close()
+
+	for _, d := range productDecrements {
+		s.db.Exec(ctx, `UPDATE products SET stock_current = stock_current - $2 WHERE id = $1 AND stock_current >= $2`, d.ID, d.Quantity)
+		s.db.Exec(ctx, `INSERT INTO stock_movements (product_id, movement_type, quantity, reason) VALUES ($1, 'sale', $2, 'Venda online MP')`, d.ID, d.Quantity)
+	}
+
+	s.decrementOrganizerStock(ctx, organizerDecrements)
 }
 
 // apiSettingKeys sao as chaves editaveis pela gaveta "API" do admin (restrita
