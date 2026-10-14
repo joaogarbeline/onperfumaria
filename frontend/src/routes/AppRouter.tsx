@@ -1,4 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { useEffect } from 'react'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { MainLayout } from '../pages/layout/MainLayout'
 import { AccountPage } from '../pages/AccountPage'
 import { CategoryPage } from '../pages/CategoryPage'
@@ -12,9 +13,21 @@ import { OrdersPage } from '../pages/OrdersPage'
 import { OrganizerPage } from '../pages/OrganizerPage'
 import { ProductPage } from '../pages/ProductPage'
 
+// O React Router nao reseta o scroll ao trocar de rota (so o browser faz
+// isso em navegacao "de verdade"). Sem isso, ir de uma pagina longa pra uma
+// curta abre a nova pagina ja scrollada, as vezes quase no rodape.
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
+  return null
+}
+
 export function AppRouter() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <Routes>
         <Route path="/admin" element={<OrganizerPage />} />
         <Route element={<MainLayout />}>
