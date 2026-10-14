@@ -960,6 +960,16 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
+	// Pagamento que nao existe (ou e de outra conta) nao e falha nossa: devolve
+	// 200 para o Mercado Pago parar de reenviar. Nos outros erros devolvemos
+	// falha de proposito, justamente para ele tentar de novo mais tarde.
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("mercado pago respondeu %d ao consultar o pagamento %s", resp.StatusCode, paymentID)
+	}
+
 	var payment struct {
 		ID     int64  `json:"id"`
 		Status string `json:"status"`
