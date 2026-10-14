@@ -1,20 +1,5 @@
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS cpf TEXT;
 
-ALTER TABLE products ADD COLUMN IF NOT EXISTS sku TEXT;
-
-UPDATE products
-SET sku = UPPER(REPLACE(slug, '-', '_'))
-WHERE sku IS NULL;
-
-ALTER TABLE products ALTER COLUMN sku SET NOT NULL;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_sku_key') THEN
-        ALTER TABLE products ADD CONSTRAINT products_sku_key UNIQUE (sku);
-    END IF;
-END $$;
-
 ALTER TABLE shipping_rules ADD COLUMN IF NOT EXISTS code TEXT;
 ALTER TABLE shipping_rules ADD COLUMN IF NOT EXISTS weight_min_grams INT;
 ALTER TABLE shipping_rules ADD COLUMN IF NOT EXISTS weight_max_grams INT;
@@ -43,24 +28,3 @@ BEGIN
     END IF;
 END $$;
 
-CREATE TABLE IF NOT EXISTS banners (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title TEXT NOT NULL,
-    subtitle TEXT NOT NULL,
-    image_url TEXT NOT NULL DEFAULT '',
-    cta_label TEXT NOT NULL DEFAULT 'Explorar produtos',
-    cta_link TEXT NOT NULL DEFAULT '/comercial',
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS discount_rules (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    target_type TEXT NOT NULL,
-    target_id UUID,
-    discount_type TEXT NOT NULL,
-    value NUMERIC(10,2) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);

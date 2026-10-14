@@ -10,20 +10,6 @@ func Seed(db *pgxpool.Pool) error {
 	ctx := context.Background()
 
 	queries := []string{
-		`INSERT INTO categories (name, slug) VALUES
-		 ('Arabes', 'arabes'),
-		 ('Importados', 'importados'),
-		 ('Femininos', 'femininos'),
-		 ('Masculinos', 'masculinos')
-		 ON CONFLICT (slug) DO NOTHING;`,
-		`INSERT INTO brands (name, slug) VALUES
-		 ('Lattafa', 'lattafa'),
-		 ('Armaf', 'armaf'),
-		 ('Carolina Herrera', 'carolina-herrera'),
-		 ('Dior', 'dior'),
-		 ('Paco Rabanne', 'paco-rabanne'),
-		 ('Jean Paul Gaultier', 'jean-paul-gaultier')
-		 ON CONFLICT (slug) DO NOTHING;`,
 		`INSERT INTO settings (key, value) VALUES
 		 ('store_name', 'On Perfumaria e Importados'),
 		 ('instagram', '@onperfumariaeimportados'),

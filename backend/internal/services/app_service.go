@@ -13,9 +13,7 @@ import (
 
 	"onperfumaria/backend/internal/config"
 	"onperfumaria/backend/internal/mailer"
-	"onperfumaria/backend/internal/models"
 	"onperfumaria/backend/internal/payments"
-	"onperfumaria/backend/internal/repositories"
 	"onperfumaria/backend/internal/shipping"
 
 	"github.com/jackc/pgx/v5"
@@ -26,7 +24,6 @@ import (
 type Service struct {
 	cfg    config.Config
 	db     *pgxpool.Pool
-	repo   *repositories.StoreRepository
 	mailer *mailer.Mailer
 }
 
@@ -94,9 +91,8 @@ type CustomerAddressPayload struct {
 
 func NewService(cfg config.Config, db *pgxpool.Pool) *Service {
 	svc := &Service{
-		cfg:  cfg,
-		db:   db,
-		repo: repositories.NewStoreRepository(db),
+		cfg: cfg,
+		db:  db,
 		mailer: mailer.New(mailer.Config{
 			Host:     cfg.SMTPHost,
 			Port:     cfg.SMTPPort,
@@ -119,94 +115,6 @@ func (s *Service) resolvePaymentsProvider(ctx context.Context) payments.Provider
 		return payments.NewMercadoPagoProvider(mpToken, s.cfg.FrontendURL)
 	}
 	return payments.MockProvider{}
-}
-
-func (s *Service) ListProducts(ctx context.Context) ([]models.Product, error) {
-	products, err := s.repo.ListProducts(ctx, false)
-	if err != nil {
-		return nil, err
-	}
-	return s.decorateProducts(ctx, products)
-}
-
-// GetProduct busca por slug e, se nao achar, tenta pelo id - os carrosseis
-// automaticos da home linkam produtos pelo id (nao tem slug "bonito" ali),
-// entao a pagina de produto precisa resolver os dois casos.
-func (s *Service) GetProduct(ctx context.Context, slug string) (*models.Product, error) {
-	product, err := s.repo.GetProductBySlug(ctx, slug)
-	if err != nil {
-		byID, idErr := s.repo.GetProductByID(ctx, slug)
-		if idErr != nil {
-			return nil, err
-		}
-		product = byID
-	}
-	decorated, err := s.decorateProduct(ctx, *product)
-	if err != nil {
-		return nil, err
-	}
-	s.loadImages(ctx, decorated)
-	return decorated, nil
-}
-
-func (s *Service) StoreHome(ctx context.Context) (map[string]interface{}, error) {
-	products, err := s.ListProducts(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	banner := map[string]string{
-		"title":    "",
-		"subtitle": "",
-		"imageUrl": "",
-		"ctaLabel": "Explorar produtos",
-		"ctaLink":  "/",
-	}
-	var title, subtitle, imageURL, ctaLabel, ctaLink string
-	if err := s.db.QueryRow(ctx, `SELECT title, subtitle, image_url, cta_label, cta_link FROM banners WHERE is_active = true ORDER BY created_at DESC LIMIT 1`).Scan(
-		&title,
-		&subtitle,
-		&imageURL,
-		&ctaLabel,
-		&ctaLink,
-	); err == nil {
-		banner["title"] = title
-		banner["subtitle"] = subtitle
-		banner["imageUrl"] = imageURL
-		banner["ctaLabel"] = ctaLabel
-		banner["ctaLink"] = ctaLink
-	}
-
-	settingsRows, err := s.db.Query(ctx, `SELECT key, value FROM settings WHERE key LIKE 'benefit_%' ORDER BY key`)
-	if err != nil {
-		return nil, err
-	}
-	defer settingsRows.Close()
-
-	benefits := []string{}
-	for settingsRows.Next() {
-		var key, value string
-		if err := settingsRows.Scan(&key, &value); err != nil {
-			return nil, err
-		}
-		benefits = append(benefits, value)
-	}
-
-	featured := make([]models.Product, 0, 4)
-	categories := map[string]int{}
-	for _, product := range products {
-		if product.IsFeatured && len(featured) < 4 {
-			featured = append(featured, product)
-		}
-		categories[product.Category]++
-	}
-
-	return map[string]interface{}{
-		"hero":       banner,
-		"featured":   featured,
-		"categories": categories,
-		"benefits":   benefits,
-	}, nil
 }
 
 func (s *Service) GetOrganizerStore(ctx context.Context) (json.RawMessage, error) {
@@ -408,7 +316,7 @@ func (s *Service) CustomerProfile(ctx context.Context, customerID, requesterID s
 			o.order_status,
 			o.created_at,
 			COALESCE((SELECT oi.product_name FROM order_items oi WHERE oi.order_id = o.id ORDER BY oi.id LIMIT 1), ''),
-			COALESCE((SELECT p.image_url FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id WHERE oi.order_id = o.id ORDER BY oi.id LIMIT 1), ''),
+			COALESCE((SELECT oi.product_image_url FROM order_items oi WHERE oi.order_id = o.id ORDER BY oi.id LIMIT 1), ''),
 			COALESCE((SELECT SUM(oi.quantity) FROM order_items oi WHERE oi.order_id = o.id), 0)
 		FROM orders o
 		WHERE o.customer_id = $1
@@ -502,9 +410,8 @@ func (s *Service) CustomerOrder(ctx context.Context, customerID, orderID string)
 	}
 
 	itemsRows, err := s.db.Query(ctx, `
-		SELECT oi.product_name, oi.unit_price, oi.quantity, COALESCE(p.image_url, '')
+		SELECT oi.product_name, oi.unit_price, oi.quantity, COALESCE(oi.product_image_url, '')
 		FROM order_items oi
-		LEFT JOIN products p ON p.id = oi.product_id
 		WHERE oi.order_id = $1
 		ORDER BY oi.id`, orderID)
 	if err != nil {
@@ -673,9 +580,9 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	}
 
 	type itemSummary struct {
-		ProductID       *string
-		OrganizerItemID *string
+		OrganizerItemID string
 		Name            string
+		ImageURL        string
 		UnitPrice       float64
 		Quantity        int
 		LineTotal       float64
@@ -686,52 +593,23 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	weight := 0
 	orderItems := make([]itemSummary, 0, len(input.Items))
 	for _, item := range input.Items {
-		// Itens do Organizador usam o prefixo "item-" (ver createOrganizerId no
-		// frontend) e nunca existem na tabela "products" - resolver contra o
-		// Organizador em vez de tentar (e falhar) a busca de catalogo.
-		if strings.HasPrefix(item.ProductID, "item-") {
-			summary, err := s.resolveOrganizerCheckoutItem(ctx, item.ProductID, item.Quantity)
-			if err != nil {
-				return nil, err
-			}
-			lineTotal := summary.UnitPrice * float64(item.Quantity)
-			subtotal += lineTotal
-			weight += summary.Weight * item.Quantity
-			organizerItemID := summary.ID
-			orderItems = append(orderItems, itemSummary{
-				OrganizerItemID: &organizerItemID,
-				Name:            summary.Name,
-				UnitPrice:       summary.UnitPrice,
-				Quantity:        item.Quantity,
-				LineTotal:       lineTotal,
-				Weight:          summary.Weight,
-			})
-			continue
-		}
-
-		product, err := s.repo.GetProductByID(ctx, item.ProductID)
+		// Toda a loja vem do Organizador: preco, estoque e disponibilidade sao
+		// conferidos la, nunca no que o navegador mandou.
+		summary, err := s.resolveOrganizerCheckoutItem(ctx, item.ProductID, item.Quantity)
 		if err != nil {
 			return nil, err
 		}
-		product, err = s.decorateProduct(ctx, *product)
-		if err != nil {
-			return nil, err
-		}
-		if !product.IsActive || !product.IsAvailable || product.StockCurrent < item.Quantity {
-			return nil, fmt.Errorf("estoque insuficiente para %s", product.Name)
-		}
-
-		lineTotal := product.FinalPrice * float64(item.Quantity)
+		lineTotal := summary.UnitPrice * float64(item.Quantity)
 		subtotal += lineTotal
-		weight += product.WeightGrams * item.Quantity
-		productID := product.ID
+		weight += summary.Weight * item.Quantity
 		orderItems = append(orderItems, itemSummary{
-			ProductID: &productID,
-			Name:      product.Name,
-			UnitPrice: product.FinalPrice,
-			Quantity:  item.Quantity,
-			LineTotal: lineTotal,
-			Weight:    product.WeightGrams,
+			OrganizerItemID: summary.ID,
+			Name:            summary.Name,
+			ImageURL:        summary.ImageURL,
+			UnitPrice:       summary.UnitPrice,
+			Quantity:        item.Quantity,
+			LineTotal:       lineTotal,
+			Weight:          summary.Weight,
 		})
 	}
 
@@ -800,8 +678,8 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	}
 
 	for _, item := range orderItems {
-		if _, err := tx.Exec(ctx, `INSERT INTO order_items (order_id, product_id, organizer_item_id, product_name, unit_price, quantity, line_total) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			orderID, item.ProductID, item.OrganizerItemID, item.Name, item.UnitPrice, item.Quantity, item.LineTotal); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO order_items (order_id, organizer_item_id, product_name, product_image_url, unit_price, quantity, line_total) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			orderID, item.OrganizerItemID, item.Name, item.ImageURL, item.UnitPrice, item.Quantity, item.LineTotal); err != nil {
 			return nil, err
 		}
 	}
@@ -906,98 +784,6 @@ func (s *Service) SetCustomerAdmin(ctx context.Context, customerID string, isAdm
 		return nil, err
 	}
 	return map[string]interface{}{"id": id, "name": name, "isAdmin": isAdmin}, nil
-}
-
-func (s *Service) decorateProducts(ctx context.Context, products []models.Product) ([]models.Product, error) {
-	decorated := make([]models.Product, 0, len(products))
-	for _, product := range products {
-		enriched, err := s.decorateProduct(ctx, product)
-		if err != nil {
-			return nil, err
-		}
-		s.loadImages(ctx, enriched)
-		decorated = append(decorated, *enriched)
-	}
-	return decorated, nil
-}
-
-func (s *Service) loadImages(ctx context.Context, product *models.Product) {
-	rows, err := s.db.Query(ctx, `SELECT image_url FROM product_images WHERE product_id = $1 ORDER BY id`, product.ID)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-	images := []string{}
-	for rows.Next() {
-		var url string
-		if err := rows.Scan(&url); err != nil {
-			continue
-		}
-		images = append(images, url)
-	}
-	product.Images = images
-	if len(images) > 0 && product.ImageURL == "" {
-		product.ImageURL = images[0]
-	}
-}
-
-func (s *Service) decorateProduct(ctx context.Context, product models.Product) (*models.Product, error) {
-	finalPrice := product.SalePrice
-	discountAmount := 0.0
-	discountLabel := ""
-
-	if product.PromotionalPrice != nil && *product.PromotionalPrice < finalPrice {
-		finalPrice = *product.PromotionalPrice
-		discountAmount = product.SalePrice - *product.PromotionalPrice
-		discountLabel = "Promocao especial"
-	}
-
-	rows, err := s.db.Query(ctx, `
-		SELECT name, target_type, discount_type, value
-		FROM discount_rules
-		WHERE is_active = true
-		  AND (
-			target_type = 'all'
-			OR (target_type = 'product' AND target_id::text = $1)
-			OR (target_type = 'brand' AND target_id::text = $2)
-			OR (target_type = 'category' AND target_id::text = $3)
-		  )`, product.ID, product.BrandID, product.CategoryID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	bestFinal := finalPrice
-	bestDiscount := discountAmount
-	bestLabel := discountLabel
-	for rows.Next() {
-		var name, targetType, discountType string
-		var value float64
-		if err := rows.Scan(&name, &targetType, &discountType, &value); err != nil {
-			return nil, err
-		}
-		candidate := product.SalePrice
-		if discountType == "percent" {
-			candidate = product.SalePrice * (1 - value/100)
-		}
-		if discountType == "fixed" {
-			candidate = product.SalePrice - value
-		}
-		if candidate < 0 {
-			candidate = 0
-		}
-		if candidate < bestFinal {
-			bestFinal = candidate
-			bestDiscount = product.SalePrice - candidate
-			bestLabel = name
-		}
-	}
-
-	product.FinalPrice = bestFinal
-	product.AutomaticDiscountAmount = bestDiscount
-	product.DiscountLabel = bestLabel
-	product.IsAvailable = product.IsActive && product.StockCurrent > 0
-	return &product, nil
 }
 
 func (s *Service) ensureCustomer(ctx context.Context, tx pgx.Tx, customerID, name, email, phone, cpf, password string) (string, error) {
@@ -1147,37 +933,23 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 }
 
 func (s *Service) updateStockForOrder(ctx context.Context, orderID string) {
-	rows, err := s.db.Query(ctx, `SELECT product_id, organizer_item_id, quantity FROM order_items WHERE order_id = $1`, orderID)
+	rows, err := s.db.Query(ctx, `SELECT organizer_item_id, quantity FROM order_items WHERE order_id = $1`, orderID)
 	if err != nil {
 		return
 	}
 
-	type productDecrement struct {
-		ID       string
-		Quantity int
-	}
-	var productDecrements []productDecrement
 	organizerDecrements := map[string]int{}
-
 	for rows.Next() {
-		var productID, organizerItemID *string
+		var organizerItemID *string
 		var quantity int
-		if err := rows.Scan(&productID, &organizerItemID, &quantity); err != nil {
+		if err := rows.Scan(&organizerItemID, &quantity); err != nil {
 			continue
-		}
-		if productID != nil {
-			productDecrements = append(productDecrements, productDecrement{ID: *productID, Quantity: quantity})
 		}
 		if organizerItemID != nil {
 			organizerDecrements[*organizerItemID] += quantity
 		}
 	}
 	rows.Close()
-
-	for _, d := range productDecrements {
-		s.db.Exec(ctx, `UPDATE products SET stock_current = stock_current - $2 WHERE id = $1 AND stock_current >= $2`, d.ID, d.Quantity)
-		s.db.Exec(ctx, `INSERT INTO stock_movements (product_id, movement_type, quantity, reason) VALUES ($1, 'sale', $2, 'Venda online MP')`, d.ID, d.Quantity)
-	}
 
 	s.decrementOrganizerStock(ctx, organizerDecrements)
 }
@@ -1432,20 +1204,20 @@ func (s *Service) AdminOrderNotificationDetail(ctx context.Context, orderID stri
 		return nil, err
 	}
 
-	itemsRows, err := s.db.Query(ctx, `SELECT product_name, unit_price, quantity FROM order_items WHERE order_id = $1`, orderID)
+	itemsRows, err := s.db.Query(ctx, `SELECT product_name, unit_price, quantity, COALESCE(product_image_url, '') FROM order_items WHERE order_id = $1`, orderID)
 	if err != nil {
 		return nil, err
 	}
 	defer itemsRows.Close()
 	items := []map[string]interface{}{}
 	for itemsRows.Next() {
-		var name string
+		var name, imageURL string
 		var price float64
 		var qty int
-		if err := itemsRows.Scan(&name, &price, &qty); err != nil {
+		if err := itemsRows.Scan(&name, &price, &qty, &imageURL); err != nil {
 			continue
 		}
-		items = append(items, map[string]interface{}{"name": name, "price": price, "quantity": qty})
+		items = append(items, map[string]interface{}{"name": name, "price": price, "quantity": qty, "imageUrl": imageURL})
 	}
 
 	return map[string]interface{}{
@@ -1570,20 +1342,20 @@ func (s *Service) GetOrderPublic(ctx context.Context, orderID string) (map[strin
 		return nil, err
 	}
 
-	itemsRows, err := s.db.Query(ctx, `SELECT product_name, unit_price, quantity FROM order_items WHERE order_id = $1`, orderID)
+	itemsRows, err := s.db.Query(ctx, `SELECT product_name, unit_price, quantity, COALESCE(product_image_url, '') FROM order_items WHERE order_id = $1`, orderID)
 	if err != nil {
 		return nil, err
 	}
 	defer itemsRows.Close()
 	items := []map[string]interface{}{}
 	for itemsRows.Next() {
-		var name string
+		var name, imageURL string
 		var price float64
 		var qty int
-		if err := itemsRows.Scan(&name, &price, &qty); err != nil {
+		if err := itemsRows.Scan(&name, &price, &qty, &imageURL); err != nil {
 			continue
 		}
-		items = append(items, map[string]interface{}{"name": name, "price": price, "quantity": qty})
+		items = append(items, map[string]interface{}{"name": name, "price": price, "quantity": qty, "imageUrl": imageURL})
 	}
 
 	statuses := []map[string]interface{}{

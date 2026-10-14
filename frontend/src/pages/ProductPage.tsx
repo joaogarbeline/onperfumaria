@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { ChevronDown, FlaskConical, Heart, Share2, ShieldCheck, ShoppingBag } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
@@ -11,7 +11,6 @@ import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
 import { useCurrency } from '../hooks/useCurrency'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
-import { api } from '../services/api'
 import { trackProductEvent } from '../services/productEvents'
 import type { Product } from '../types'
 import { getItemStatusPresentation } from '../utils/itemStatus'
@@ -32,36 +31,26 @@ export function ProductPage() {
   tokenRef.current = token
   const format = useCurrency()
   const { store } = useOrganizerStore()
-  const [product, setProduct] = useState<Product | null>(null)
-  const [loading, setLoading] = useState(true)
   const [quantity, setQuantity] = useState(1)
   const [selectedImage, setSelectedImage] = useState('')
   const [favorited, setFavorited] = useState(false)
 
+  const node = useMemo(
+    () => store.nodes.find((candidate) => candidate.id === slug && candidate.type === 'item') ?? null,
+    [slug, store.nodes],
+  )
+  const product: Product | null = useMemo(
+    () => (node ? itemCardToProduct(toItemContent(node, store.tags)) : null),
+    [node, store.tags],
+  )
+  // O Organizador chega por polling: enquanto a loja nao carregou nenhum item,
+  // a pagina segue em "carregando" em vez de dizer que o produto nao existe
+  // (senao o primeiro render pisca um erro falso).
+  const loading = !node && store.nodes.length === 0
+
   useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    api
-      .get<Product>(`/products/${slug}`)
-      .then((result) => {
-        if (cancelled) return
-        setProduct(result)
-        // So registramos visualizacao quando o produto vem do catalogo real
-        // (o resultado alimenta os carrosseis automaticos da home).
-        trackProductEvent(result.id, 'view', tokenRef.current)
-      })
-      .catch(() => {
-        if (cancelled) return
-        const node = store.nodes.find((candidate) => candidate.id === slug && candidate.type === 'item')
-        setProduct(node ? itemCardToProduct(toItemContent(node, store.tags)) : null)
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [slug, store])
+    if (node) trackProductEvent(node.id, 'view', tokenRef.current)
+  }, [node])
 
   const allImages = product
     ? product.images?.length

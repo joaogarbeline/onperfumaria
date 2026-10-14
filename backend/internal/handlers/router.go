@@ -43,15 +43,6 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			data, err := service.SaveOrganizerStore(c.Request.Context(), input)
 			respond(c, data, err)
 		})
-		api.GET("/store/home", func(c *gin.Context) {
-			data, err := service.StoreHome(c.Request.Context())
-			respond(c, data, err)
-		})
-		api.GET("/store/home-carousels", func(c *gin.Context) {
-			sessionID := c.Query("sessionId")
-			data, err := service.HomeCarousels(c.Request.Context(), optionalCustomerID(cfg, c), sessionID)
-			respond(c, data, err)
-		})
 		api.POST("/store/events", func(c *gin.Context) {
 			var input struct {
 				ProductID string `json:"productId"`
@@ -64,14 +55,6 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			}
 			err := service.RecordProductEvent(c.Request.Context(), optionalCustomerID(cfg, c), input.SessionID, input.ProductID, input.Type)
 			respond(c, true, err)
-		})
-		api.GET("/products", func(c *gin.Context) {
-			data, err := service.ListProducts(c.Request.Context())
-			respond(c, data, err)
-		})
-		api.GET("/products/:slug", func(c *gin.Context) {
-			data, err := service.GetProduct(c.Request.Context(), c.Param("slug"))
-			respond(c, data, err)
 		})
 		api.GET("/store/config", func(c *gin.Context) {
 			data, err := service.StoreConfig(c.Request.Context())

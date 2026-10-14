@@ -20,6 +20,7 @@ type organizerCheckoutNode struct {
 	Price    float64  `json:"price"`
 	Stock    *int     `json:"stock"`
 	VolumeMl *int     `json:"volumeMl"`
+	ImageURL string   `json:"imageUrl"`
 	TagIds   []string `json:"tagIds"`
 }
 
@@ -36,6 +37,7 @@ type organizerCheckoutStore struct {
 type organizerItemSummary struct {
 	ID        string
 	Name      string
+	ImageURL  string
 	UnitPrice float64
 	Weight    int
 }
@@ -99,8 +101,12 @@ func (s *Service) resolveOrganizerCheckoutItem(ctx context.Context, itemID strin
 	}
 
 	return &organizerItemSummary{
-		ID:        node.ID,
-		Name:      node.Name,
+		ID:   node.ID,
+		Name: node.Name,
+		// A foto e copiada para o pedido (order_items.product_image_url) em vez
+		// de ser buscada depois: o item pode mudar de foto - ou sair do
+		// Organizador - sem bagunçar o historico de quem ja comprou.
+		ImageURL:  node.ImageURL,
 		UnitPrice: finalPrice,
 		Weight:    weight,
 	}, nil
