@@ -98,6 +98,7 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 				return
 			}
 			input.CustomerID = customerIDFromHeader(cfg, c)
+			input.PublicBaseURL = publicBaseURL(c)
 			data, err := service.CreateOrder(c.Request.Context(), input)
 			respond(c, data, err)
 		})
@@ -392,20 +393,42 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 	router.POST("/api/webhooks/mercadopago", func(c *gin.Context) {
 		var input struct {
 			Action string `json:"action"`
+			Type   string `json:"type"`
+			Topic  string `json:"topic"`
 			Data   struct {
-				ID string `json:"id"`
+				// json.Number aceita tanto "123" quanto 123: o Mercado Pago
+				// manda o id como texto no webhook e como numero em parte das
+				// notificacoes antigas.
+				ID json.Number `json:"id"`
 			} `json:"data"`
 		}
-		topic := c.Query("topic")
-		paymentID := c.Query("id")
-		if c.ShouldBindJSON(&input) == nil && input.Data.ID != "" {
-			paymentID = input.Data.ID
+		_ = c.ShouldBindJSON(&input)
+
+		// O Mercado Pago avisa em dois formatos, conforme a integracao: o
+		// webhook atual usa ?type=payment&data.id=123 (e repete isso no corpo)
+		// e o IPN antigo usa ?topic=payment&id=123. Ler so "topic"/"id" fazia o
+		// aviso de pagamento aprovado ser descartado em silencio - o cliente
+		// pagava o Pix e o pedido ficava em "aguardando pagamento" para sempre.
+		topic := firstNonEmpty(c.Query("type"), c.Query("topic"), input.Type, input.Topic)
+		paymentID := firstNonEmpty(c.Query("data.id"), c.Query("id"), input.Data.ID.String())
+		if paymentID == "" {
+			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+			return
 		}
-		if paymentID != "" {
-			if err := service.HandleMPWebhook(c.Request.Context(), topic, paymentID); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
-				return
-			}
+
+		if err := service.VerifyMPWebhookSignature(
+			c.Request.Context(), c.GetHeader("x-signature"), c.GetHeader("x-request-id"), paymentID,
+		); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+			return
+		}
+
+		if err := service.HandleMPWebhook(c.Request.Context(), topic, paymentID); err != nil {
+			// 500 de proposito: o Mercado Pago repete a notificacao quando nao
+			// recebe 2xx, entao uma falha passageira (banco fora do ar, por
+			// exemplo) ainda tem como ser recuperada na proxima tentativa.
+			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

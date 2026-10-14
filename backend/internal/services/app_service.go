@@ -3,6 +3,9 @@ package services
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,6 +71,9 @@ type CheckoutInput struct {
 	Token           string         `json:"token"`
 	IssuerID        string         `json:"issuerId"`
 	Installments    int            `json:"installments"`
+	// Preenchido pelo handler a partir da propria requisicao (nunca vem do
+	// navegador): e o endereco onde o Mercado Pago deve avisar o pagamento.
+	PublicBaseURL string `json:"-"`
 }
 
 type CustomerProfilePayload struct {
@@ -657,6 +663,7 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 		Installments:    input.Installments,
 		PayerEmail:      input.CustomerEmail,
 		PayerCPF:        input.CustomerCPF,
+		NotificationURL: input.PublicBaseURL,
 	})
 	if err != nil {
 		return nil, err
@@ -882,6 +889,58 @@ func mapPaymentToOrderStatus(paymentStatus string) string {
 	return "aguardando_pagamento"
 }
 
+// VerifyMPWebhookSignature confere o cabecalho x-signature que o Mercado Pago
+// manda junto com a notificacao. So vale quando a chave secreta do webhook
+// esta salva na gaveta "API" do admin: sem ela (ou quando a notificacao vem
+// pelo formato antigo, que nao assina nada) a conferencia e pulada, senao a
+// loja pararia de registrar pagamento so por falta de configuracao. Mesmo
+// pulando, nada e aceito de palavra: o pagamento sempre e relido na API do
+// Mercado Pago antes de o pedido mudar de status.
+func (s *Service) VerifyMPWebhookSignature(ctx context.Context, signature, requestID, dataID string) error {
+	secret, err := s.GetSetting(ctx, "mp_webhook_secret")
+	if err != nil || secret == "" || signature == "" {
+		return nil
+	}
+	if !mpSignatureMatches(secret, signature, requestID, dataID) {
+		return errors.New("assinatura do webhook invalida")
+	}
+	return nil
+}
+
+// mpSignatureMatches refaz a conta que o Mercado Pago fez para assinar a
+// notificacao. O cabecalho chega como "ts=1704908010,v1=<hash>" e o hash e um
+// HMAC-SHA256 do texto "id:<data.id>;request-id:<x-request-id>;ts:<ts>;" com a
+// chave secreta do webhook - cada pedaco que nao veio na notificacao sai fora
+// do texto junto com o seu ponto e virgula.
+func mpSignatureMatches(secret, signature, requestID, dataID string) bool {
+	var timestamp, hash string
+	for _, part := range strings.Split(signature, ",") {
+		key, value, found := strings.Cut(strings.TrimSpace(part), "=")
+		if !found {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "ts":
+			timestamp = strings.TrimSpace(value)
+		case "v1":
+			hash = strings.TrimSpace(value)
+		}
+	}
+	if timestamp == "" || hash == "" {
+		return false
+	}
+
+	manifest := fmt.Sprintf("id:%s;", strings.ToLower(dataID))
+	if requestID != "" {
+		manifest += fmt.Sprintf("request-id:%s;", requestID)
+	}
+	manifest += fmt.Sprintf("ts:%s;", timestamp)
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(manifest))
+	return hmac.Equal([]byte(hex.EncodeToString(mac.Sum(nil))), []byte(hash))
+}
+
 func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID string) error {
 	if topic != "payment" {
 		return nil
@@ -914,10 +973,18 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 	}
 
 	var orderID string
+	// A condicao olha o order_status, nao o payment_status: todo pedido que
+	// ainda nao esta "pago" entra, inclusive o cartao que nasceu "in_process"
+	// (analise do emissor) e so foi aprovado depois - conferir apenas
+	// payment_status = 'pending' deixava esse caso preso em "aguardando
+	// pagamento" mesmo com o dinheiro aprovado. E como "pago" e justamente o
+	// status que ja baixou estoque na criacao do pedido, deixa-lo de fora e o
+	// que impede uma segunda notificacao do mesmo pagamento baixar o estoque
+	// de novo.
 	err = s.db.QueryRow(ctx, `
 		UPDATE orders
 		SET payment_status = 'paid', order_status = 'pago', mp_payment_id = $1
-		WHERE payment_status = 'pending' AND mp_preference_id = $1
+		WHERE order_status <> 'pago' AND mp_preference_id = $1
 		RETURNING id::text`,
 		paymentID).Scan(&orderID)
 
@@ -928,6 +995,7 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 		return err
 	}
 
+	s.db.Exec(ctx, `UPDATE payments SET status = 'approved' WHERE provider_reference = $1`, paymentID)
 	s.updateStockForOrder(ctx, orderID)
 	return nil
 }

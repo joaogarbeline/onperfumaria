@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -27,6 +28,9 @@ type DirectPaymentInput struct {
 	Installments    int
 	PayerEmail      string
 	PayerCPF        string
+	// Endereco publico da loja no momento do pedido. Em branco, cai na
+	// configuracao FRONTEND_URL do servidor.
+	NotificationURL string
 }
 
 type Provider interface {
@@ -55,12 +59,20 @@ func (mp *MercadoPagoProvider) CreatePayment(input DirectPaymentInput) (PaymentR
 		payer["identification"] = map[string]string{"type": "CPF", "number": input.PayerCPF}
 	}
 
+	// O aviso de pagamento aprovado volta para o dominio que o cliente estava
+	// usando; FRONTEND_URL so entra quando nao da para saber (ex.: chamada sem
+	// https, em desenvolvimento).
+	baseURL := input.NotificationURL
+	if baseURL == "" {
+		baseURL = mp.FrontendURL
+	}
+
 	payload := map[string]interface{}{
 		"transaction_amount": input.Total,
 		"description":        input.Description,
 		"payment_method_id":  input.PaymentMethodID,
 		"payer":              payer,
-		"notification_url":   mp.FrontendURL + "/api/webhooks/mercadopago",
+		"notification_url":   strings.TrimRight(baseURL, "/") + "/api/webhooks/mercadopago",
 	}
 
 	if input.PaymentMethodID != "pix" {
