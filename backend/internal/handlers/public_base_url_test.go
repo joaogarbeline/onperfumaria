@@ -39,13 +39,25 @@ func TestPublicBaseURL(t *testing.T) {
 			want: "https://onperfumaria.com",
 		},
 		{
-			name:    "sem https cai na configuracao do servidor",
+			name:    "proxy que nao informa o protocolo ainda vale para dominio publico",
+			host:    "onperfumaria.com",
+			headers: map[string]string{},
+			want:    "https://onperfumaria.com",
+		},
+		{
+			name:    "localhost cai na configuracao do servidor",
 			host:    "localhost:8080",
 			headers: map[string]string{},
 			want:    "",
 		},
 		{
-			name:    "proxy declarando http tambem cai na configuracao",
+			name:    "nome de servico interno do docker nao serve de endereco",
+			host:    "backend:8080",
+			headers: map[string]string{"X-Forwarded-Proto": "https"},
+			want:    "",
+		},
+		{
+			name:    "proxy declarando http cai na configuracao",
 			host:    "onperfumaria.com",
 			headers: map[string]string{"X-Forwarded-Proto": "http"},
 			want:    "",

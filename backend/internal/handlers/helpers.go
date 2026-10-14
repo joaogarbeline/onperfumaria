@@ -21,19 +21,49 @@ import (
 // dominio e so se descobre quando algum aviso para de chegar. Devolve "" fora
 // de https, para o caso local continuar usando a configuracao.
 func publicBaseURL(c *gin.Context) string {
-	host := firstNonEmpty(c.GetHeader("X-Forwarded-Host"), c.Request.Host)
-	scheme := c.GetHeader("X-Forwarded-Proto")
+	// Com varios proxies encadeados os cabecalhos viram "valor1, valor2".
+	firstValue := func(value string) string {
+		if first, _, found := strings.Cut(value, ","); found {
+			return strings.TrimSpace(first)
+		}
+		return strings.TrimSpace(value)
+	}
+
+	host := firstValue(firstNonEmpty(c.GetHeader("X-Forwarded-Host"), c.Request.Host))
+	if !isPublicHost(host) {
+		return ""
+	}
+
+	scheme := firstValue(c.GetHeader("X-Forwarded-Proto"))
 	if scheme == "" && c.Request.TLS != nil {
 		scheme = "https"
 	}
-	if host == "" || scheme != "https" {
+	if scheme == "" {
+		// Nem todo proxy preenche o cabecalho de protocolo. Chegando num
+		// dominio publico, https e a unica forma de a loja estar no ar - e o
+		// Mercado Pago so aceita aviso por https de qualquer jeito.
+		scheme = "https"
+	}
+	if scheme != "https" {
 		return ""
 	}
-	// Com varios proxies encadeados o cabecalho vira "host1, host2".
-	if first, _, found := strings.Cut(host, ","); found {
-		host = strings.TrimSpace(first)
-	}
 	return scheme + "://" + host
+}
+
+// isPublicHost separa o dominio real da loja dos enderecos de
+// desenvolvimento/rede interna, que nao servem como endereco de aviso.
+func isPublicHost(host string) bool {
+	name := host
+	if trimmed, _, found := strings.Cut(name, ":"); found {
+		name = trimmed
+	}
+	name = strings.Trim(name, "[]")
+	switch name {
+	case "", "localhost", "127.0.0.1", "::1":
+		return false
+	}
+	// Nome de servico dentro do Docker ("backend", "app") nao tem ponto.
+	return strings.Contains(name, ".")
 }
 
 // firstNonEmpty devolve o primeiro valor preenchido da lista - util para ler um
