@@ -14,12 +14,27 @@ export type ItemStatusPresentation = {
 export function getItemStatusPresentation(status: OrganizerStatus | undefined): ItemStatusPresentation {
   switch (status) {
     case 'coming-soon':
-      return { grayscale: true, priceOverrideText: 'Em breve', showStockCount: false, availableLabel: 'Em breve' }
+      return {
+        grayscale: true,
+        priceOverrideText: 'Em breve',
+        showStockCount: false,
+        availableLabel: 'Em breve',
+      }
     case 'out-of-stock':
-      return { grayscale: true, priceOverrideText: 'Esgotado', showStockCount: false, availableLabel: 'Esgotado' }
+      return {
+        grayscale: true,
+        priceOverrideText: 'Esgotado',
+        showStockCount: false,
+        availableLabel: 'Esgotado',
+      }
     case 'low-stock':
       return { grayscale: false, priceOverrideText: null, showStockCount: true, availableLabel: 'Disponível' }
     default:
-      return { grayscale: false, priceOverrideText: null, showStockCount: false, availableLabel: 'Disponível' }
+      return {
+        grayscale: false,
+        priceOverrideText: null,
+        showStockCount: false,
+        availableLabel: 'Disponível',
+      }
   }
 }

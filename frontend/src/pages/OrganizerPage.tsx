@@ -10,6 +10,7 @@ import {
   CircleUserRound,
   Copy,
   CreditCard,
+  Download,
   Eye,
   FileText,
   FolderOpen,
@@ -32,6 +33,7 @@ import {
   ShieldAlert,
   Sparkles,
   Tag,
+  TicketPercent,
   Trash2,
   Users,
   X,
@@ -1159,11 +1161,237 @@ function SettingsPanel({
           </div>
         </SettingsTopic>
 
+        <SettingsTopic title="Vendas">
+          <CouponSettings token={token} />
+          <OrdersExport token={token} />
+        </SettingsTopic>
+
         <ApiSettings token={token} />
 
         <SettingsTopic title="Contas">
           <AdminAssignment token={token} />
         </SettingsTopic>
+      </div>
+    </div>
+  )
+}
+
+type Coupon = {
+  id: string
+  code: string
+  discountType: 'percent' | 'fixed'
+  value: number
+  isActive: boolean
+}
+
+// Cupons usados no checkout. Desativar e o caminho normal para tirar um cupom
+// de circulacao; excluir apaga de vez (pede confirmacao na propria linha).
+function CouponSettings({ token }: { token: string | null }) {
+  const format = useCurrency()
+  const [coupons, setCoupons] = useState<Coupon[]>([])
+  const [loading, setLoading] = useState(true)
+  const [notice, setNotice] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [code, setCode] = useState('')
+  const [discountType, setDiscountType] = useState<Coupon['discountType']>('percent')
+  const [value, setValue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api
+      .get<Coupon[]>('/coupons', token ?? undefined)
+      .then(setCoupons)
+      .catch(() => setNotice('Não foi possível carregar os cupons.'))
+      .finally(() => setLoading(false))
+  }, [token])
+
+  async function handleCreate(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setNotice('')
+    try {
+      const created = await api.post<Coupon>(
+        '/coupons',
+        { code, discountType, value: Number(value.replace(',', '.')), isActive: true },
+        token ?? undefined,
+      )
+      setCoupons((current) => [...current, created].sort((a, b) => a.code.localeCompare(b.code)))
+      setCode('')
+      setValue('')
+      setNotice(`Cupom ${created.code} criado.`)
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Não foi possível criar o cupom.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleActive(coupon: Coupon) {
+    setNotice('')
+    try {
+      const saved = await api.put<Coupon>(
+        `/coupons/${coupon.id}`,
+        { ...coupon, isActive: !coupon.isActive },
+        token ?? undefined,
+      )
+      setCoupons((current) => current.map((item) => (item.id === saved.id ? saved : item)))
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Não foi possível atualizar o cupom.')
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setNotice('')
+    try {
+      await api.delete(`/coupons/${id}`, token ?? undefined)
+      setCoupons((current) => current.filter((item) => item.id !== id))
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Não foi possível excluir o cupom.')
+    } finally {
+      setConfirmDeleteId(null)
+    }
+  }
+
+  return (
+    <div className="organizer-surface p-4">
+      <div className="flex items-center gap-2">
+        <TicketPercent size={16} className="text-[#b77717]" />
+        <h3 className="text-sm font-semibold text-[#3a164f]">Cupons · {coupons.length}</h3>
+      </div>
+      <p className="mt-1 text-xs leading-5 text-[#6b665f]">
+        O cliente digita o código no checkout. O desconto nunca passa do valor dos produtos.
+      </p>
+      {loading ? (
+        <p className="mt-3 text-xs text-[#6b665f]">Carregando...</p>
+      ) : coupons.length === 0 ? (
+        <p className="mt-3 text-xs text-[#6b665f]">Nenhum cupom cadastrado.</p>
+      ) : (
+        <ul className="mt-3 space-y-1">
+          {coupons.map((coupon) => (
+            <li key={coupon.id} className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs">
+              <span className="min-w-0 flex-1 truncate font-semibold text-[#3a164f]">{coupon.code}</span>
+              <span className="shrink-0 text-[#6b665f]">
+                {coupon.discountType === 'percent' ? `-${coupon.value}%` : `-${format(coupon.value)}`}
+              </span>
+              {confirmDeleteId === coupon.id ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(coupon.id)}
+                    className="shrink-0 font-semibold text-[#a0382f] hover:underline"
+                  >
+                    Excluir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="shrink-0 text-[#6b665f] hover:underline"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void toggleActive(coupon)}
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      coupon.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'
+                    }`}
+                  >
+                    {coupon.isActive ? 'Ativo' : 'Inativo'}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Excluir cupom ${coupon.code}`}
+                    onClick={() => setConfirmDeleteId(coupon.id)}
+                    className="shrink-0 rounded-full p-1.5 text-[#9b5a50] hover:bg-[#fff0ed] hover:text-[#a0382f]"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={handleCreate} className="mt-4 border-t border-stone-100 pt-3">
+        <Field label="Novo cupom">
+          <input
+            value={code}
+            onChange={(event) => setCode(event.target.value.toUpperCase())}
+            placeholder="BEMVINDA10"
+            className="organizer-input"
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Tipo">
+            <select
+              value={discountType}
+              onChange={(event) => setDiscountType(event.target.value as Coupon['discountType'])}
+              className="organizer-input"
+            >
+              <option value="percent">Percentual (%)</option>
+              <option value="fixed">Valor fixo (R$)</option>
+            </select>
+          </Field>
+          <Field label="Desconto">
+            <input
+              value={value}
+              inputMode="decimal"
+              onChange={(event) => setValue(event.target.value)}
+              placeholder={discountType === 'percent' ? '10' : '20,00'}
+              className="organizer-input"
+            />
+          </Field>
+        </div>
+        {notice ? <p className="mb-2 text-xs font-medium text-[#6b665f]">{notice}</p> : null}
+        <Button type="submit" size="sm" disabled={saving || !code.trim() || !value.trim()}>
+          {saving ? 'Salvando...' : 'Criar cupom'}
+        </Button>
+      </form>
+    </div>
+  )
+}
+
+// Planilha com todos os pedidos, no formato que o Excel em portugues abre
+// direto (colunas separadas por ";").
+function OrdersExport({ token }: { token: string | null }) {
+  const [downloading, setDownloading] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  async function handleExport() {
+    setDownloading(true)
+    setNotice('')
+    try {
+      const blob = await api.download('/orders/export', token ?? undefined)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `pedidos-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Não foi possível exportar os pedidos.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div className="organizer-surface p-4">
+      <div className="flex items-center gap-2">
+        <Download size={16} className="text-[#b77717]" />
+        <h3 className="text-sm font-semibold text-[#3a164f]">Exportar pedidos</h3>
+      </div>
+      <p className="mt-1 text-xs leading-5 text-[#6b665f]">
+        Baixa uma planilha (CSV) com todos os pedidos: cliente, total, status e data.
+      </p>
+      {notice ? <p className="mt-2 text-xs font-medium text-[#a0382f]">{notice}</p> : null}
+      <div className="mt-3">
+        <Button type="button" size="sm" variant="secondary" disabled={downloading} onClick={handleExport}>
+          {downloading ? 'Gerando...' : 'Baixar planilha'}
+        </Button>
       </div>
     </div>
   )
@@ -1205,8 +1433,8 @@ function StoreWhatsappSettings({ token }: { token: string | null }) {
         <h3 className="text-sm font-semibold text-[#3a164f]">WhatsApp da loja</h3>
       </div>
       <p className="mt-1 text-xs leading-5 text-[#6b665f]">
-        Numero usado nos botões de atendimento do site e para o cliente combinar entrega ou retirada
-        depois do pagamento. Só números, com DDI e DDD (ex.: 5567999999999).
+        Numero usado nos botões de atendimento do site e para o cliente combinar entrega ou retirada depois do
+        pagamento. Só números, com DDI e DDD (ex.: 5567999999999).
       </p>
       <div className="mt-3">
         <Field label="Número">
@@ -2060,11 +2288,80 @@ function CustomersModal({ token, onClose }: { token: string | null; onClose: () 
                   {formatDate(orderDetail.createdAt)} ·{' '}
                   {orderDetail.origin === 'pdv' ? 'Venda no balcão' : 'Pedido online'}
                 </p>
+                <OrderStatusActions
+                  order={orderDetail}
+                  token={token}
+                  onChanged={(orderStatus) => {
+                    setOrderDetail((current) => (current ? { ...current, orderStatus } : current))
+                    setCustomerDetail((current) =>
+                      current
+                        ? {
+                            ...current,
+                            orders: current.orders.map((order) =>
+                              order.id === orderDetail.id ? { ...order, orderStatus } : order,
+                            ),
+                          }
+                        : current,
+                    )
+                  }}
+                />
               </div>
             )}
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+// Proximo passo que o admin pode marcar no pedido. O backend confere a mesma
+// regra: so pedido pago anda para "enviado" e, depois, "entregue".
+const nextOrderStatus: Record<string, { status: string; label: string }> = {
+  pago: { status: 'enviado', label: 'Marcar como enviado' },
+  enviado: { status: 'entregue', label: 'Marcar como entregue' },
+}
+
+function OrderStatusActions({
+  order,
+  token,
+  onChanged,
+}: {
+  order: OrderPublicDetail
+  token: string | null
+  onChanged: (orderStatus: string) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState('')
+  const presentation = getOrderStatusPresentation(order)
+  const next = nextOrderStatus[order.orderStatus]
+
+  async function handleAdvance() {
+    if (!next) return
+    setSaving(true)
+    setNotice('')
+    try {
+      await api.put(`/orders/${order.id}/status`, { status: next.status }, token ?? undefined)
+      onChanged(next.status)
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Não foi possível atualizar o pedido.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3">
+      <span
+        className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase tracking-wide ring-1 ring-inset ${presentation.className}`}
+      >
+        {presentation.label}
+      </span>
+      {next ? (
+        <Button type="button" size="sm" disabled={saving} onClick={handleAdvance}>
+          {saving ? 'Salvando...' : next.label}
+        </Button>
+      ) : null}
+      {notice ? <p className="w-full text-xs font-medium text-[#a0382f]">{notice}</p> : null}
     </div>
   )
 }
@@ -3233,7 +3530,11 @@ function Inspector({
         </button>
       )}
       {node.type === 'item' && moreOpen && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+        >
           <button
             type="button"
             aria-label="Fechar"
@@ -3344,7 +3645,8 @@ function Inspector({
                   </div>
                 )}
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-stone-200 px-3 py-2 text-xs hover:border-[#d89a28] hover:bg-[#fff8ea]">
-                  <ImageIcon size={15} /> {nodeDraft.images.length > 0 ? 'Adicionar mais fotos' : 'Enviar fotos'}
+                  <ImageIcon size={15} />{' '}
+                  {nodeDraft.images.length > 0 ? 'Adicionar mais fotos' : 'Enviar fotos'}
                   <input
                     type="file"
                     accept="image/*"

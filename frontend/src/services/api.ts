@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL ?? '/api'
+export const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 // O backend responde 409 com { message, field } quando algum dado da ficha de
 // cadastro ja existe. Guardar o campo aqui deixa o formulario destacar o input
@@ -54,6 +54,17 @@ export const api = {
       method: 'DELETE',
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     }),
+  // Respostas que nao sao JSON (ex.: a planilha de pedidos em CSV).
+  download: async (path: string, token?: string): Promise<Blob> => {
+    const response = await fetch(`${API_URL}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}))
+      throw new ApiError(payload.message ?? 'Erro no download', response.status)
+    }
+    return response.blob()
+  },
   upload: async (path: string, file: File, token?: string): Promise<string> => {
     const formData = new FormData()
     formData.append('file', file)

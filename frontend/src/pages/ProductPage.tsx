@@ -5,7 +5,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Reveal } from '../components/Reveal'
-import { Skeleton } from '../components/Skeleton'
 import { toItemContent } from '../components/site/moduleContent'
 import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
@@ -28,9 +27,11 @@ export function ProductPage() {
   const { addItem } = useCart()
   const { token } = useAuth()
   const tokenRef = useRef(token)
-  tokenRef.current = token
+  useEffect(() => {
+    tokenRef.current = token
+  }, [token])
   const format = useCurrency()
-  const { store } = useOrganizerStore()
+  const { store, remoteReady } = useOrganizerStore()
   const [quantity, setQuantity] = useState(1)
   const [selectedImage, setSelectedImage] = useState('')
   const [favorited, setFavorited] = useState(false)
@@ -43,10 +44,10 @@ export function ProductPage() {
     () => (node ? itemCardToProduct(toItemContent(node, store.tags)) : null),
     [node, store.tags],
   )
-  // O Organizador chega por polling: enquanto a loja nao carregou nenhum item,
-  // a pagina segue em "carregando" em vez de dizer que o produto nao existe
-  // (senao o primeiro render pisca um erro falso).
-  const loading = !node && store.nodes.length === 0
+  // O Organizador local nasce com as paginas padrao, mas sem os itens: so da
+  // para dizer que o produto nao existe depois da resposta do servidor (senao
+  // o primeiro render pisca um "nao encontrado" falso).
+  const loading = !node && !remoteReady
 
   useEffect(() => {
     if (node) trackProductEvent(node.id, 'view', tokenRef.current)
@@ -85,8 +86,10 @@ export function ProductPage() {
     }
   }
 
+  // Em branco enquanto carrega: a rodinha da aba (ver preload em main.tsx) ja
+  // indica o carregamento.
   if (loading) {
-    return <Skeleton className="h-[620px] w-full rounded-[36px]" />
+    return null
   }
 
   if (!product) {
@@ -195,7 +198,15 @@ export function ProductPage() {
             </p>
 
             <div className="mt-4 border-t border-[#ddc7ea] pt-4">
-              <Badge tone={statusPresentation.priceOverrideText ? 'neutral' : product.isAvailable ? 'success' : 'neutral'}>
+              <Badge
+                tone={
+                  statusPresentation.priceOverrideText
+                    ? 'neutral'
+                    : product.isAvailable
+                      ? 'success'
+                      : 'neutral'
+                }
+              >
                 {statusPresentation.priceOverrideText
                   ? statusPresentation.availableLabel
                   : statusPresentation.showStockCount
@@ -207,7 +218,9 @@ export function ProductPage() {
 
               <div className="mt-3">
                 {statusPresentation.priceOverrideText ? (
-                  <p className="text-3xl leading-none text-[#2a0f3d]">{statusPresentation.priceOverrideText}</p>
+                  <p className="text-3xl leading-none text-[#2a0f3d]">
+                    {statusPresentation.priceOverrideText}
+                  </p>
                 ) : (
                   <>
                     {product.finalPrice < product.salePrice ? (

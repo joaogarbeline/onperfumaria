@@ -14,12 +14,7 @@ import {
   type OrganizerStore,
 } from '../../types/organizer'
 
-export type OrganizerModalMode =
-  | OrganizerContentType
-  | 'tag'
-  | 'preview'
-  | 'module-picker'
-  | null
+export type OrganizerModalMode = OrganizerContentType | 'tag' | 'preview' | 'module-picker' | null
 
 type OrganizerModalProps = {
   mode: Exclude<OrganizerModalMode, null>
@@ -216,217 +211,217 @@ export function OrganizerModal({
             <div className="grid gap-4">
               <label>
                 <FieldLabel>Nome</FieldLabel>
+                <input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className={fieldClass}
+                  autoFocus
+                  required
+                />
+              </label>
+
+              {mode !== 'tag' ? (
+                <label>
+                  <FieldLabel>Descrição</FieldLabel>
+                  <textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    className={`${fieldClass} min-h-24 resize-y`}
+                  />
+                </label>
+              ) : null}
+
+              {mode === 'page' ? (
+                <>
+                  <label>
+                    <FieldLabel>Endereço da página</FieldLabel>
                     <input
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
+                      value={route || suggestedRoute}
+                      onChange={(event) => setRoute(event.target.value)}
                       className={fieldClass}
-                      autoFocus
+                      placeholder="/pagina/nome-da-pagina"
                       required
                     />
+                    <span className="mt-1 block text-[10px] text-[#6b665f]">
+                      A página será aberta neste endereço dentro do site existente.
+                    </span>
                   </label>
+                  <label>
+                    <FieldLabel>Exibição na navegação</FieldLabel>
+                    <select
+                      value={publicationStatus}
+                      onChange={(event) =>
+                        setPublicationStatus(event.target.value as OrganizerNode['status'])
+                      }
+                      className={fieldClass}
+                    >
+                      <option value="published">Publicar</option>
+                      <option value="draft">Rascunho</option>
+                    </select>
+                    <span className="mt-1 block text-[10px] text-[#6b665f]">
+                      {publicationStatus === 'draft'
+                        ? 'O rascunho aparece somente na visualização aberta pelo Modo visitante.'
+                        : 'Páginas publicadas entram automaticamente na navegação do site.'}
+                    </span>
+                  </label>
+                </>
+              ) : null}
 
-                  {mode !== 'tag' ? (
+              {mode !== 'page' && mode !== 'tag' ? (
+                <>
+                  {mode !== 'folder' && (
                     <label>
-                      <FieldLabel>Descrição</FieldLabel>
-                      <textarea
-                        value={description}
-                        onChange={(event) => setDescription(event.target.value)}
-                        className={`${fieldClass} min-h-24 resize-y`}
-                      />
-                    </label>
-                  ) : null}
-
-                  {mode === 'page' ? (
-                    <>
-                      <label>
-                        <FieldLabel>Endereço da página</FieldLabel>
-                        <input
-                          value={route || suggestedRoute}
-                          onChange={(event) => setRoute(event.target.value)}
-                          className={fieldClass}
-                          placeholder="/pagina/nome-da-pagina"
-                          required
-                        />
-                        <span className="mt-1 block text-[10px] text-[#6b665f]">
-                          A página será aberta neste endereço dentro do site existente.
-                        </span>
-                      </label>
-                      <label>
-                        <FieldLabel>Exibição na navegação</FieldLabel>
-                        <select
-                          value={publicationStatus}
-                          onChange={(event) =>
-                            setPublicationStatus(event.target.value as OrganizerNode['status'])
-                          }
-                          className={fieldClass}
-                        >
-                          <option value="published">Publicar</option>
-                          <option value="draft">Rascunho</option>
-                        </select>
-                        <span className="mt-1 block text-[10px] text-[#6b665f]">
-                          {publicationStatus === 'draft'
-                            ? 'O rascunho aparece somente na visualização aberta pelo Modo visitante.'
-                            : 'Páginas publicadas entram automaticamente na navegação do site.'}
-                        </span>
-                      </label>
-                    </>
-                  ) : null}
-
-                  {mode !== 'page' && mode !== 'tag' ? (
-                    <>
-                      {mode !== 'folder' && (
-                        <label>
-                          <FieldLabel>Página de destino</FieldLabel>
-                          <select
-                            value={selectedParent}
-                            onChange={(event) => setSelectedParent(event.target.value)}
-                            className={fieldClass}
-                            required
-                          >
-                            {containers.map((container) => (
-                              <option key={container.id} value={container.id}>
-                                {container.type === 'folder' ? '↳ ' : ''}
-                                {container.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      {mode !== 'folder' ? (
-                        <label>
-                          <FieldLabel>Publicação no site</FieldLabel>
-                          <select
-                            value={publicationStatus}
-                            onChange={(event) =>
-                              setPublicationStatus(event.target.value as OrganizerNode['status'])
-                            }
-                            className={fieldClass}
-                          >
-                            <option value="published">Publicar e mostrar agora</option>
-                            <option value="draft">Salvar como rascunho oculto</option>
-                          </select>
-                        </label>
-                      ) : (
-                        <p className="rounded-xl border border-stone-200 bg-[#fff8ea] px-3 py-2.5 text-xs leading-5 text-[#6b665f]">
-                          Fica dentro de Itens, junto das outras subpastas. Serve só para organizar os itens -
-                          não cria endereço nem aparece na navegação do site.
-                        </p>
-                      )}
-                    </>
-                  ) : null}
-
-                  {mode === 'tag' ? (
-                    <>
-                      <label>
-                        <FieldLabel>Cor</FieldLabel>
-                        <input
-                          type="color"
-                          value={color}
-                          onChange={(event) => setColor(event.target.value)}
-                          className="h-11 w-full rounded-xl border border-stone-200 bg-white p-1"
-                        />
-                      </label>
-                      <label>
-                        <FieldLabel>Desconto</FieldLabel>
-                        <select
-                          value={discountPercent}
-                          onChange={(event) => setDiscountPercent(event.target.value)}
-                          className={fieldClass}
-                        >
-                          <option value="">Nenhum (tag comum)</option>
-                          {organizerDiscountOptions.map((percent) => (
-                            <option key={percent} value={percent}>
-                              {percent}% de desconto
-                            </option>
-                          ))}
-                        </select>
-                        <span className="mt-1 block text-[10px] text-[#6b665f]">
-                          Tags de desconto podem ser usadas na etapa final do cadastro de itens.
-                        </span>
-                      </label>
-                    </>
-                  ) : null}
-
-                  {mode === 'highlight' || mode === 'item' ? (
-                    <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-                      <label>
-                        <FieldLabel>Imagem por endereço</FieldLabel>
-                        <input
-                          type="text"
-                          value={imageUrl.startsWith('data:') ? '' : imageUrl}
-                          onChange={(event) => setImageUrl(event.target.value)}
-                          className={fieldClass}
-                          placeholder="https://..."
-                        />
-                      </label>
-                      <label className="cursor-pointer rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-center text-xs font-semibold text-[#3a164f] hover:border-[#b77717] hover:bg-[#fff1d6]">
-                        Enviar arquivo
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="sr-only"
-                          onChange={(event) => handleImageFile(event.target.files?.[0])}
-                        />
-                      </label>
-                      {imageUrl ? (
-                        <img
-                          src={imageUrl}
-                          alt="Prévia"
-                          className="h-24 w-full rounded-xl object-cover sm:col-span-2"
-                        />
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {mode === 'highlight' ? (
-                    <label>
-                      <FieldLabel>Tamanho do destaque</FieldLabel>
+                      <FieldLabel>Página de destino</FieldLabel>
                       <select
-                        value={size}
-                        onChange={(event) => setSize(event.target.value as OrganizerNode['size'])}
+                        value={selectedParent}
+                        onChange={(event) => setSelectedParent(event.target.value)}
                         className={fieldClass}
+                        required
                       >
-                        {Object.entries(organizerSizeLabels).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
+                        {containers.map((container) => (
+                          <option key={container.id} value={container.id}>
+                            {container.type === 'folder' ? '↳ ' : ''}
+                            {container.name}
                           </option>
                         ))}
                       </select>
                     </label>
-                  ) : null}
+                  )}
+                  {mode !== 'folder' ? (
+                    <label>
+                      <FieldLabel>Publicação no site</FieldLabel>
+                      <select
+                        value={publicationStatus}
+                        onChange={(event) =>
+                          setPublicationStatus(event.target.value as OrganizerNode['status'])
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="published">Publicar e mostrar agora</option>
+                        <option value="draft">Salvar como rascunho oculto</option>
+                      </select>
+                    </label>
+                  ) : (
+                    <p className="rounded-xl border border-stone-200 bg-[#fff8ea] px-3 py-2.5 text-xs leading-5 text-[#6b665f]">
+                      Fica dentro de Itens, junto das outras subpastas. Serve só para organizar os itens - não
+                      cria endereço nem aparece na navegação do site.
+                    </p>
+                  )}
+                </>
+              ) : null}
 
-                  {mode === 'item' ? (
-                    <>
-                      <label>
-                        <FieldLabel>Preço</FieldLabel>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={price}
-                          onChange={(event) => setPrice(event.target.value)}
-                          className={fieldClass}
-                        />
-                      </label>
-                      <CheckboxGrid
-                        title="Tags"
-                        empty="Crie uma tag antes de associá-la."
-                        entries={store.tags.map((tag) => ({ id: tag.id, label: tag.name }))}
-                        selected={tagIds}
-                        onToggle={(id) => toggleValue(tagIds, id, setTagIds)}
-                      />
-                    </>
-                  ) : null}
+              {mode === 'tag' ? (
+                <>
+                  <label>
+                    <FieldLabel>Cor</FieldLabel>
+                    <input
+                      type="color"
+                      value={color}
+                      onChange={(event) => setColor(event.target.value)}
+                      className="h-11 w-full rounded-xl border border-stone-200 bg-white p-1"
+                    />
+                  </label>
+                  <label>
+                    <FieldLabel>Desconto</FieldLabel>
+                    <select
+                      value={discountPercent}
+                      onChange={(event) => setDiscountPercent(event.target.value)}
+                      className={fieldClass}
+                    >
+                      <option value="">Nenhum (tag comum)</option>
+                      {organizerDiscountOptions.map((percent) => (
+                        <option key={percent} value={percent}>
+                          {percent}% de desconto
+                        </option>
+                      ))}
+                    </select>
+                    <span className="mt-1 block text-[10px] text-[#6b665f]">
+                      Tags de desconto podem ser usadas na etapa final do cadastro de itens.
+                    </span>
+                  </label>
+                </>
+              ) : null}
 
-                  {mode === 'carousel' || mode === 'catalog' ? (
-                    <ProductCheckboxGrid
-                      title={mode === 'catalog' ? 'Produtos do catálogo' : 'Itens do carrossel'}
-                      empty={`Crie itens antes de adicioná-los ao ${mode === 'catalog' ? 'catálogo' : 'carrossel'}.`}
-                      items={items}
-                      selected={itemIds}
-                      onToggle={(id) => toggleValue(itemIds, id, setItemIds)}
+              {mode === 'highlight' || mode === 'item' ? (
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <label>
+                    <FieldLabel>Imagem por endereço</FieldLabel>
+                    <input
+                      type="text"
+                      value={imageUrl.startsWith('data:') ? '' : imageUrl}
+                      onChange={(event) => setImageUrl(event.target.value)}
+                      className={fieldClass}
+                      placeholder="https://..."
+                    />
+                  </label>
+                  <label className="cursor-pointer rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-center text-xs font-semibold text-[#3a164f] hover:border-[#b77717] hover:bg-[#fff1d6]">
+                    Enviar arquivo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(event) => handleImageFile(event.target.files?.[0])}
+                    />
+                  </label>
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt="Prévia"
+                      className="h-24 w-full rounded-xl object-cover sm:col-span-2"
                     />
                   ) : null}
+                </div>
+              ) : null}
+
+              {mode === 'highlight' ? (
+                <label>
+                  <FieldLabel>Tamanho do destaque</FieldLabel>
+                  <select
+                    value={size}
+                    onChange={(event) => setSize(event.target.value as OrganizerNode['size'])}
+                    className={fieldClass}
+                  >
+                    {Object.entries(organizerSizeLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              {mode === 'item' ? (
+                <>
+                  <label>
+                    <FieldLabel>Preço</FieldLabel>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={price}
+                      onChange={(event) => setPrice(event.target.value)}
+                      className={fieldClass}
+                    />
+                  </label>
+                  <CheckboxGrid
+                    title="Tags"
+                    empty="Crie uma tag antes de associá-la."
+                    entries={store.tags.map((tag) => ({ id: tag.id, label: tag.name }))}
+                    selected={tagIds}
+                    onToggle={(id) => toggleValue(tagIds, id, setTagIds)}
+                  />
+                </>
+              ) : null}
+
+              {mode === 'carousel' || mode === 'catalog' ? (
+                <ProductCheckboxGrid
+                  title={mode === 'catalog' ? 'Produtos do catálogo' : 'Itens do carrossel'}
+                  empty={`Crie itens antes de adicioná-los ao ${mode === 'catalog' ? 'catálogo' : 'carrossel'}.`}
+                  items={items}
+                  selected={itemIds}
+                  onToggle={(id) => toggleValue(itemIds, id, setItemIds)}
+                />
+              ) : null}
             </div>
 
             <div className="mt-6 flex justify-end gap-2 border-t border-stone-200/80 pt-4">

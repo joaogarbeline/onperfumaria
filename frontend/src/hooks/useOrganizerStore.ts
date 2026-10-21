@@ -17,6 +17,9 @@ import {
 
 const STORAGE_KEY = 'on-perfumaria-organizer-v1'
 const SYNC_EVENT = 'on-perfumaria-organizer-sync'
+// Disparado quando a primeira resposta do servidor chega (ou falha); o
+// main.tsx usa para encerrar o carregamento da aba.
+export const ORGANIZER_READY_EVENT = 'on-perfumaria-organizer-ready'
 const VISIBLE_RECENT_LIMIT = 7
 // A pagina do admin monta varias instancias independentes deste hook ao
 // mesmo tempo (preview do site reaproveita Home/Header/etc, cada um com seu
@@ -26,6 +29,10 @@ const VISIBLE_RECENT_LIMIT = 7
 // instancia so-leitura pode aplicar um GET desatualizado e, via
 // SYNC_EVENT/localStorage, sobrescrever a edicao que acabou de ser salva.
 let lastLocalEditAt = 0
+// Ultima versao recebida do servidor, compartilhada entre as instancias do
+// hook: ao navegar pelo site, a pagina nova ja nasce com os dados reais em vez
+// de esperar outro GET (e mostrar "nao encontrado" enquanto isso).
+let lastRemoteStore: OrganizerStore | null = null
 const REMOTE_APPLY_COOLDOWN_MS = 4_000
 function withinEditCooldown() {
   return Date.now() - lastLocalEditAt < REMOTE_APPLY_COOLDOWN_MS
@@ -164,8 +171,12 @@ export type CreateOrganizerNodeInput = {
 }
 
 export function useOrganizerStore(token?: string) {
-  const [store, setStore] = useState<OrganizerStore>(loadOrganizerStore)
-  const [remoteReady, setRemoteReady] = useState(false)
+  const [store, setStore] = useState<OrganizerStore>(() =>
+    window.location.pathname !== '/admin' && lastRemoteStore ? lastRemoteStore : loadOrganizerStore(),
+  )
+  // So fica true depois da primeira resposta do servidor (ou se outra pagina
+  // ja recebeu): antes disso o store e o esqueleto padrao, sem os itens.
+  const [remoteReady, setRemoteReady] = useState(lastRemoteStore !== null)
   const storeRef = useRef(store)
   const pendingLocalSave = useRef(false)
   const localRevision = useRef(0)
@@ -207,7 +218,8 @@ export function useOrganizerStore(token?: string) {
       setStore((current) => (storesAreEqual(current, nextStore) ? current : nextStore))
     }
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== STORAGE_KEY || !event.newValue || pendingLocalSave.current || withinEditCooldown()) return
+      if (event.key !== STORAGE_KEY || !event.newValue || pendingLocalSave.current || withinEditCooldown())
+        return
       const nextStore = loadOrganizerStore()
       setStore((current) => (storesAreEqual(current, nextStore) ? current : nextStore))
     }
@@ -235,6 +247,7 @@ export function useOrganizerStore(token?: string) {
       // (loadOrganizerStore ainda nao confirmou os dados reais) - uma edicao feita
       // nesse instante nao pode bloquear a chegada dos dados reais do servidor,
       // senao esse esqueleto acaba sendo salvo por cima deles.
+      lastRemoteStore = remoteStore
       if (hasSyncedWithServer.current && (pendingLocalSave.current || withinEditCooldown())) return
       hasSyncedWithServer.current = true
 
@@ -264,6 +277,7 @@ export function useOrganizerStore(token?: string) {
         // O armazenamento local continua sendo usado quando o backend estiver indisponível.
       } finally {
         if (!cancelled) setRemoteReady(true)
+        window.dispatchEvent(new Event(ORGANIZER_READY_EVENT))
       }
     }
 
@@ -288,16 +302,6 @@ export function useOrganizerStore(token?: string) {
         : { ...current, nodes: [...current.nodes, itensRootNode] },
     )
   }, [isOrganizerRoute, remoteReady])
-
-  useEffect(() => {
-    if (!isOrganizerRoute || !remoteReady || !pendingLocalSave.current || !hasSyncedWithServer.current) return
-
-    const timeout = window.setTimeout(() => {
-      latestSnapshotToPut.current = storeRef.current
-      void flushPendingPut()
-    }, 250)
-    return () => window.clearTimeout(timeout)
-  }, [isOrganizerRoute, remoteReady, store])
 
   // So um PUT pode estar em voo por vez - caso contrario, dois salvamentos
   // disparados em sequencia rapida podem terminar fora de ordem na rede, e o
@@ -324,6 +328,16 @@ export function useOrganizerStore(token?: string) {
       isPutInFlight.current = false
     }
   }
+
+  useEffect(() => {
+    if (!isOrganizerRoute || !remoteReady || !pendingLocalSave.current || !hasSyncedWithServer.current) return
+
+    const timeout = window.setTimeout(() => {
+      latestSnapshotToPut.current = storeRef.current
+      void flushPendingPut()
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [isOrganizerRoute, remoteReady, store])
 
   function createNode(input: CreateOrganizerNodeInput) {
     const timestamp = new Date().toISOString()
@@ -440,7 +454,6 @@ export function useOrganizerStore(token?: string) {
       )
     })
   }
-
 
   function recordAccess(id: string, label: string) {
     setLocalStore((current) => withActivity(current, activity(label, 'Aberto no organizador', id)))
@@ -622,6 +635,7 @@ export function useOrganizerStore(token?: string) {
 
   return {
     store,
+    remoteReady,
     createNode,
     createTag,
     updateNode,

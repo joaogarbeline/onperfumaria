@@ -1,10 +1,5 @@
 export type OrganizerContentType = 'page' | 'folder' | 'carousel' | 'highlight' | 'catalog' | 'item'
-export type OrganizerStatus =
-  | 'draft'
-  | 'published'
-  | 'coming-soon'
-  | 'out-of-stock'
-  | 'low-stock'
+export type OrganizerStatus = 'draft' | 'published' | 'coming-soon' | 'out-of-stock' | 'low-stock'
 export type OrganizerSize = 'small' | 'medium' | 'large'
 export type OrganizerVariant =
   | 'standard'
@@ -42,6 +37,12 @@ export type OrganizerNode = {
   volumeMl?: number
   /** Quantidade em estoque. Ao chegar a 0, o status vira "coming-soon" automaticamente. */
   stock?: number
+  /**
+   * Unidades vendidas, somadas pelo servidor a cada venda paga. O admin so
+   * precisa devolve-lo como veio: e assim que o servidor desconta as vendas
+   * feitas enquanto a tela estava aberta. Nao editar nem remover.
+   */
+  stockSold?: number
   /** Desconto no Pix em %, especifico do item. Sem valor, a pagina usa o padrao do site. */
   pixDiscountPercent?: number
   route?: string

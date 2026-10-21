@@ -64,11 +64,9 @@ export function useAdminNotifications(enabled: boolean, token: string | null) {
   const markRead = useCallback(
     (orderId: string) =>
       api
-        .post<OrderNotificationDetail & { unread: number }>(
-          `/admin/notifications/${orderId}/read`,
-          {},
-          token ?? undefined,
-        )
+        .post<
+          OrderNotificationDetail & { unread: number }
+        >(`/admin/notifications/${orderId}/read`, {}, token ?? undefined)
         .then((detail) => {
           setUnread(detail.unread)
           setNotifications((current) =>

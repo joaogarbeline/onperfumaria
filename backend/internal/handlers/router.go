@@ -56,6 +56,16 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			err := service.RecordProductEvent(c.Request.Context(), optionalCustomerID(cfg, c), input.SessionID, input.ProductID, input.Type)
 			respond(c, true, err)
 		})
+		// Fica pendente ate o navegador desistir (o site cancela assim que os
+		// dados do Organizador chegam) ou 15s: e o que mantem a rodinha da aba
+		// girando enquanto a pagina carrega (ver frontend/src/main.tsx).
+		api.GET("/page-hold", func(c *gin.Context) {
+			select {
+			case <-c.Request.Context().Done():
+			case <-time.After(15 * time.Second):
+			}
+			c.Status(http.StatusNoContent)
+		})
 		api.GET("/store/config", func(c *gin.Context) {
 			data, err := service.StoreConfig(c.Request.Context())
 			respond(c, data, err)
@@ -84,7 +94,7 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 		api.GET("/shipping/correios", func(c *gin.Context) {
 			cep := c.Query("cep")
 			weightGrams, _ := strconv.Atoi(c.DefaultQuery("weight", "0"))
-			data, err := shipping.FetchCorreiosOptions("79000000", cep, weightGrams)
+			data, err := shipping.FetchCorreiosOptions(shipping.StoreOriginCEP, cep, weightGrams)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 				return
@@ -120,6 +130,52 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			}
 			data, err := service.Orders(c.Request.Context(), filter)
 			respond(c, data, err)
+		})
+		api.PUT("/orders/:id/status", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			var input struct {
+				Status string `json:"status"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			err := service.UpdateOrderStatus(c.Request.Context(), c.Param("id"), input.Status)
+			respond(c, gin.H{"orderStatus": input.Status}, err)
+		})
+		// Planilha de pedidos para o Excel (ver ExportOrdersCSV).
+		api.GET("/orders/export", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			data, err := service.ExportOrdersCSV(c.Request.Context())
+			if err != nil {
+				respond(c, nil, err)
+				return
+			}
+			filename := "pedidos-" + time.Now().Format("2006-01-02") + ".csv"
+			c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+			c.Data(http.StatusOK, "text/csv; charset=utf-8", data)
+		})
+		api.GET("/coupons", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			data, err := service.ListCoupons(c.Request.Context())
+			respond(c, data, err)
+		})
+		saveCoupon := func(c *gin.Context) {
+			var input struct {
+				Code         string  `json:"code"`
+				DiscountType string  `json:"discountType"`
+				Value        float64 `json:"value"`
+				IsActive     bool    `json:"isActive"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			data, err := service.SaveCoupon(c.Request.Context(), c.Param("id"), input.Code, input.DiscountType, input.Value, input.IsActive)
+			respond(c, data, err)
+		}
+		api.POST("/coupons", middlewares.RequireAdmin(cfg), saveCoupon)
+		api.PUT("/coupons/:id", middlewares.RequireAdmin(cfg), saveCoupon)
+		api.DELETE("/coupons/:id", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			err := service.DeleteCoupon(c.Request.Context(), c.Param("id"))
+			respond(c, true, err)
 		})
 		api.GET("/customers", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
 			data, err := service.Customers(c.Request.Context(), c.Query("search"), c.GetString("userID"))

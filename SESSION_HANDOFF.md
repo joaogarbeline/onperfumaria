@@ -41,5 +41,9 @@ go vet ./...
 go build ./cmd/api
 ```
 
-O projeto ainda nao possui testes automatizados proprios; atualmente `go test`
-valida somente a compilacao dos pacotes sem arquivos de teste.
+O backend tem testes em `internal/config`, `internal/handlers` e
+`internal/services` (frete dos Correios recalculado no servidor, recusa sem
+provedor de pagamento, JWT_SECRET fraco, cupom limitado ao subtotal, merge de
+estoque do Organizador, assinatura do webhook do Mercado Pago). O frontend nao
+tem testes automatizados; `lint`, `format:check` e `build` devem passar sem
+erros.

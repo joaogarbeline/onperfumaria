@@ -55,7 +55,9 @@ export function ItemWizard({
   // Mesma logica da gaveta "Aparece em" do painel de propriedades, so que
   // aqui o item ainda nao existe - as selecoes ficam no draft e so viram
   // itemIds reais dos blocos quando o cadastro e finalizado.
-  const placementBlocks = nodes.filter((candidate) => candidate.type === 'carousel' || candidate.type === 'catalog')
+  const placementBlocks = nodes.filter(
+    (candidate) => candidate.type === 'carousel' || candidate.type === 'catalog',
+  )
   const placementsByPage = new Map<string, OrganizerNode[]>()
   placementBlocks.forEach((block) => {
     const pageName = nodes.find((candidate) => candidate.id === block.parentId)?.name ?? 'Outros'

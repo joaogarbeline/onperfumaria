@@ -262,11 +262,13 @@ export function CheckoutPage() {
 
   useEffect(() => {
     if (!showBrick) return
-    // Voltar uma etapa e tentar de novo precisa dar outra chance ao
-    // formulario, em vez de repetir o aviso da tentativa anterior.
-    setTimedOutBrickKey('')
     const timeout = window.setTimeout(() => setTimedOutBrickKey(brickKey), 15000)
-    return () => window.clearTimeout(timeout)
+    return () => {
+      window.clearTimeout(timeout)
+      // Voltar uma etapa e tentar de novo precisa dar outra chance ao
+      // formulario, em vez de repetir o aviso da tentativa anterior.
+      setTimedOutBrickKey('')
+    }
   }, [brickKey, showBrick])
 
   async function handlePayment(brickData: { formData?: unknown }): Promise<void> {
@@ -289,7 +291,8 @@ export function CheckoutPage() {
         {
           ...form,
           deliveryMode,
-          correiosPrice: deliveryMode === 'correios' ? (activeQuote?.amount ?? 0) : 0,
+          // So o servico escolhido (PAC/SEDEX): o servidor recota o valor do frete.
+          correiosService: deliveryMode === 'correios' ? selectedCorreios : '',
           items: items.map((item) => ({ productId: item.id, quantity: item.quantity })),
           paymentMethodId: formData.payment_method_id,
           token: formData.token ?? '',

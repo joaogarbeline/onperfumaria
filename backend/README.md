@@ -10,10 +10,9 @@ internal/auth/          criacao e validacao de tokens
 internal/config/        leitura das variaveis de ambiente
 internal/database/      conexao, migracoes e dados iniciais
 internal/handlers/      rotas HTTP e adaptacao de requisicoes
+internal/mailer/        envio de e-mail (recuperacao de senha)
 internal/middlewares/   autenticacao das rotas
-internal/models/        modelos compartilhados
 internal/payments/      integracao de pagamentos
-internal/repositories/  acesso reutilizavel aos dados da loja
 internal/services/      regras de negocio
 internal/shipping/      calculo e integracoes de frete
 migrations/             evolucao incremental do banco PostgreSQL

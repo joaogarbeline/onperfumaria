@@ -8,12 +8,17 @@ import (
 	"strings"
 )
 
+// StoreOriginCEP e o CEP de onde a loja despacha. A cotacao mostrada no
+// checkout e a recotacao feita ao fechar o pedido usam o mesmo valor, para o
+// frete cobrado ser o mesmo que o cliente viu.
+const StoreOriginCEP = "79000000"
+
 type CorreiosOption struct {
-	Service string
-	Code    string
-	Price   float64
-	Days    int
-	Label   string
+	Service string  `json:"service"`
+	Code    string  `json:"code"`
+	Price   float64 `json:"price"`
+	Days    int     `json:"days"`
+	Label   string  `json:"label"`
 }
 
 type correiosResponse struct {

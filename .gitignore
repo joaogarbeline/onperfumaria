@@ -14,3 +14,8 @@ npm-debug.log*
 .idea/
 
 /backend/tmp/
+
+# Build do frontend copiado para o backend: a imagem Docker gera o seu proprio
+# (frontend/dist -> /app/public), entao nada disso vai para o git.
+/backend/public/*
+!/backend/public/uploads/

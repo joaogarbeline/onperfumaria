@@ -23,6 +23,7 @@ services:
     environment:
       PORT: "8080"
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-onperfumaria_dev}@db:5432/onperfumaria?sslmode=disable
+      # So para dev. Se trocar, use 32+ caracteres: o backend nao sobe com menos.
       JWT_SECRET: ${JWT_SECRET:-onperfumaria-local-development-secret}
       FRONTEND_URL: http://localhost:5173
       AUTO_SEED: "true"
@@ -36,6 +37,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-On Perfumaria}
       DEBUG_PASSWORD_RESET_LINK: ${DEBUG_PASSWORD_RESET_LINK:-true}
+      PAYMENTS_MOCK: ${PAYMENTS_MOCK:-true}
       GOCACHE: /root/.cache/go-build
       GOMODCACHE: /go/pkg/mod
     volumes:

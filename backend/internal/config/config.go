@@ -1,12 +1,18 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
 
 	"github.com/joho/godotenv"
 )
+
+// minJWTSecretLength: quem conhece o JWT_SECRET assina token de admin, entao
+// ele precisa ser longo e exclusivo de cada ambiente.
+const minJWTSecretLength = 32
 
 type Config struct {
 	Port           string
@@ -32,6 +38,10 @@ type Config struct {
 	// Em dev, sem SMTP, imprime o link de recuperacao no log do servidor.
 	// Nunca ligar em producao: quem le o log troca a senha de qualquer cliente.
 	DebugPasswordResetLink bool
+	// Em dev, sem token do Mercado Pago, usa o provider de mentira, que
+	// aprova cartao sem cobrar nada. Nunca ligar em producao: desligado, o
+	// checkout sem token e recusado.
+	PaymentsMock bool
 }
 
 func Load() Config {
@@ -40,7 +50,7 @@ func Load() Config {
 	cfg := Config{
 		Port:             getEnv("PORT", "8080"),
 		DatabaseURL:      getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/onperfumaria?sslmode=disable"),
-		JWTSecret:        getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTSecret:        getEnv("JWT_SECRET", ""),
 		FrontendURL:      getEnv("FRONTEND_URL", "http://localhost:5173"),
 		GoogleClientID:   getEnv("GOOGLE_CLIENT_ID", ""),
 		AutoSeed:         getEnv("AUTO_SEED", "true") == "true",
@@ -56,13 +66,31 @@ func Load() Config {
 		SMTPFrom:               getEnv("SMTP_FROM", ""),
 		SMTPFromName:           getEnv("SMTP_FROM_NAME", "On Perfumaria"),
 		DebugPasswordResetLink: getEnv("DEBUG_PASSWORD_RESET_LINK", "false") == "true",
+		PaymentsMock:           getEnv("PAYMENTS_MOCK", "false") == "true",
 	}
 
-	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET must be set")
+	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
+		log.Fatalf("%v. Gere um segredo com: openssl rand -hex 32", err)
+	}
+	if cfg.PaymentsMock {
+		log.Println("PAYMENTS_MOCK ligado: sem token do Mercado Pago, pagamentos sao aprovados sem cobranca. So para desenvolvimento.")
 	}
 
 	return cfg
+}
+
+// validateJWTSecret recusa segredo vazio, curto ou igual ao antigo valor
+// padrao, que e publico no historico do repositorio.
+func validateJWTSecret(secret string) error {
+	switch {
+	case secret == "":
+		return errors.New("JWT_SECRET nao definido")
+	case secret == "change-me-in-production":
+		return errors.New("JWT_SECRET ainda esta com o valor de exemplo change-me-in-production")
+	case len(secret) < minJWTSecretLength:
+		return fmt.Errorf("JWT_SECRET tem %d caracteres; o minimo e %d", len(secret), minJWTSecretLength)
+	}
+	return nil
 }
 
 func getEnv(key, fallback string) string {

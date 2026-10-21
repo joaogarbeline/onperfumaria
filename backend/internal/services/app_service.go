@@ -5,11 +5,13 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -20,6 +22,7 @@ import (
 	"onperfumaria/backend/internal/shipping"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -65,7 +68,7 @@ type CheckoutInput struct {
 	State           string         `json:"state"`
 	DeliveryMode    string         `json:"deliveryMode"`
 	CouponCode      string         `json:"couponCode"`
-	CorreiosPrice   float64        `json:"correiosPrice"`
+	CorreiosService string         `json:"correiosService"` // codigo do PAC/SEDEX escolhido; o valor e recotado em CreateOrder
 	Items           []CheckoutItem `json:"items"`
 	PaymentMethodID string         `json:"paymentMethodId"`
 	Token           string         `json:"token"`
@@ -112,15 +115,28 @@ func NewService(cfg config.Config, db *pgxpool.Pool) *Service {
 	return svc
 }
 
+// ErrPaymentsUnavailable recusa o checkout quando nao ha como cobrar de verdade.
+var ErrPaymentsUnavailable = errors.New("pagamento indisponivel no momento")
+
 // resolvePaymentsProvider reads the current Mercado Pago access token from the
 // database on every call, so changes saved in the admin panel take effect
 // immediately without requiring a backend restart.
-func (s *Service) resolvePaymentsProvider(ctx context.Context) payments.Provider {
+func (s *Service) resolvePaymentsProvider(ctx context.Context) (payments.Provider, error) {
 	mpToken, _ := s.GetSetting(ctx, "mp_access_token")
+	return choosePaymentsProvider(mpToken, s.cfg.PaymentsMock, s.cfg.FrontendURL)
+}
+
+// choosePaymentsProvider so devolve o MockProvider (que aprova cartao sem
+// cobrar) com PAYMENTS_MOCK ligado. Sem token e sem a flag - caso de producao
+// ainda nao configurada - o pedido e recusado em vez de virar "pago" de graca.
+func choosePaymentsProvider(mpToken string, allowMock bool, frontendURL string) (payments.Provider, error) {
 	if mpToken != "" {
-		return payments.NewMercadoPagoProvider(mpToken, s.cfg.FrontendURL)
+		return payments.NewMercadoPagoProvider(mpToken, frontendURL), nil
 	}
-	return payments.MockProvider{}
+	if allowMock {
+		return payments.MockProvider{}, nil
+	}
+	return nil, ErrPaymentsUnavailable
 }
 
 func (s *Service) GetOrganizerStore(ctx context.Context) (json.RawMessage, error) {
@@ -146,13 +162,36 @@ func (s *Service) SaveOrganizerStore(ctx context.Context, value json.RawMessage)
 		return nil, errors.New("estado do organizador excede o limite permitido")
 	}
 
-	_, err := s.db.Exec(
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	// FOR UPDATE: uma baixa de estoque em andamento (decrementOrganizerStock)
+	// termina antes, e as vendas que a tela do admin ainda nao viu entram no
+	// merge abaixo em vez de serem apagadas pelo JSON que ela mandou.
+	var current string
+	err = tx.QueryRow(ctx, `SELECT value FROM settings WHERE key = $1 FOR UPDATE`, organizerStoreSettingKey).Scan(&current)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		value, err = mergeOrganizerStockSales([]byte(current), value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if _, err := tx.Exec(
 		ctx,
 		`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
 		organizerStoreSettingKey,
 		string(value),
-	)
-	if err != nil {
+	); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return value, nil
@@ -168,15 +207,7 @@ func (s *Service) ValidateCoupon(ctx context.Context, code string, subtotal floa
 	if err != nil {
 		return nil, errors.New("cupom invalido ou inativo")
 	}
-	discount := 0.0
-	if discountType == "percent" {
-		discount = subtotal * (value / 100)
-	} else {
-		discount = value
-	}
-	if discount > subtotal {
-		discount = subtotal
-	}
+	discount := couponDiscount(discountType, value, subtotal)
 	return map[string]interface{}{
 		"code":         strings.ToUpper(code),
 		"discountType": discountType,
@@ -185,6 +216,23 @@ func (s *Service) ValidateCoupon(ctx context.Context, code string, subtotal floa
 		"subtotal":     subtotal,
 		"final":        subtotal - discount,
 	}, nil
+}
+
+// couponDiscount calcula o desconto do cupom limitado ao subtotal dos itens:
+// um cupom de valor fixo maior que a compra nao pode deixar o total negativo
+// (nem "pagar" o frete). Usada tanto na previa do checkout quanto no pedido.
+func couponDiscount(discountType string, value, subtotal float64) float64 {
+	discount := value
+	if discountType == "percent" {
+		discount = subtotal * (value / 100)
+	}
+	if discount > subtotal {
+		discount = subtotal
+	}
+	if discount < 0 {
+		discount = 0
+	}
+	return discount
 }
 
 func (s *Service) StoreConfig(ctx context.Context) (map[string]interface{}, error) {
@@ -207,7 +255,9 @@ func (s *Service) StoreConfig(ctx context.Context) (map[string]interface{}, erro
 		}
 		options = append(options, map[string]string{"value": rule.Code, "label": rule.Name})
 	}
-	options = append(options, map[string]string{"value": "correios", "label": "Correios (PAC/SEDEX)"})
+	if correiosEnabled {
+		options = append(options, map[string]string{"value": "correios", "label": "Correios (PAC/SEDEX)"})
+	}
 
 	mpPublicKey, _ := s.GetSetting(ctx, "mp_public_key")
 	storeWhatsapp, _ := s.GetSetting(ctx, "store_whatsapp")
@@ -569,6 +619,12 @@ func (s *Service) SetDefaultCustomerAddress(ctx context.Context, customerID, add
 }
 
 func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[string]interface{}, error) {
+	// Sem forma de cobrar, recusa antes de gravar cliente, endereco ou pedido.
+	paymentsProvider, err := s.resolvePaymentsProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -623,19 +679,21 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	if input.CouponCode != "" {
 		var couponType string
 		var value float64
-		err := tx.QueryRow(ctx, `SELECT discount_type, value FROM coupons WHERE code = $1 AND is_active = true`, strings.ToUpper(input.CouponCode)).Scan(&couponType, &value)
+		err := tx.QueryRow(ctx, `SELECT discount_type, value FROM coupons WHERE code = $1 AND is_active = true`, strings.ToUpper(strings.TrimSpace(input.CouponCode))).Scan(&couponType, &value)
 		if err == nil {
-			if couponType == "percent" {
-				discount = subtotal * (value / 100)
-			} else {
-				discount = value
-			}
+			discount = couponDiscount(couponType, value, subtotal)
 		}
 	}
 
 	var shippingAmount float64
-	if input.DeliveryMode == "correios" && input.CorreiosPrice > 0 {
-		shippingAmount = input.CorreiosPrice
+	if input.DeliveryMode == "correios" {
+		if !correiosEnabled {
+			return nil, errors.New("entrega pelos Correios indisponivel no momento")
+		}
+		shippingAmount, err = quoteCorreiosForOrder(input.CEP, weight, input.CorreiosService)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		shippingQuote, err := s.QuoteShipping(ctx, shipping.QuoteInput{
 			CEP:          input.CEP,
@@ -654,7 +712,7 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 	if input.PaymentMethodID == "" {
 		return nil, errors.New("selecione uma forma de pagamento")
 	}
-	paymentResult, err := s.resolvePaymentsProvider(ctx).CreatePayment(payments.DirectPaymentInput{
+	paymentResult, err := paymentsProvider.CreatePayment(payments.DirectPaymentInput{
 		Total:           total,
 		Description:     fmt.Sprintf("Pedido On Perfumaria (%d itens)", len(orderItems)),
 		PaymentMethodID: input.PaymentMethodID,
@@ -882,6 +940,37 @@ func (s *Service) ensureAddress(ctx context.Context, tx pgx.Tx, customerID, cep,
 	return id, err
 }
 
+// correiosEnabled esconde a opcao "Correios (PAC/SEDEX)" do checkout. Desligada
+// porque o webservice antigo (ws.correios.com.br) parou de responder e a API
+// nova so cota preco com contrato "a faturar". Para religar: trocar a cotacao
+// em shipping/correios.go por uma fonte que responda e voltar para true.
+const correiosEnabled = false
+
+// fetchCorreiosOptions e a cotacao real dos Correios; os testes trocam por
+// uma resposta fixa para nao depender da rede.
+var fetchCorreiosOptions = shipping.FetchCorreiosOptions
+
+// quoteCorreiosForOrder recota o frete dos Correios na hora de fechar o
+// pedido, com o CEP de entrega e o peso calculado no servidor; do navegador so
+// vem qual servico o cliente escolheu. Se a cotacao falhar ou o servico nao
+// vier na resposta, o pedido e recusado em vez de cair num valor nao conferido.
+func quoteCorreiosForOrder(cep string, weightGrams int, serviceCode string) (float64, error) {
+	if serviceCode == "" {
+		return 0, errors.New("selecione PAC ou SEDEX para a entrega pelos Correios")
+	}
+	options, err := fetchCorreiosOptions(shipping.StoreOriginCEP, cep, weightGrams)
+	if err != nil {
+		log.Printf("[checkout] cotacao dos Correios falhou (cep %s, %dg): %v", cep, weightGrams, err)
+		return 0, errors.New("nao foi possivel calcular o frete dos Correios agora; tente novamente ou escolha outra forma de entrega")
+	}
+	for _, option := range options {
+		if option.Code == serviceCode && option.Price > 0 {
+			return option.Price, nil
+		}
+	}
+	return 0, errors.New("a opcao dos Correios escolhida nao esta disponivel para este CEP")
+}
+
 func mapPaymentToOrderStatus(paymentStatus string) string {
 	if paymentStatus == "paid" || paymentStatus == "approved" {
 		return "pago"
@@ -984,17 +1073,16 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 
 	var orderID string
 	// A condicao olha o order_status, nao o payment_status: todo pedido que
-	// ainda nao esta "pago" entra, inclusive o cartao que nasceu "in_process"
+	// ainda aguarda pagamento entra, inclusive o cartao que nasceu "in_process"
 	// (analise do emissor) e so foi aprovado depois - conferir apenas
 	// payment_status = 'pending' deixava esse caso preso em "aguardando
-	// pagamento" mesmo com o dinheiro aprovado. E como "pago" e justamente o
-	// status que ja baixou estoque na criacao do pedido, deixa-lo de fora e o
-	// que impede uma segunda notificacao do mesmo pagamento baixar o estoque
-	// de novo.
+	// pagamento" mesmo com o dinheiro aprovado. Pedido ja pago, enviado ou
+	// entregue fica de fora: e o que impede uma notificacao repetida de baixar
+	// o estoque de novo ou de voltar um pedido enviado para "pago".
 	err = s.db.QueryRow(ctx, `
 		UPDATE orders
 		SET payment_status = 'paid', order_status = 'pago', mp_payment_id = $1
-		WHERE order_status <> 'pago' AND mp_preference_id = $1
+		WHERE order_status = 'aguardando_pagamento' AND mp_preference_id = $1
 		RETURNING id::text`,
 		paymentID).Scan(&orderID)
 
@@ -1318,7 +1406,6 @@ func (s *Service) MarkOrderNotificationRead(ctx context.Context, orderID string)
 	return s.AdminUnreadOrderCount(ctx)
 }
 
-
 func (s *Service) UpdateOrderStatus(ctx context.Context, orderID, newStatus string) error {
 	validStatuses := map[string]string{
 		"pago":     "aguardando_pagamento",
@@ -1330,7 +1417,9 @@ func (s *Service) UpdateOrderStatus(ctx context.Context, orderID, newStatus stri
 		return fmt.Errorf("status invalido: %s", newStatus)
 	}
 
-	result, err := s.db.Exec(ctx, `UPDATE orders SET order_status = $2 WHERE id = $1 AND order_status = $3 AND payment_status = 'paid'`, orderID, newStatus, requiredPrev)
+	// Cartao aprovado na hora fica com payment_status "approved"; o Pix (e o
+	// cartao aprovado depois) vira "paid" pelo webhook. Os dois estao pagos.
+	result, err := s.db.Exec(ctx, `UPDATE orders SET order_status = $2 WHERE id = $1 AND order_status = $3 AND payment_status IN ('paid', 'approved')`, orderID, newStatus, requiredPrev)
 	if err != nil {
 		return err
 	}
@@ -1360,27 +1449,52 @@ func (s *Service) ListCoupons(ctx context.Context) ([]map[string]interface{}, er
 }
 
 func (s *Service) SaveCoupon(ctx context.Context, id, code, discountType string, value float64, isActive bool) (map[string]interface{}, error) {
-	if code == "" || discountType == "" {
-		return nil, errors.New("codigo e tipo obrigatorios")
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if err := validateCoupon(code, discountType, value); err != nil {
+		return nil, err
 	}
-	code = strings.ToUpper(code)
+	var err error
 	if id == "" {
-		if err := s.db.QueryRow(ctx, `INSERT INTO coupons (code, discount_type, value, is_active) VALUES ($1, $2, $3, $4) RETURNING id::text`, code, discountType, value, isActive).Scan(&id); err != nil {
-			return nil, err
-		}
+		err = s.db.QueryRow(ctx, `INSERT INTO coupons (code, discount_type, value, is_active) VALUES ($1, $2, $3, $4) RETURNING id::text`, code, discountType, value, isActive).Scan(&id)
 	} else {
-		if _, err := s.db.Exec(ctx, `UPDATE coupons SET code = $2, discount_type = $3, value = $4, is_active = $5 WHERE id = $1`, id, code, discountType, value, isActive); err != nil {
-			return nil, err
+		var result pgconn.CommandTag
+		result, err = s.db.Exec(ctx, `UPDATE coupons SET code = $2, discount_type = $3, value = $4, is_active = $5 WHERE id = $1`, id, code, discountType, value, isActive)
+		if err == nil && result.RowsAffected() == 0 {
+			return nil, errors.New("cupom nao encontrado")
 		}
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return nil, fmt.Errorf("ja existe um cupom com o codigo %s", code)
+	}
+	if err != nil {
+		return nil, err
 	}
 	return map[string]interface{}{"id": id, "code": code, "discountType": discountType, "value": value, "isActive": isActive}, nil
+}
+
+// validateCoupon barra cupom que o checkout nao saberia aplicar: tipo
+// desconhecido, valor zerado/negativo ou percentual acima de 100%.
+func validateCoupon(code, discountType string, value float64) error {
+	if code == "" {
+		return errors.New("informe o codigo do cupom")
+	}
+	if discountType != "percent" && discountType != "fixed" {
+		return errors.New("tipo de cupom invalido: use percentual ou valor fixo")
+	}
+	if value <= 0 {
+		return errors.New("o desconto precisa ser maior que zero")
+	}
+	if discountType == "percent" && value > 100 {
+		return errors.New("o desconto percentual vai ate 100%")
+	}
+	return nil
 }
 
 func (s *Service) DeleteCoupon(ctx context.Context, id string) error {
 	_, err := s.db.Exec(ctx, `DELETE FROM coupons WHERE id = $1`, id)
 	return err
 }
-
 
 func (s *Service) ExportOrdersCSV(ctx context.Context) ([]byte, error) {
 	rows, err := s.db.Query(ctx, `SELECT o.id::text, COALESCE(c.name, 'Consumidor Final'), o.total_amount, o.payment_status, o.order_status, o.origin, o.created_at FROM orders o LEFT JOIN customers c ON c.id = o.customer_id ORDER BY o.created_at DESC`)
@@ -1389,18 +1503,48 @@ func (s *Service) ExportOrdersCSV(ctx context.Context) ([]byte, error) {
 	}
 	defer rows.Close()
 
+	// Formato do Excel em portugues: BOM UTF-8 (acentos), ";" entre colunas e
+	// virgula decimal - com "," o Excel brasileiro abre tudo numa coluna so.
 	var buf bytes.Buffer
-	buf.WriteString("ID,Cliente,Total,Status Pagamento,Status Pedido,Origem,Data\n")
+	buf.WriteString("\ufeff")
+	writer := csv.NewWriter(&buf)
+	writer.Comma = ';'
+	if err := writer.Write([]string{"Pedido", "Cliente", "Total", "Status Pagamento", "Status Pedido", "Origem", "Data"}); err != nil {
+		return nil, err
+	}
 	for rows.Next() {
 		var id, name, paymentStatus, orderStatus, origin string
 		var total float64
 		var createdAt time.Time
 		if err := rows.Scan(&id, &name, &total, &paymentStatus, &orderStatus, &origin, &createdAt); err != nil {
-			continue
+			return nil, err
 		}
-		buf.WriteString(fmt.Sprintf("%s,%s,%.2f,%s,%s,%s,%s\n", id[:8], strings.ReplaceAll(name, ",", " "), total, paymentStatus, orderStatus, origin, createdAt.Format("2006-01-02 15:04")))
+		if err := writer.Write([]string{
+			id,
+			spreadsheetSafe(name),
+			strings.Replace(fmt.Sprintf("%.2f", total), ".", ",", 1),
+			paymentStatus,
+			orderStatus,
+			origin,
+			createdAt.Format("02/01/2006 15:04"),
+		}); err != nil {
+			return nil, err
+		}
 	}
-	return buf.Bytes(), nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	writer.Flush()
+	return buf.Bytes(), writer.Error()
+}
+
+// spreadsheetSafe impede que um nome cadastrado pelo cliente comecando com
+// =, +, - ou @ vire formula quando o admin abrir o CSV no Excel.
+func spreadsheetSafe(value string) string {
+	if value != "" && strings.ContainsRune("=+-@\t\r", rune(value[0])) {
+		return "'" + value
+	}
+	return value
 }
 
 func (s *Service) GetOrderPublic(ctx context.Context, orderID string) (map[string]interface{}, error) {

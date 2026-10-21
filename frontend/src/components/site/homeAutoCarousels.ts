@@ -62,9 +62,7 @@ export function getHomeAutoItems(
   // aqui e so ler esse status em vez de comparar com um estoque cadastrado.
   const lowStock = take(available.filter((node) => node.status === 'low-stock'))
 
-  const newArrivals = take(
-    [...available].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-  )
+  const newArrivals = take([...available].sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
 
   const result: Record<string, ItemCardContent[]> = {}
   if (onSale.length) result[AUTO_CAROUSEL_MODULE_IDS.onSale] = onSale

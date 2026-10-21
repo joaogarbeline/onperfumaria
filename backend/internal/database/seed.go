@@ -6,6 +6,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Seed cria os dados iniciais da loja (textos, regras de frete e cupom de
+// boas-vindas) so quando ainda nao existem. Roda a cada boot com AUTO_SEED, entao
+// nunca sobrescreve: o que o admin mudou (ou um cupom que ele desativou) fica
+// como esta. Para corrigir um valor ja gravado, crie uma migration.
 func Seed(db *pgxpool.Pool) error {
 	ctx := context.Background()
 
@@ -18,7 +22,7 @@ func Seed(db *pgxpool.Pool) error {
 		 ('benefit_2', 'Checkout rapido e seguro'),
 		 ('benefit_3', 'Descontos automaticos validados no sistema'),
 		 ('benefit_4', 'Entrega local e retirada na loja')
-		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;`,
+		 ON CONFLICT (key) DO NOTHING;`,
 		`INSERT INTO shipping_rules (name, code, rule_type, amount, min_order_amount, weight_min_grams, weight_max_grams, region_prefix, description, is_active)
 		 VALUES
 		 ('Frete fixo Brasil', 'fixed', 'fixed', 18.90, NULL, NULL, NULL, NULL, 'Taxa base para envios nacionais', true),
@@ -28,19 +32,10 @@ func Seed(db *pgxpool.Pool) error {
 		 ('Entrega local Campo Grande-MS', 'local', 'local', 12.00, NULL, NULL, NULL, '79', 'Entrega local em Campo Grande-MS', true),
 		 ('Retirada na loja', 'pickup', 'pickup', 0, NULL, NULL, NULL, NULL, 'Retire na loja', true),
 		 ('Frete a consultar', 'manual', 'manual', 0, NULL, NULL, NULL, NULL, 'Consultar frete manualmente', true)
-		 ON CONFLICT (code) DO UPDATE
-		 SET name = EXCLUDED.name,
-		     rule_type = EXCLUDED.rule_type,
-		     amount = EXCLUDED.amount,
-		     min_order_amount = EXCLUDED.min_order_amount,
-		     weight_min_grams = EXCLUDED.weight_min_grams,
-		     weight_max_grams = EXCLUDED.weight_max_grams,
-		     region_prefix = EXCLUDED.region_prefix,
-		     description = EXCLUDED.description,
-		     is_active = EXCLUDED.is_active;`,
+		 ON CONFLICT (code) DO NOTHING;`,
 		`INSERT INTO coupons (code, discount_type, value, is_active)
 		 VALUES ('BEMVINDA10', 'percent', 10, true)
-		 ON CONFLICT (code) DO UPDATE SET value = EXCLUDED.value, is_active = EXCLUDED.is_active;`,
+		 ON CONFLICT (code) DO NOTHING;`,
 	}
 
 	for _, query := range queries {
