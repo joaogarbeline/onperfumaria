@@ -177,6 +177,12 @@ export function useOrganizerStore(token?: string) {
   // So fica true depois da primeira resposta do servidor (ou se outra pagina
   // ja recebeu): antes disso o store e o esqueleto padrao, sem os itens.
   const [remoteReady, setRemoteReady] = useState(lastRemoteStore !== null)
+  // Diferente de remoteReady (que fica true tambem quando o GET falha): so
+  // fica true quando a resposta do servidor de fato chegou. Uma falha de rede
+  // na primeira tentativa nao pode virar "produto nao encontrado" - o polling
+  // tenta de novo e remoteFailures conta as tentativas que falharam seguidas.
+  const [remoteLoaded, setRemoteLoaded] = useState(lastRemoteStore !== null)
+  const [remoteFailures, setRemoteFailures] = useState(0)
   const storeRef = useRef(store)
   const pendingLocalSave = useRef(false)
   const localRevision = useRef(0)
@@ -273,7 +279,10 @@ export function useOrganizerStore(token?: string) {
           await api.put<OrganizerStore>('/organizer', storeRef.current, tokenRef.current)
           hasSyncedWithServer.current = true
         }
+        setRemoteLoaded(true)
+        setRemoteFailures(0)
       } catch {
+        if (!cancelled) setRemoteFailures((count) => count + 1)
         // O armazenamento local continua sendo usado quando o backend estiver indisponível.
       } finally {
         if (!cancelled) setRemoteReady(true)
@@ -636,6 +645,8 @@ export function useOrganizerStore(token?: string) {
   return {
     store,
     remoteReady,
+    remoteLoaded,
+    remoteFailures,
     createNode,
     createTag,
     updateNode,

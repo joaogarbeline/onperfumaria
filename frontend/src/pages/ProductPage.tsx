@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Reveal } from '../components/Reveal'
+import { Skeleton } from '../components/Skeleton'
 import { toItemContent } from '../components/site/moduleContent'
 import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
@@ -19,6 +20,9 @@ import { itemCardToProduct } from '../utils/productModel'
 
 const DEFAULT_PIX_DISCOUNT = 0.05
 const INSTALLMENTS = 12
+// ~6s de tentativas (o polling do Organizador repete a cada 2s) antes de
+// trocar o carregamento por um aviso de erro.
+const MAX_LOAD_FAILURES = 3
 
 // Modelo unico de pagina de produto: busca o produto real na API e, quando
 // nao existe (ex.: item criado no Organizador, sem cadastro no catalogo),
@@ -34,7 +38,7 @@ export function ProductPage() {
   }, [token])
   const format = useCurrency()
   const isMobile = useIsMobile()
-  const { store, remoteReady } = useOrganizerStore()
+  const { store, remoteLoaded, remoteFailures } = useOrganizerStore()
   const [quantity, setQuantity] = useState(1)
   const [selectedImage, setSelectedImage] = useState('')
   const [favorited, setFavorited] = useState(false)
@@ -49,9 +53,11 @@ export function ProductPage() {
     [node, store.tags],
   )
   // O Organizador local nasce com as paginas padrao, mas sem os itens: so da
-  // para dizer que o produto nao existe depois da resposta do servidor (senao
-  // o primeiro render pisca um "nao encontrado" falso).
-  const loading = !node && !remoteReady
+  // para dizer que o produto nao existe depois que a resposta do servidor
+  // chega de fato (senao o primeiro render pisca um "nao encontrado" falso).
+  // Se o GET falhar, o polling tenta de novo e o carregamento continua.
+  const loading = !node && !remoteLoaded
+  const loadFailed = loading && remoteFailures >= MAX_LOAD_FAILURES
 
   useEffect(() => {
     if (node) trackProductEvent(node.id, 'view', tokenRef.current)
@@ -97,10 +103,23 @@ export function ProductPage() {
     }
   }
 
-  // Em branco enquanto carrega: a rodinha da aba (ver preload em main.tsx) ja
-  // indica o carregamento.
+  if (loadFailed) {
+    return (
+      <section className="surface-panel mx-auto max-w-2xl p-8 text-center">
+        <ShieldCheck size={34} className="mx-auto text-[#d89a28]" />
+        <h1 className="mt-4 font-serif text-3xl font-semibold">Não foi possível carregar</h1>
+        <p className="mt-2 text-sm text-[#6b665f]">
+          Verifique sua conexão. Continuamos tentando e o produto aparece assim que a conexão voltar.
+        </p>
+        <Button className="mt-6" onClick={() => window.location.reload()}>
+          Tentar novamente
+        </Button>
+      </section>
+    )
+  }
+
   if (loading) {
-    return null
+    return <ProductPageSkeleton />
   }
 
   if (!product) {
@@ -310,6 +329,32 @@ export function ProductPage() {
           </Button>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+// Mesmo desenho da pagina carregada (imagem + painel de compra), para a troca
+// nao dar pulo no layout.
+function ProductPageSkeleton() {
+  return (
+    <div className="mx-auto max-w-6xl" role="status" aria-label="Carregando produto">
+      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+        <div className="space-y-5">
+          <Skeleton className="h-[260px] rounded-[30px] sm:h-[300px] lg:h-[420px]" />
+          <Skeleton className="h-20" />
+        </div>
+        <div className="surface-panel space-y-4 p-5">
+          <Skeleton className="h-6 w-24 rounded-full" />
+          <Skeleton className="h-8 w-4/5" />
+          <Skeleton className="h-4 w-1/2" />
+          <div className="space-y-2 border-t border-[#ddc7ea] pt-4">
+            <Skeleton className="h-9 w-2/5" />
+            <Skeleton className="h-4 w-3/5" />
+          </div>
+          <Skeleton className="h-12 rounded-full" />
+          <Skeleton className="h-12 rounded-full" />
+        </div>
+      </section>
     </div>
   )
 }
