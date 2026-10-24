@@ -7,6 +7,7 @@ import perfilIcon from '../../../assets/icons/perfil_d_c.png'
 import sacolaIcon from '../../../assets/icons/sacola_d_c.png'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCart } from '../../../contexts/CartContext'
+import { useFixedHeightVar } from '../useFixedHeightVar'
 
 export function MobileBottomNav() {
   const { scope, requireAuth, isAdmin, logout } = useAuth()
@@ -16,13 +17,20 @@ export function MobileBottomNav() {
   const count = items.reduce((sum, item) => sum + item.quantity, 0)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
 
+  // Barras fixas da pagina (ex.: "Adicionar ao carrinho" do produto) ficam
+  // logo acima do menu usando --mobile-nav-height.
+  const navRef = useFixedHeightVar('--mobile-nav-height')
+
   const itemClassName = ({ isActive }: { isActive: boolean }) =>
     `flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium ${
       isActive ? 'text-[#fafaf8]' : 'text-[#fafaf8]/70'
     }`
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 flex items-stretch border-t border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)]">
+    <nav
+      ref={navRef}
+      className="fixed inset-x-0 bottom-0 z-30 flex items-stretch border-t border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)]"
+    >
       <NavLink to="/" end className={itemClassName}>
         <img src={homeIcon} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
         Home

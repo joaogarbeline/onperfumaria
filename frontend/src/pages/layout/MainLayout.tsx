@@ -13,7 +13,18 @@ export function MainLayout() {
   const isStandaloneProductPage = location.pathname === '/admin'
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-clip text-stone-900">
+    <div
+      className="flex min-h-screen flex-col overflow-x-clip text-stone-900"
+      // No celular o menu de baixo (e a barra fixa do produto, quando existe)
+      // ficam por cima do fim da pagina: reserva esse espaco abaixo do rodape.
+      style={
+        isMobile && !isStandaloneProductPage
+          ? {
+              paddingBottom: 'calc(var(--mobile-nav-height, 64px) + var(--mobile-action-bar-height, 0px))',
+            }
+          : undefined
+      }
+    >
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(216,154,40,0.12),_transparent_30%),linear-gradient(180deg,_#f8f5f9_0%,_#eadcf0_45%,_#f8f5f9_100%)]" />
       <div
         aria-hidden="true"

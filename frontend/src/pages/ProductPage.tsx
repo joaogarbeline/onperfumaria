@@ -10,6 +10,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useCart } from '../contexts/CartContext'
 import { useCurrency } from '../hooks/useCurrency'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
+import { useFixedHeightVar } from './layout/useFixedHeightVar'
+import { useIsMobile } from './layout/useIsMobile'
 import { trackProductEvent } from '../services/productEvents'
 import type { Product } from '../types'
 import { getItemStatusPresentation } from '../utils/itemStatus'
@@ -31,10 +33,12 @@ export function ProductPage() {
     tokenRef.current = token
   }, [token])
   const format = useCurrency()
+  const isMobile = useIsMobile()
   const { store, remoteReady } = useOrganizerStore()
   const [quantity, setQuantity] = useState(1)
   const [selectedImage, setSelectedImage] = useState('')
   const [favorited, setFavorited] = useState(false)
+  const mobileBarRef = useFixedHeightVar('--mobile-action-bar-height')
 
   const node = useMemo(
     () => store.nodes.find((candidate) => candidate.id === slug && candidate.type === 'item') ?? null,
@@ -67,6 +71,13 @@ export function ProductPage() {
     product?.pixDiscountPercent != null ? product.pixDiscountPercent / 100 : DEFAULT_PIX_DISCOUNT
   const pixPrice = product ? product.finalPrice * (1 - pixDiscount) : 0
   const installmentPrice = product ? product.finalPrice / INSTALLMENTS : 0
+
+  const purchaseDisabled = !product?.isAvailable || Boolean(statusPresentation.priceOverrideText)
+  const addToCartLabel = statusPresentation.priceOverrideText
+    ? statusPresentation.availableLabel
+    : product?.isAvailable
+      ? 'Adicionar ao carrinho'
+      : 'Produto indisponível'
 
   const addToCart = () => {
     if (!product) return
@@ -262,7 +273,7 @@ export function ProductPage() {
               <Button
                 size="lg"
                 fullWidth
-                disabled={!product.isAvailable || Boolean(statusPresentation.priceOverrideText)}
+                disabled={purchaseDisabled}
                 onClick={() => {
                   addToCart()
                   navigate('/checkout')
@@ -270,24 +281,35 @@ export function ProductPage() {
               >
                 Comprar agora
               </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                fullWidth
-                disabled={!product.isAvailable || Boolean(statusPresentation.priceOverrideText)}
-                onClick={addToCart}
-              >
-                <ShoppingBag size={18} />
-                {statusPresentation.priceOverrideText
-                  ? statusPresentation.availableLabel
-                  : product.isAvailable
-                    ? 'Adicionar ao carrinho'
-                    : 'Produto indisponível'}
-              </Button>
+              {/* No celular este botao fica na barra fixa acima do menu. */}
+              {isMobile ? null : (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
+                  disabled={purchaseDisabled}
+                  onClick={addToCart}
+                >
+                  <ShoppingBag size={18} />
+                  {addToCartLabel}
+                </Button>
+              )}
             </div>
           </div>
         </section>
       </Reveal>
+
+      {isMobile ? (
+        <div
+          ref={mobileBarRef}
+          className="fixed inset-x-0 bottom-[var(--mobile-nav-height,64px)] z-20 border-t border-[#ddc7ea] bg-[#f8f5f9]/95 px-4 py-2.5 backdrop-blur"
+        >
+          <Button size="lg" fullWidth disabled={purchaseDisabled} onClick={addToCart}>
+            <ShoppingBag size={18} />
+            {addToCartLabel}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
