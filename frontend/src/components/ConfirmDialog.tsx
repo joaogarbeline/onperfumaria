@@ -6,12 +6,16 @@ export function ConfirmDialog({
   open,
   title,
   children,
+  confirmLabel = 'Confirmar',
+  cancelLabel = 'Cancelar',
   onConfirm,
   onCancel,
 }: {
   open: boolean
   title: string
   children: ReactNode
+  confirmLabel?: string
+  cancelLabel?: string
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -30,10 +34,11 @@ export function ConfirmDialog({
             <div className="mt-2 text-sm leading-6 text-[#6b665f]">{children}</div>
             <div className="mt-6 flex gap-3">
               <Button variant="ghost" onClick={onCancel}>
-                Cancelar
+                {cancelLabel}
               </Button>
-              <Button onClick={onConfirm} className="bg-rose-600 text-white hover:bg-rose-700">
-                Confirmar
+              {/* bg-none tira o degrade do botao primario, senao o vermelho nao aparece. */}
+              <Button onClick={onConfirm} className="bg-rose-600 bg-none text-white hover:bg-rose-700">
+                {confirmLabel}
               </Button>
             </div>
           </div>

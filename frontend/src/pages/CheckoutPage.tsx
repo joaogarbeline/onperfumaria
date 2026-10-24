@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { CartSummary } from '../components/CartSummary'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyState } from '../components/EmptyState'
 import { InputField } from '../components/Field'
 import { Reveal } from '../components/Reveal'
@@ -54,6 +55,7 @@ export function CheckoutPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [message, setMessage] = useState('')
+  const [itemToRemove, setItemToRemove] = useState<{ id: string; name: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState<CheckoutConfig>({
     shippingOptions: [],
@@ -484,7 +486,7 @@ export function CheckoutPage() {
                         <button
                           type="button"
                           aria-label={`Remover ${item.name}`}
-                          onClick={() => removeItem(item.id)}
+                          onClick={() => setItemToRemove({ id: item.id, name: item.name })}
                           className="rounded-full border border-rose-200 p-2 text-rose-600"
                         >
                           <Trash2 size={16} />
@@ -793,6 +795,19 @@ export function CheckoutPage() {
           </Reveal>
         ) : null}
       </form>
+
+      <ConfirmDialog
+        open={itemToRemove !== null}
+        title="Remover do carrinho?"
+        confirmLabel="Remover"
+        onConfirm={() => {
+          if (itemToRemove) removeItem(itemToRemove.id)
+          setItemToRemove(null)
+        }}
+        onCancel={() => setItemToRemove(null)}
+      >
+        Deseja mesmo remover <b className="text-[#2a0f3d]">{itemToRemove?.name}</b> do seu carrinho?
+      </ConfirmDialog>
     </div>
   )
 }
