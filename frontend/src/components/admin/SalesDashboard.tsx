@@ -1,5 +1,7 @@
 import {
+  BarChart3,
   BellRing,
+  LayoutDashboard,
   ChevronDown,
   Clock,
   MapPin,
@@ -20,6 +22,7 @@ import { toWhatsappDigits } from '../../utils/checkout'
 import { getOrderStatusPresentation } from '../../utils/orders'
 import { disablePush, enablePush, getPushState, sendTestPush, type PushState } from '../../utils/push'
 import { Button } from '../Button'
+import { SalesReports } from './SalesReports'
 
 type Dashboard = {
   today: { revenue: number; orders: number }
@@ -54,6 +57,14 @@ type OrderDetail = {
   items: Array<{ name: string; price: number; quantity: number; imageUrl?: string }>
   address: { street: string; number: string; neighborhood: string; city: string; state: string; cep: string }
 }
+
+type View = 'overview' | 'orders' | 'reports'
+
+const VIEWS: Array<{ key: View; label: string; icon: typeof ShoppingBag }> = [
+  { key: 'overview', label: 'Visão geral', icon: LayoutDashboard },
+  { key: 'orders', label: 'Pedidos', icon: ShoppingBag },
+  { key: 'reports', label: 'Relatórios', icon: BarChart3 },
+]
 
 type TabKey = 'pago' | 'aguardando_pagamento' | 'enviado' | 'entregue' | 'todos'
 
@@ -112,6 +123,7 @@ export function SalesDashboard({
   onClose: () => void
   initialOrderId?: string | null
 }) {
+  const [view, setView] = useState<View>(initialOrderId ? 'orders' : 'overview')
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [tab, setTab] = useState<TabKey>('pago')
   const [search, setSearch] = useState('')
@@ -214,8 +226,8 @@ export function SalesDashboard({
             <ShoppingBag size={20} className="text-[#ffd27a]" />
           </span>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#ffd27a]">Painel</p>
-            <h2 className="text-xl font-semibold leading-tight text-white">Pedidos e vendas</h2>
+            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#ffd27a]">Admin</p>
+            <h2 className="text-xl font-semibold leading-tight text-white">Painel de vendas</h2>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -238,6 +250,39 @@ export function SalesDashboard({
         </div>
       </header>
 
+      <nav
+        aria-label="Seções do painel"
+        className="flex shrink-0 justify-center gap-1 border-b border-[#efe3f6] bg-white px-2 py-2 sm:gap-2"
+      >
+        {VIEWS.map((item) => {
+          const Icon = item.icon
+          const active = view === item.key
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setView(item.key)}
+              aria-current={active ? 'page' : undefined}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition sm:px-5 sm:text-sm ${
+                active
+                  ? 'bg-[image:var(--grad-brand)] text-white shadow-[var(--glow-violet)]'
+                  : 'text-[#5b247f] hover:bg-[#f6ecfc]'
+              }`}
+            >
+              <Icon size={15} />
+              {item.label}
+              {item.key === 'orders' && dashboard?.toShip ? (
+                <span
+                  className={`rounded-full px-1.5 text-[10px] ${active ? 'bg-white/25' : 'bg-[#fff1d6] text-[#8a5a0b]'}`}
+                >
+                  {dashboard.toShip}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </nav>
+
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 sm:px-6">
           {error ? (
@@ -246,156 +291,173 @@ export function SalesDashboard({
             </p>
           ) : null}
 
-          <PushCard token={token} />
+          {view === 'reports' ? <SalesReports token={token} /> : null}
 
-          <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Kpi
-              icon={<TrendingUp size={18} />}
-              label="Vendas hoje"
-              value={dashboard ? money(dashboard.today.revenue) : null}
-              detail={dashboard ? `${dashboard.today.orders} pedido(s)` : ''}
-              highlight
-            />
-            <Kpi
-              icon={<ShoppingBag size={18} />}
-              label="Vendas no mês"
-              value={dashboard ? money(dashboard.month.revenue) : null}
-              detail={dashboard ? `${dashboard.month.orders} pedido(s)` : ''}
-            />
-            <Kpi
-              icon={<Package size={18} />}
-              label="Ticket médio"
-              value={dashboard ? money(dashboard.month.averageTicket) : null}
-              detail="no mês"
-            />
-            <Kpi
-              icon={<Users size={18} />}
-              label="Clientes"
-              value={dashboard ? String(dashboard.customers.total) : null}
-              detail={dashboard ? `+${dashboard.customers.newThisMonth} este mês` : ''}
-            />
-          </section>
+          {view === 'overview' ? (
+            <>
+              <PushCard token={token} />
 
-          <section className="grid gap-3 sm:grid-cols-3">
-            <AlertCard
-              icon={<Truck size={18} />}
-              label="A enviar"
-              value={dashboard?.toShip}
-              tone="gold"
-              onClick={() => changeTab('pago')}
-            />
-            <AlertCard
-              icon={<Clock size={18} />}
-              label="Aguardando pagamento"
-              value={dashboard?.awaitingPayment}
-              tone="violet"
-              onClick={() => changeTab('aguardando_pagamento')}
-            />
-            <AlertCard
-              icon={<Package size={18} />}
-              label="Em trânsito"
-              value={dashboard?.shipped}
-              tone="green"
-              onClick={() => changeTab('enviado')}
-            />
-          </section>
-
-          <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div className="organizer-surface bg-white p-4 sm:p-5">
-              <p className="organizer-eyebrow">Últimos 7 dias</p>
-              <WeekChart days={dashboard?.lastDays ?? []} />
-            </div>
-            <div className="organizer-surface bg-white p-4 sm:p-5">
-              <p className="organizer-eyebrow">Mais vendidos no mês</p>
-              <TopProducts products={dashboard?.topProducts} />
-            </div>
-          </section>
-
-          <section className="organizer-surface overflow-hidden bg-white">
-            <div className="flex flex-col gap-3 border-b border-[#efe3f6] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-              <h3 className="text-2xl text-[#2a0f3d]">Pedidos</h3>
-              <label className="flex h-10 items-center gap-2 rounded-full border border-[#ddc7ea] bg-[#fbf7fd] px-4 focus-within:border-[#9b3fd6] sm:w-72">
-                <Search size={16} className="text-[#9b86a8]" />
-                <span className="sr-only">Buscar pedido</span>
-                <input
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value)
-                    setPage(1)
-                  }}
-                  placeholder="Cliente ou nº do pedido"
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#9b86a8]"
+              <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Kpi
+                  icon={<TrendingUp size={18} />}
+                  label="Vendas hoje"
+                  value={dashboard ? money(dashboard.today.revenue) : null}
+                  detail={dashboard ? `${dashboard.today.orders} pedido(s)` : ''}
+                  highlight
                 />
-              </label>
-            </div>
-
-            <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-[#efe3f6] px-4 py-3 sm:px-5">
-              {TABS.map((item) => {
-                const active = tab === item.key
-                const count = tabCounts[item.key]
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => changeTab(item.key)}
-                    className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
-                      active
-                        ? 'bg-[image:var(--grad-brand)] text-white shadow-[var(--glow-violet)]'
-                        : 'bg-[#f6ecfc] text-[#5b247f] hover:bg-[#efdcf9]'
-                    }`}
-                  >
-                    {item.label}
-                    {count ? (
-                      <span
-                        className={`rounded-full px-1.5 text-[10px] ${active ? 'bg-white/25' : 'bg-white text-[#6a2a94]'}`}
-                      >
-                        {count}
-                      </span>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-
-            <ul className="divide-y divide-[#f3e9f7]">
-              {orders.map((order) => (
-                <OrderItem
-                  key={order.id}
-                  order={order}
-                  token={token}
-                  expanded={expandedId === order.id}
-                  onToggle={() => setExpandedId((current) => (current === order.id ? null : order.id))}
-                  onStatusChanged={handleStatusChanged}
+                <Kpi
+                  icon={<ShoppingBag size={18} />}
+                  label="Vendas no mês"
+                  value={dashboard ? money(dashboard.month.revenue) : null}
+                  detail={dashboard ? `${dashboard.month.orders} pedido(s)` : ''}
                 />
-              ))}
-            </ul>
+                <Kpi
+                  icon={<Package size={18} />}
+                  label="Ticket médio"
+                  value={dashboard ? money(dashboard.month.averageTicket) : null}
+                  detail="no mês"
+                />
+                <Kpi
+                  icon={<Users size={18} />}
+                  label="Clientes"
+                  value={dashboard ? String(dashboard.customers.total) : null}
+                  detail={dashboard ? `+${dashboard.customers.newThisMonth} este mês` : ''}
+                />
+              </section>
 
-            {loadingOrders && orders.length === 0 ? (
-              <p className="p-6 text-center text-sm text-[#9b86a8]">Carregando pedidos...</p>
-            ) : null}
-            {!loadingOrders && orders.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 p-10 text-center">
-                <Package size={32} className="text-[#d6b3ec]" />
-                <p className="text-sm font-semibold text-[#3a164f]">Nenhum pedido aqui</p>
-                <p className="text-xs text-[#9b86a8]">Quando chegar, ele aparece nesta lista.</p>
-              </div>
-            ) : null}
-            {orders.length < totalOrders ? (
-              <div className="p-4 text-center">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={loadingOrders}
+              <section className="grid gap-3 sm:grid-cols-3">
+                <AlertCard
+                  icon={<Truck size={18} />}
+                  label="A enviar"
+                  value={dashboard?.toShip}
+                  tone="gold"
                   onClick={() => {
-                    setLoadingOrders(true)
-                    setPage((current) => current + 1)
+                    changeTab('pago')
+                    setView('orders')
                   }}
-                >
-                  {loadingOrders ? 'Carregando...' : `Ver mais (${totalOrders - orders.length})`}
-                </Button>
+                />
+                <AlertCard
+                  icon={<Clock size={18} />}
+                  label="Aguardando pagamento"
+                  value={dashboard?.awaitingPayment}
+                  tone="violet"
+                  onClick={() => {
+                    changeTab('aguardando_pagamento')
+                    setView('orders')
+                  }}
+                />
+                <AlertCard
+                  icon={<Package size={18} />}
+                  label="Em trânsito"
+                  value={dashboard?.shipped}
+                  tone="green"
+                  onClick={() => {
+                    changeTab('enviado')
+                    setView('orders')
+                  }}
+                />
+              </section>
+
+              <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+                <div className="organizer-surface bg-white p-4 sm:p-5">
+                  <p className="organizer-eyebrow">Últimos 7 dias</p>
+                  <WeekChart days={dashboard?.lastDays ?? []} />
+                </div>
+                <div className="organizer-surface bg-white p-4 sm:p-5">
+                  <p className="organizer-eyebrow">Mais vendidos no mês</p>
+                  <TopProducts products={dashboard?.topProducts} />
+                </div>
+              </section>
+            </>
+          ) : null}
+
+          {view === 'orders' ? (
+            <section className="organizer-surface overflow-hidden bg-white">
+              <div className="flex flex-col gap-3 border-b border-[#efe3f6] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                <h3 className="text-2xl text-[#2a0f3d]">Pedidos</h3>
+                <label className="flex h-10 items-center gap-2 rounded-full border border-[#ddc7ea] bg-[#fbf7fd] px-4 focus-within:border-[#9b3fd6] sm:w-72">
+                  <Search size={16} className="text-[#9b86a8]" />
+                  <span className="sr-only">Buscar pedido</span>
+                  <input
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value)
+                      setPage(1)
+                    }}
+                    placeholder="Cliente ou nº do pedido"
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#9b86a8]"
+                  />
+                </label>
               </div>
-            ) : null}
-          </section>
+
+              <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-[#efe3f6] px-4 py-3 sm:px-5">
+                {TABS.map((item) => {
+                  const active = tab === item.key
+                  const count = tabCounts[item.key]
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => changeTab(item.key)}
+                      className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
+                        active
+                          ? 'bg-[image:var(--grad-brand)] text-white shadow-[var(--glow-violet)]'
+                          : 'bg-[#f6ecfc] text-[#5b247f] hover:bg-[#efdcf9]'
+                      }`}
+                    >
+                      {item.label}
+                      {count ? (
+                        <span
+                          className={`rounded-full px-1.5 text-[10px] ${active ? 'bg-white/25' : 'bg-white text-[#6a2a94]'}`}
+                        >
+                          {count}
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <ul className="divide-y divide-[#f3e9f7]">
+                {orders.map((order) => (
+                  <OrderItem
+                    key={order.id}
+                    order={order}
+                    token={token}
+                    expanded={expandedId === order.id}
+                    onToggle={() => setExpandedId((current) => (current === order.id ? null : order.id))}
+                    onStatusChanged={handleStatusChanged}
+                  />
+                ))}
+              </ul>
+
+              {loadingOrders && orders.length === 0 ? (
+                <p className="p-6 text-center text-sm text-[#9b86a8]">Carregando pedidos...</p>
+              ) : null}
+              {!loadingOrders && orders.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 p-10 text-center">
+                  <Package size={32} className="text-[#d6b3ec]" />
+                  <p className="text-sm font-semibold text-[#3a164f]">Nenhum pedido aqui</p>
+                  <p className="text-xs text-[#9b86a8]">Quando chegar, ele aparece nesta lista.</p>
+                </div>
+              ) : null}
+              {orders.length < totalOrders ? (
+                <div className="p-4 text-center">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={loadingOrders}
+                    onClick={() => {
+                      setLoadingOrders(true)
+                      setPage((current) => current + 1)
+                    }}
+                  >
+                    {loadingOrders ? 'Carregando...' : `Ver mais (${totalOrders - orders.length})`}
+                  </Button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
         </div>
       </div>
     </div>

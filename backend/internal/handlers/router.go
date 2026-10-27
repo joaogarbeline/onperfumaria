@@ -247,6 +247,39 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			data, err := service.AdminDashboard(c.Request.Context())
 			respond(c, data, err)
 		})
+		// Relatorios de venda: semana, mes, ano ou periodo livre (ver
+		// services/reports.go). ?period=week|month|year|custom&date=AAAA-MM-DD
+		// (qualquer dia do periodo) ou &from=...&to=... no personalizado.
+		reportRange := func(c *gin.Context) (services.ReportRange, bool) {
+			r, err := services.ResolveReportRange(c.Query("period"), c.Query("date"), c.Query("from"), c.Query("to"))
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return r, false
+			}
+			return r, true
+		}
+		api.GET("/admin/reports", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			r, ok := reportRange(c)
+			if !ok {
+				return
+			}
+			data, err := service.SalesReport(c.Request.Context(), r)
+			respond(c, data, err)
+		})
+		api.GET("/admin/reports/export", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			r, ok := reportRange(c)
+			if !ok {
+				return
+			}
+			data, err := service.SalesReportCSV(c.Request.Context(), r)
+			if err != nil {
+				respond(c, nil, err)
+				return
+			}
+			filename := "relatorio-" + r.From.Format("2006-01-02") + "-a-" + r.To.Format("2006-01-02") + ".csv"
+			c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+			c.Data(http.StatusOK, "text/csv; charset=utf-8", data)
+		})
 		// Notificacao de venda no celular (Web Push do app instalado).
 		api.GET("/admin/push/key", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
 			key, err := service.PushPublicKey(c.Request.Context())
