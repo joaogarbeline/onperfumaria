@@ -82,9 +82,15 @@ export function Footer() {
             </div>
           ))}
         </div>
-        <p className="mt-6 text-center text-[11px] uppercase tracking-[0.2em] text-[#9b7fb0] sm:text-left">
-          On Perfumaria e Importados — todos os direitos reservados
-        </p>
+        <div className="mt-6 space-y-1 text-center sm:text-left">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-[#9b7fb0]">
+            On Perfumaria e Importados — todos os direitos reservados
+          </p>
+          {/* Identificacao do vendedor exigida para loja virtual (Decreto 7.962/2013). */}
+          <p className="text-[11px] leading-5 text-[#c9b2d8]">
+            58.139.055 NADRIELLY CASAGRANDE LIMA CLINK · CNPJ 58.139.055/0001-67
+          </p>
+        </div>
       </div>
     </footer>
   )
