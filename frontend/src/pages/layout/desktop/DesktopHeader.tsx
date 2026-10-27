@@ -1,4 +1,4 @@
-import { Bell, LayoutDashboard, LogOut, MapPin, Search, User, UserRound } from 'lucide-react'
+import { Bell, LayoutDashboard, LogOut, Package, Search, User, UserRound } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import atendimentoIcon from '../../../assets/icons/atendente_d_c.png'
@@ -157,18 +157,18 @@ export function DesktopHeader() {
                   >
                     <AccountMenuItem
                       icon={<UserRound size={16} />}
-                      label="Meus dados"
+                      label="Minha conta"
                       onClick={() => {
                         setAccountMenuOpen(false)
-                        navigate('/conta?tab=profile')
+                        navigate('/conta')
                       }}
                     />
                     <AccountMenuItem
-                      icon={<MapPin size={16} />}
-                      label="Enderecos"
+                      icon={<Package size={16} />}
+                      label="Meus pedidos"
                       onClick={() => {
                         setAccountMenuOpen(false)
-                        navigate('/conta?tab=addresses')
+                        navigate('/pedidos')
                       }}
                     />
                     {isAdmin ? (

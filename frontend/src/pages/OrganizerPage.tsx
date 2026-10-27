@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import {
   ArrowLeft,
@@ -37,12 +37,14 @@ import {
   Trash2,
   Users,
   X,
+  ShoppingBag,
 } from 'lucide-react'
 import { Link, Navigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { OrganizerModal, type OrganizerModalMode } from '../components/organizer/OrganizerModal'
 import { ItemWizard } from '../components/organizer/ItemWizard'
 import { NotificationsDrawer } from '../components/notifications/NotificationsDrawer'
+import { SalesDashboard } from '../components/admin/SalesDashboard'
 import { useAuth } from '../contexts/AuthContext'
 import { useAdminNotifications } from '../hooks/useAdminNotifications'
 import { useOrganizerStore } from '../hooks/useOrganizerStore'
@@ -176,6 +178,21 @@ export function OrganizerPage() {
   const [trashOpen, setTrashOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [customersOpen, setCustomersOpen] = useState(false)
+  // Painel de pedidos: abre sozinho pelo link da notificacao de venda
+  // (/admin?painel=pedidos&pedido=<id>) e pelo atalho do app instalado.
+  const [salesPanel, setSalesPanel] = useState<{ orderId: string | null } | null>(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('painel') === 'pedidos' ? { orderId: params.get('pedido') } : null
+  })
+  const closeSalesPanel = useCallback(() => {
+    setSalesPanel(null)
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('painel')) {
+      url.searchParams.delete('painel')
+      url.searchParams.delete('pedido')
+      window.history.replaceState(null, '', url.pathname + url.search)
+    }
+  }, [])
   const [wizardDraft, setWizardDraft] = useState<ItemWizardDraft | null>(null)
   const [wizardStep, setWizardStep] = useState<ItemWizardStep>(1)
   const [visitorPreview, setVisitorPreview] = useState<{ name: string; route: string } | null>(null)
@@ -572,9 +589,28 @@ export function OrganizerPage() {
       >
         <header className="flex h-14 shrink-0 items-center justify-between bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] px-3 shadow-[var(--shadow-organizer)] sm:px-4">
           <DrawerToggle drawer="left" open={leftOpen} onToggle={toggleLeftDrawer} />
-          <div className="flex items-center gap-2 text-[#f5ca74]">
-            <Layers3 size={17} />
-            <span className="hidden text-xs font-semibold uppercase tracking-[0.22em] sm:inline">Admin</span>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 text-[#f5ca74]">
+              <Layers3 size={17} />
+              <span className="hidden text-xs font-semibold uppercase tracking-[0.22em] sm:inline">
+                Admin
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSalesPanel({ orderId: null })}
+              className="relative inline-flex items-center gap-1.5 rounded-full bg-[image:var(--grad-gold)] px-3.5 py-1.5 text-xs font-bold text-[#3a164f] shadow-[var(--glow-gold)] transition hover:-translate-y-0.5"
+            >
+              <ShoppingBag size={14} /> Pedidos
+              {unread > 0 ? (
+                <span
+                  key={unread}
+                  className="badge-bump absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#e11d48] px-1 text-[10px] font-extrabold text-white"
+                >
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              ) : null}
+            </button>
           </div>
           {settingsOpen ? (
             <span className="h-8 w-8" aria-hidden="true" />
@@ -1028,6 +1064,9 @@ export function OrganizerPage() {
         />
       )}
       {customersOpen && <CustomersModal token={token} onClose={() => setCustomersOpen(false)} />}
+      {salesPanel && (
+        <SalesDashboard token={token} initialOrderId={salesPanel.orderId} onClose={closeSalesPanel} />
+      )}
       <NotificationsDrawer
         open={notificationsOpen}
         onClose={() => setNotificationsOpen(false)}

@@ -760,6 +760,7 @@ func (s *Service) CreateOrder(ctx context.Context, input CheckoutInput) (map[str
 
 	if orderStatus == "pago" {
 		s.updateStockForOrder(ctx, orderID)
+		go s.NotifySale(orderID)
 	}
 
 	return map[string]interface{}{
@@ -1095,6 +1096,7 @@ func (s *Service) HandleMPWebhook(ctx context.Context, topic string, paymentID s
 
 	s.db.Exec(ctx, `UPDATE payments SET status = 'approved' WHERE provider_reference = $1`, paymentID)
 	s.updateStockForOrder(ctx, orderID)
+	go s.NotifySale(orderID)
 	return nil
 }
 
@@ -1241,7 +1243,7 @@ func (s *Service) Orders(ctx context.Context, filter OrderFilter) (map[string]in
 	}
 
 	countSQL := `SELECT COUNT(*) FROM (
-		SELECT o.id, c.name as customer_name, o.total_amount, o.payment_status, o.order_status, o.created_at, COALESCE(o.origin, 'online') as origin
+		SELECT o.id, COALESCE(c.name, 'Consumidor Final') as customer_name, o.total_amount, o.payment_status, o.order_status, o.created_at, COALESCE(o.origin, 'online') as origin
 		FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
 		UNION ALL
 		SELECT ps.id, ps.customer_name, ps.total_amount, 'paid', 'pago', ps.created_at, 'pdv'
@@ -1253,12 +1255,16 @@ func (s *Service) Orders(ctx context.Context, filter OrderFilter) (map[string]in
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id::text, customer_name, total_amount, payment_status, order_status, created_at, origin
+		SELECT id::text, customer_name, total_amount, payment_status, order_status, created_at, origin,
+			payment_method, delivery_mode, items_count
 		FROM (
-			SELECT o.id, c.name as customer_name, o.total_amount, o.payment_status, o.order_status, o.created_at, COALESCE(o.origin, 'online') as origin
+			SELECT o.id, COALESCE(c.name, 'Consumidor Final') as customer_name, o.total_amount, o.payment_status, o.order_status, o.created_at, COALESCE(o.origin, 'online') as origin,
+				COALESCE(o.payment_method, '') as payment_method, COALESCE(o.delivery_mode, '') as delivery_mode,
+				COALESCE((SELECT SUM(oi.quantity) FROM order_items oi WHERE oi.order_id = o.id), 0)::int as items_count
 			FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
 			UNION ALL
-			SELECT ps.id, ps.customer_name, ps.total_amount, 'paid', 'pago', ps.created_at, 'pdv'
+			SELECT ps.id, ps.customer_name, ps.total_amount, 'paid', 'pago', ps.created_at, 'pdv',
+				ps.payment_method, '', 0
 			FROM pos_sales ps
 		) combined
 		%s
@@ -1274,14 +1280,17 @@ func (s *Service) Orders(ctx context.Context, filter OrderFilter) (map[string]in
 
 	orders := []map[string]interface{}{}
 	for rows.Next() {
-		var id, name, paymentStatus, orderStatus, origin string
+		var id, name, paymentStatus, orderStatus, origin, paymentMethod, deliveryMode string
 		var totalAmount float64
 		var createdAt time.Time
-		if err := rows.Scan(&id, &name, &totalAmount, &paymentStatus, &orderStatus, &createdAt, &origin); err != nil {
+		var itemsCount int
+		if err := rows.Scan(&id, &name, &totalAmount, &paymentStatus, &orderStatus, &createdAt, &origin,
+			&paymentMethod, &deliveryMode, &itemsCount); err != nil {
 			return nil, err
 		}
 		orders = append(orders, map[string]interface{}{
 			"id": id, "customerName": name, "total": totalAmount, "paymentStatus": paymentStatus, "orderStatus": orderStatus, "createdAt": createdAt, "origin": origin,
+			"paymentMethod": paymentMethod, "deliveryMode": deliveryMode, "itemsCount": itemsCount,
 		})
 	}
 

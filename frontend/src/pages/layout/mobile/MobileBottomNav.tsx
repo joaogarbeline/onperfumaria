@@ -1,4 +1,4 @@
-import { LayoutDashboard, LogOut, MapPin, UserRound } from 'lucide-react'
+import { LayoutDashboard, LogOut, Package, UserRound } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import pedidosIcon from '../../../assets/icons/catalogo_d_c.png'
@@ -101,18 +101,18 @@ export function MobileBottomNav() {
           >
             <AccountMenuItem
               icon={<UserRound size={16} />}
-              label="Meus dados"
+              label="Minha conta"
               onClick={() => {
                 setAccountMenuOpen(false)
-                navigate('/conta?tab=profile')
+                navigate('/conta')
               }}
             />
             <AccountMenuItem
-              icon={<MapPin size={16} />}
-              label="Enderecos"
+              icon={<Package size={16} />}
+              label="Meus pedidos"
               onClick={() => {
                 setAccountMenuOpen(false)
-                navigate('/conta?tab=addresses')
+                navigate('/pedidos')
               }}
             />
             {isAdmin ? (

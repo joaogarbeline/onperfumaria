@@ -242,6 +242,40 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 		})
 		// Gaveta de notificacoes do admin: pedidos recentes com contador de
 		// nao lidos, perto dos botoes Editor/Sair no topo da loja.
+		// Painel de vendas do admin (ver services/dashboard.go).
+		api.GET("/admin/dashboard", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			data, err := service.AdminDashboard(c.Request.Context())
+			respond(c, data, err)
+		})
+		// Notificacao de venda no celular (Web Push do app instalado).
+		api.GET("/admin/push/key", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			key, err := service.PushPublicKey(c.Request.Context())
+			respond(c, gin.H{"publicKey": key}, err)
+		})
+		api.POST("/admin/push/subscribe", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			var input services.PushSubscriptionInput
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			err := service.SavePushSubscription(c.Request.Context(), c.GetString("userID"), c.GetHeader("User-Agent"), input)
+			respond(c, true, err)
+		})
+		api.POST("/admin/push/unsubscribe", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			var input struct {
+				Endpoint string `json:"endpoint"`
+			}
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			err := service.DeletePushSubscription(c.Request.Context(), c.GetString("userID"), input.Endpoint)
+			respond(c, true, err)
+		})
+		api.POST("/admin/push/test", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			sent, err := service.SendTestPush(c.Request.Context(), c.GetString("userID"))
+			respond(c, gin.H{"sent": sent}, err)
+		})
 		api.GET("/admin/notifications", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
 			limit, _ := strconv.Atoi(c.DefaultQuery("limit", "30"))
 			data, err := service.AdminOrderNotifications(c.Request.Context(), limit)
@@ -523,8 +557,31 @@ func registerFrontend(router *gin.Engine) {
 			c.JSON(http.StatusNotFound, gin.H{"message": "not found"})
 			return
 		}
+		// Arquivos soltos na raiz do build (manifest.json, sw.js, icones do
+		// app instalado, favicon): antes caiam todos no index.html, e o
+		// celular nao conseguia instalar o app nem registrar o service worker.
+		if file, ok := publicRootFile(publicDir, c.Request.URL.Path); ok {
+			c.Header("Cache-Control", "no-cache")
+			c.File(file)
+			return
+		}
 		serveIndex(c)
 	})
+}
+
+// publicRootFile devolve o arquivo de public/ pedido na URL, so quando ele
+// existe e fica direto na raiz (sem subpastas nem "..").
+func publicRootFile(publicDir, urlPath string) (string, bool) {
+	name := strings.TrimPrefix(urlPath, "/")
+	if name == "" || strings.ContainsAny(name, "/\\") || strings.HasPrefix(name, ".") {
+		return "", false
+	}
+	file := filepath.Join(publicDir, name)
+	info, err := os.Stat(file)
+	if err != nil || info.IsDir() {
+		return "", false
+	}
+	return file, true
 }
 
 // customerIDFromHeader le o token opcional de rotas publicas que mudam de

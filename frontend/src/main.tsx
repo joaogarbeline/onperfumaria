@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { API_URL } from './services/api'
 import { ORGANIZER_READY_EVENT } from './hooks/useOrganizerStore'
+import { registerServiceWorker } from './utils/push'
 import { installTapFeedback } from './utils/tapFeedback'
 
 // Mantem a rodinha da aba girando ate o Organizador (itens, precos) chegar.
@@ -21,6 +22,7 @@ window.addEventListener(
 )
 
 installTapFeedback()
+registerServiceWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

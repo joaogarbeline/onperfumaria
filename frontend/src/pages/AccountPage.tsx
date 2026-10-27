@@ -1,10 +1,8 @@
 import type { FormEvent, ReactNode } from 'react'
-import { MapPin, Package, UserRound } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Check, ChevronRight, LogOut, MapPin, Package, Pencil, Plus, Star, UserRound, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
-import { EmptyState } from '../components/EmptyState'
 import { InputField } from '../components/Field'
 import { Reveal } from '../components/Reveal'
 import { Skeleton } from '../components/Skeleton'
@@ -12,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useCurrency } from '../hooks/useCurrency'
 import { api } from '../services/api'
 import type { CustomerAddress, CustomerOrder } from '../types'
+import { formatOrderDate, getOrderStatusPresentation } from '../utils/orders'
 
 type Profile = {
   name: string
@@ -21,8 +20,6 @@ type Profile = {
   addresses: CustomerAddress[]
   orders: CustomerOrder[]
 }
-
-type AccountTab = 'profile' | 'addresses' | 'orders'
 
 type AddressForm = {
   addressId: string
@@ -36,6 +33,8 @@ type AddressForm = {
   isDefault: boolean
 }
 
+type Notice = { tone: 'success' | 'error'; text: string } | null
+
 const emptyAddressForm: AddressForm = {
   addressId: '',
   addressLabel: '',
@@ -48,21 +47,19 @@ const emptyAddressForm: AddressForm = {
   isDefault: false,
 }
 
+const RECENT_ORDERS = 3
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?'
+}
+
+/** Minha conta: dados, enderecos e ultimos pedidos numa tela so. */
 export function AccountPage() {
   const { token, scope, logout, openAuth } = useAuth()
-  const format = useCurrency()
   const [searchParams] = useSearchParams()
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [message, setMessage] = useState('')
-  const [saving, setSaving] = useState(false)
-  // Permite abrir direto numa aba especifica (ex.: /conta?tab=addresses), usado
-  // pelo menu da conta no rodape mobile.
-  const requestedTab = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState<AccountTab>(
-    requestedTab === 'addresses' || requestedTab === 'orders' ? requestedTab : 'profile',
-  )
-  const [addressForm, setAddressForm] = useState<AddressForm>(emptyAddressForm)
-  const [addressSaving, setAddressSaving] = useState(false)
+  const addressesRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (token && scope === 'customer') {
@@ -73,16 +70,26 @@ export function AccountPage() {
     }
   }, [token, scope])
 
+  // Links antigos (/conta?tab=addresses) ainda caem direto nos enderecos.
+  const requestedTab = searchParams.get('tab')
+  useEffect(() => {
+    if (profile && requestedTab === 'addresses') {
+      addressesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [profile, requestedTab])
+
   if (!token || scope !== 'customer') {
     return (
-      <section className="surface-panel p-6 sm:p-8">
-        <h1 className="text-5xl leading-none text-[#2a0f3d]">Minha conta</h1>
-        <p className="mt-4 max-w-2xl text-sm leading-7 text-[#6b665f]">
-          Entre como cliente para acompanhar pedidos, salvar enderecos e manter um checkout mais rapido nas
-          proximas compras.
+      <section className="surface-panel mx-auto max-w-3xl p-6 text-center sm:p-10">
+        <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[image:var(--grad-brand)] text-white shadow-[var(--glow-violet)]">
+          <UserRound size={28} />
+        </span>
+        <h1 className="mt-5 text-5xl leading-none text-[#2a0f3d]">Minha conta</h1>
+        <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[#6b665f]">
+          Entre para acompanhar seus pedidos, salvar endereços e comprar mais rápido nas próximas vezes.
         </p>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button size="lg" onClick={() => openAuth({ reason: 'Entre para ver seus pedidos e enderecos.' })}>
+        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+          <Button size="lg" onClick={() => openAuth({ reason: 'Entre para ver seus pedidos e endereços.' })}>
             Entrar
           </Button>
           <Button
@@ -98,15 +105,124 @@ export function AccountPage() {
   }
 
   if (!profile) {
-    return <Skeleton className="h-[420px] w-full rounded-[36px]" />
+    return (
+      <div className="mx-auto max-w-5xl space-y-5">
+        <Skeleton className="h-40 w-full rounded-[32px]" />
+        <Skeleton className="h-72 w-full rounded-[32px]" />
+      </div>
+    )
   }
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-5">
+      <Reveal>
+        <section className="bg-brand-live relative overflow-hidden rounded-[32px] p-6 text-white shadow-[var(--shadow-trust)] sm:p-8">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[#f2b33d]/25 blur-3xl"
+          />
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[image:var(--grad-gold)] text-xl font-extrabold text-[#3a164f] shadow-[var(--glow-gold)]">
+                {initials(profile.name)}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#ffd27a]">Minha conta</p>
+                <h1 className="truncate text-4xl leading-tight text-white">{profile.name}</h1>
+                <p className="truncate text-sm text-white/75">{profile.email}</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Link to="/pedidos" className="flex-1 sm:flex-none">
+                <Button variant="secondary" fullWidth>
+                  <Package size={16} /> Meus pedidos
+                </Button>
+              </Link>
+              <button
+                type="button"
+                onClick={logout}
+                className="flex items-center gap-2 rounded-[20px] border border-white/25 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                <LogOut size={16} /> Sair
+              </button>
+            </div>
+          </div>
+        </section>
+      </Reveal>
+
+      <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
+        <ProfileSection profile={profile} token={token} onSaved={setProfile} />
+        <RecentOrders orders={profile.orders} />
+      </div>
+
+      <section ref={addressesRef} className="scroll-mt-28">
+        <AddressesSection profile={profile} token={token} onSaved={setProfile} />
+      </section>
+    </div>
+  )
+}
+
+function SectionCard({
+  icon,
+  title,
+  action,
+  children,
+}: {
+  icon: ReactNode
+  title: string
+  action?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="surface-panel h-full p-5 sm:p-6">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-3 text-3xl leading-none text-[#2a0f3d]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f3e3fb] text-[#6a2a94]">
+            {icon}
+          </span>
+          {title}
+        </h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function NoticeLine({ notice }: { notice: Notice }) {
+  if (!notice) return null
+  return (
+    <p
+      className={`rise-in mt-4 flex items-center gap-2 rounded-[18px] px-4 py-3 text-sm ${
+        notice.tone === 'success'
+          ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+          : 'border border-rose-200 bg-rose-50 text-rose-700'
+      }`}
+    >
+      {notice.tone === 'success' ? <Check size={16} /> : <X size={16} />}
+      {notice.text}
+    </p>
+  )
+}
+
+function ProfileSection({
+  profile,
+  token,
+  onSaved,
+}: {
+  profile: Profile
+  token: string
+  onSaved: (profile: Profile) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<Notice>(null)
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!token) return
     const formData = new FormData(event.currentTarget)
     setSaving(true)
-    setMessage('')
+    setNotice(null)
     try {
       const updated = await api.put<Profile>(
         '/customer/me',
@@ -118,294 +234,367 @@ export function AccountPage() {
         },
         token,
       )
-      setProfile(updated)
-      setMessage('Perfil atualizado com sucesso.')
+      onSaved(updated)
+      setEditing(false)
+      setNotice({ tone: 'success', text: 'Dados atualizados.' })
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao salvar perfil')
+      setNotice({ tone: 'error', text: error instanceof Error ? error.message : 'Erro ao salvar seus dados' })
     } finally {
       setSaving(false)
     }
   }
 
-  async function handleAddressSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!token) return
-    setAddressSaving(true)
-    setMessage('')
-
-    try {
-      const updated = await api.post<Profile>('/customer/addresses', addressForm, token)
-      setProfile(updated)
-      setAddressForm(emptyAddressForm)
-      setMessage('Endereco salvo com sucesso.')
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao salvar endereco')
-    } finally {
-      setAddressSaving(false)
-    }
-  }
-
-  async function makeDefaultAddress(addressId: string) {
-    if (!token) return
-    setMessage('')
-
-    try {
-      const updated = await api.put<Profile>(`/customer/addresses/${addressId}/default`, {}, token)
-      setProfile(updated)
-      setMessage('Endereco padrao atualizado com sucesso.')
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao definir endereco padrao')
-    }
-  }
-
-  const tabs: Array<{ id: AccountTab; label: string; icon: ReactNode }> = [
-    { id: 'profile', label: 'Perfil', icon: <UserRound size={16} /> },
-    { id: 'addresses', label: 'Enderecos', icon: <MapPin size={16} /> },
-    { id: 'orders', label: 'Pedidos', icon: <Package size={16} /> },
-  ]
-
   return (
-    <div className="space-y-6">
-      <Reveal>
-        <section className="surface-panel p-6 sm:p-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="eyebrow">Minha conta</p>
-              <h1 className="mt-3 text-5xl leading-none text-[#2a0f3d]">{profile.name}</h1>
-              <p className="mt-3 text-sm leading-7 text-[#6b665f]">
-                {profile.email} • {profile.phone}
-              </p>
-            </div>
-            <Button variant="secondary" onClick={logout}>
-              Sair
-            </Button>
-          </div>
-        </section>
-      </Reveal>
-
-      <div className="surface-panel overflow-hidden p-3">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={[
-                'flex items-center justify-center gap-2 rounded-[22px] px-4 py-4 text-sm font-semibold',
-                activeTab === tab.id ? 'bg-[#2a0f3d] text-[#f8f5f9]' : 'bg-[#eadcf0] text-[#6b665f]',
-              ].join(' ')}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {activeTab === 'profile' ? (
-        <section className="surface-panel p-6">
-          <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSave}>
-            <InputField name="name" label="Nome" defaultValue={profile.name} required />
-            <InputField name="email" label="E-mail" type="email" defaultValue={profile.email} required />
+    <SectionCard
+      icon={<UserRound size={18} />}
+      title="Meus dados"
+      action={
+        editing ? null : (
+          <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+            <Pencil size={14} /> Editar
+          </Button>
+        )
+      }
+    >
+      {editing ? (
+        <form className="rise-in grid gap-4" onSubmit={handleSave}>
+          <InputField name="name" label="Nome" defaultValue={profile.name} required />
+          <InputField name="email" label="E-mail" type="email" defaultValue={profile.email} required />
+          <div className="grid gap-4 sm:grid-cols-2">
             <InputField name="phone" label="Telefone" defaultValue={profile.phone} required />
             <InputField name="cpf" label="CPF" defaultValue={profile.cpf} />
-            <div className="md:col-span-2">
-              <Button type="submit" size="lg" disabled={saving}>
-                {saving ? 'Salvando...' : 'Salvar perfil'}
-              </Button>
-            </div>
-          </form>
-        </section>
-      ) : null}
-
-      {activeTab === 'addresses' ? (
-        <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            {profile.addresses.length === 0 ? (
-              <EmptyState
-                eyebrow="Enderecos"
-                title="Nenhum endereco salvo"
-                description="Cadastre o primeiro endereco para agilizar seu checkout."
-              />
-            ) : (
-              profile.addresses.map((address, index) => (
-                <div key={`${address.id ?? address.cep}-${index}`} className="surface-panel p-6">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h2 className="text-3xl text-[#2a0f3d]">{address.label || `Endereco ${index + 1}`}</h2>
-                      <p className="mt-4 text-sm leading-7 text-[#6b665f]">
-                        {address.street}, {address.number}
-                        <br />
-                        {address.neighborhood}
-                        <br />
-                        {address.city} - {address.state}
-                        <br />
-                        CEP {address.cep}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {address.isDefault ? <Badge tone="success">Padrao</Badge> : null}
-                      {!address.isDefault && address.id ? (
-                        <Button variant="secondary" size="sm" onClick={() => makeDefaultAddress(address.id!)}>
-                          Tornar padrao
-                        </Button>
-                      ) : null}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setAddressForm({
-                            addressId: address.id || '',
-                            addressLabel: address.label || '',
-                            cep: address.cep,
-                            street: address.street,
-                            number: address.number,
-                            neighborhood: address.neighborhood,
-                            city: address.city,
-                            state: address.state,
-                            isDefault: Boolean(address.isDefault),
-                          })
-                        }
-                      >
-                        Editar
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
           </div>
-
-          <div className="surface-panel p-6">
-            <h2 className="text-4xl leading-none text-[#2a0f3d]">
-              {addressForm.addressId ? 'Editar endereco' : 'Adicionar outro endereco'}
-            </h2>
-            <form className="mt-5 grid gap-4" onSubmit={handleAddressSubmit}>
-              <InputField
-                label="Rotulo"
-                value={addressForm.addressLabel}
-                onChange={(event) =>
-                  setAddressForm((current) => ({ ...current, addressLabel: event.target.value }))
-                }
-                placeholder="Casa, trabalho, retirada..."
-              />
-              <InputField
-                label="CEP"
-                value={addressForm.cep}
-                onChange={(event) => setAddressForm((current) => ({ ...current, cep: event.target.value }))}
-                required
-              />
-              <InputField
-                label="Rua"
-                value={addressForm.street}
-                onChange={(event) =>
-                  setAddressForm((current) => ({ ...current, street: event.target.value }))
-                }
-                required
-              />
-              <InputField
-                label="Numero"
-                value={addressForm.number}
-                onChange={(event) =>
-                  setAddressForm((current) => ({ ...current, number: event.target.value }))
-                }
-                required
-              />
-              <InputField
-                label="Bairro"
-                value={addressForm.neighborhood}
-                onChange={(event) =>
-                  setAddressForm((current) => ({ ...current, neighborhood: event.target.value }))
-                }
-                required
-              />
-              <div className="grid gap-4 md:grid-cols-2">
-                <InputField
-                  label="Cidade"
-                  value={addressForm.city}
-                  onChange={(event) =>
-                    setAddressForm((current) => ({ ...current, city: event.target.value }))
-                  }
-                />
-                <InputField
-                  label="Estado"
-                  value={addressForm.state}
-                  onChange={(event) =>
-                    setAddressForm((current) => ({ ...current, state: event.target.value }))
-                  }
-                />
-              </div>
-              <label className="surface-soft flex items-center gap-3 px-4 py-4 text-sm text-[#2a0f3d]">
-                <input
-                  type="checkbox"
-                  checked={addressForm.isDefault}
-                  onChange={(event) =>
-                    setAddressForm((current) => ({ ...current, isDefault: event.target.checked }))
-                  }
-                />
-                Tornar este endereco o padrao
-              </label>
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button type="submit" fullWidth disabled={addressSaving}>
-                  {addressSaving
-                    ? 'Salvando...'
-                    : addressForm.addressId
-                      ? 'Salvar endereco'
-                      : 'Adicionar endereco'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  fullWidth
-                  onClick={() => setAddressForm(emptyAddressForm)}
-                >
-                  Limpar
-                </Button>
-              </div>
-            </form>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+              Cancelar
+            </Button>
           </div>
-        </section>
-      ) : null}
+        </form>
+      ) : (
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <DataItem label="Nome" value={profile.name} />
+          <DataItem label="E-mail" value={profile.email} />
+          <DataItem label="Telefone" value={profile.phone} />
+          <DataItem label="CPF" value={profile.cpf} />
+        </dl>
+      )}
+      <NoticeLine notice={notice} />
+    </SectionCard>
+  )
+}
 
-      {activeTab === 'orders' ? (
-        <section className="space-y-4">
-          {profile.orders.length === 0 ? (
-            <EmptyState
-              eyebrow="Pedidos"
-              title="Nenhum pedido encontrado"
-              description="Assim que uma compra for concluida, o historico aparecera aqui com status e total."
-            />
-          ) : (
-            profile.orders.map((order) => (
-              <div key={order.id} className="surface-panel p-6">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <p className="eyebrow">Pedido {order.id.slice(0, 8)}</p>
-                    <h2 className="mt-2 text-3xl text-[#2a0f3d]">
-                      {new Date(order.createdAt).toLocaleDateString('pt-BR')}
-                    </h2>
-                    <p className="mt-2 text-sm text-[#6b665f]">Total {format(order.total)}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge tone="success">{String(order.paymentStatus)}</Badge>
-                    <Badge>{String(order.orderStatus)}</Badge>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Link to={`/pedidos/${order.id}`}>
-                    <Button variant="secondary">Ver detalhes</Button>
-                  </Link>
-                </div>
-              </div>
-            ))
-          )}
-        </section>
-      ) : null}
-
-      {message ? (
-        <p className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {message}
-        </p>
-      ) : null}
+function DataItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[18px] border border-[#efe3f6] bg-white/80 px-4 py-3">
+      <dt className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#9b86a8]">{label}</dt>
+      <dd className="mt-1 truncate text-sm font-semibold text-[#2a0f3d]">{value || 'Não informado'}</dd>
     </div>
+  )
+}
+
+function RecentOrders({ orders }: { orders: CustomerOrder[] }) {
+  const format = useCurrency()
+  const recent = orders.slice(0, RECENT_ORDERS)
+
+  return (
+    <SectionCard
+      icon={<Package size={18} />}
+      title="Últimos pedidos"
+      action={
+        orders.length > RECENT_ORDERS ? (
+          <Link to="/pedidos" className="text-sm font-semibold text-[#6a2a94] hover:underline">
+            Ver todos
+          </Link>
+        ) : null
+      }
+    >
+      {recent.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-[22px] border border-dashed border-[#ddc7ea] px-4 py-8 text-center">
+          <p className="text-sm text-[#6b665f]">Você ainda não fez nenhum pedido.</p>
+          <Link to="/">
+            <Button size="sm">Explorar perfumes</Button>
+          </Link>
+        </div>
+      ) : (
+        <ul className="space-y-2.5">
+          {recent.map((order) => {
+            const status = getOrderStatusPresentation(order)
+            return (
+              <li key={order.id}>
+                <Link
+                  to={`/pedidos/${order.id}`}
+                  className="flex items-center gap-3 rounded-[20px] border border-[#efe3f6] bg-white/80 px-4 py-3 transition hover:-translate-y-0.5 hover:border-[#d6b3ec] hover:shadow-[var(--shadow-float)]"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[#2a0f3d]">
+                      Pedido #{order.id.slice(0, 8).toUpperCase()}
+                    </p>
+                    <p className="text-xs text-[#6b665f]">
+                      {formatOrderDate(order.createdAt)} · {format(order.total)}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${status.className}`}
+                  >
+                    {status.label}
+                  </span>
+                  <ChevronRight size={16} className="shrink-0 text-[#9b86a8]" />
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </SectionCard>
+  )
+}
+
+function AddressesSection({
+  profile,
+  token,
+  onSaved,
+}: {
+  profile: Profile
+  token: string
+  onSaved: (profile: Profile) => void
+}) {
+  const [form, setForm] = useState<AddressForm | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<Notice>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+
+  const openForm = (next: AddressForm) => {
+    setForm(next)
+    setNotice(null)
+    window.setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
+
+  const update = (field: keyof AddressForm, value: string | boolean) =>
+    setForm((current) => (current ? { ...current, [field]: value } : current))
+
+  async function lookupCep(rawCep: string) {
+    const cep = rawCep.replace(/\D/g, '')
+    if (cep.length !== 8) return
+    try {
+      const data = await api.get<{
+        logradouro?: string
+        bairro?: string
+        localidade?: string
+        uf?: string
+        erro?: string
+      }>(`/cep/${cep}`)
+      if (data.erro) return
+      setForm((current) =>
+        current
+          ? {
+              ...current,
+              street: data.logradouro || current.street,
+              neighborhood: data.bairro || current.neighborhood,
+              city: data.localidade || current.city,
+              state: data.uf || current.state,
+            }
+          : current,
+      )
+    } catch {
+      // CEP fora do ar: o cliente preenche na mao.
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!form) return
+    setSaving(true)
+    setNotice(null)
+    try {
+      const updated = await api.post<Profile>('/customer/addresses', form, token)
+      onSaved(updated)
+      setForm(null)
+      setNotice({ tone: 'success', text: 'Endereço salvo.' })
+    } catch (error) {
+      setNotice({ tone: 'error', text: error instanceof Error ? error.message : 'Erro ao salvar endereço' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function makeDefault(addressId: string) {
+    setNotice(null)
+    try {
+      onSaved(await api.put<Profile>(`/customer/addresses/${addressId}/default`, {}, token))
+      setNotice({ tone: 'success', text: 'Endereço padrão atualizado.' })
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Erro ao definir endereço padrão',
+      })
+    }
+  }
+
+  return (
+    <SectionCard
+      icon={<MapPin size={18} />}
+      title="Endereços"
+      action={
+        form ? null : (
+          <Button size="sm" onClick={() => openForm(emptyAddressForm)}>
+            <Plus size={15} /> Adicionar
+          </Button>
+        )
+      }
+    >
+      {profile.addresses.length === 0 && !form ? (
+        <button
+          type="button"
+          onClick={() => openForm(emptyAddressForm)}
+          className="flex w-full flex-col items-center gap-2 rounded-[22px] border border-dashed border-[#ddc7ea] px-4 py-8 text-center text-sm text-[#6b665f] transition hover:border-[#9b3fd6] hover:bg-white/60"
+        >
+          <MapPin size={22} className="text-[#9b3fd6]" />
+          Nenhum endereço salvo. Toque para cadastrar e agilizar seu checkout.
+        </button>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {profile.addresses.map((address, index) => (
+            <article
+              key={`${address.id ?? address.cep}-${index}`}
+              className={`rounded-[22px] border bg-white/85 p-4 transition hover:shadow-[var(--shadow-float)] ${
+                address.isDefault ? 'border-[#c9a4e2] ring-2 ring-[#9b3fd6]/15' : 'border-[#efe3f6]'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-bold text-[#2a0f3d]">{address.label || `Endereço ${index + 1}`}</p>
+                {address.isDefault ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[image:var(--grad-gold)] px-2.5 py-0.5 text-[10px] font-bold text-[#3a164f]">
+                    <Star size={11} fill="currentColor" /> Padrão
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[#6b665f]">
+                {address.street}, {address.number}
+                {address.neighborhood ? ` - ${address.neighborhood}` : ''}
+                <br />
+                {address.city} - {address.state} · CEP {address.cep}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    openForm({
+                      addressId: address.id || '',
+                      addressLabel: address.label || '',
+                      cep: address.cep,
+                      street: address.street,
+                      number: address.number,
+                      neighborhood: address.neighborhood,
+                      city: address.city,
+                      state: address.state,
+                      isDefault: Boolean(address.isDefault),
+                    })
+                  }
+                >
+                  <Pencil size={13} /> Editar
+                </Button>
+                {!address.isDefault && address.id ? (
+                  <Button variant="ghost" size="sm" onClick={() => makeDefault(address.id!)}>
+                    <Star size={13} /> Tornar padrão
+                  </Button>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {form ? (
+        <form
+          ref={formRef}
+          className="rise-in mt-4 grid gap-4 rounded-[24px] border border-[#e3cfee] bg-white/90 p-4 sm:p-5"
+          onSubmit={handleSubmit}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-lg font-bold text-[#2a0f3d]">
+              {form.addressId ? 'Editar endereço' : 'Novo endereço'}
+            </p>
+            <button
+              type="button"
+              aria-label="Fechar formulário"
+              onClick={() => setForm(null)}
+              className="rounded-full p-1.5 text-[#9b86a8] hover:bg-[#f6ecfc]"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <InputField
+              label="CEP"
+              value={form.cep}
+              inputMode="numeric"
+              onChange={(event) => update('cep', event.target.value)}
+              onBlur={(event) => lookupCep(event.target.value)}
+              required
+            />
+            <InputField
+              label="Apelido"
+              value={form.addressLabel}
+              onChange={(event) => update('addressLabel', event.target.value)}
+              placeholder="Casa, trabalho..."
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
+            <InputField
+              label="Rua"
+              value={form.street}
+              onChange={(event) => update('street', event.target.value)}
+              required
+            />
+            <InputField
+              label="Número"
+              value={form.number}
+              onChange={(event) => update('number', event.target.value)}
+              required
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-[1fr_1fr_100px]">
+            <InputField
+              label="Bairro"
+              value={form.neighborhood}
+              onChange={(event) => update('neighborhood', event.target.value)}
+              required
+            />
+            <InputField
+              label="Cidade"
+              value={form.city}
+              onChange={(event) => update('city', event.target.value)}
+            />
+            <InputField
+              label="UF"
+              value={form.state}
+              onChange={(event) => update('state', event.target.value)}
+            />
+          </div>
+          <label className="choice-card flex cursor-pointer items-center gap-3 rounded-[18px] border border-[#efe3f6] bg-white px-4 py-3 text-sm text-[#2a0f3d]">
+            <input
+              type="checkbox"
+              className="radio-fx rounded-md"
+              checked={form.isDefault}
+              onChange={(event) => update('isDefault', event.target.checked)}
+            />
+            Usar como endereço padrão
+          </label>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar endereço'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setForm(null)}>
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      ) : null}
+      <NoticeLine notice={notice} />
+    </SectionCard>
   )
 }
