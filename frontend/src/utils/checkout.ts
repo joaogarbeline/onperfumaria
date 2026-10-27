@@ -27,6 +27,38 @@ export const PAYMENT_METHODS_CONFIG = {
   maxInstallments: 12,
 }
 
+// Aparencia do formulario do Mercado Pago (Payment Brick) nas cores da loja,
+// no lugar do azul padrao: botao "Pagar" roxo, cantos arredondados e foco
+// violeta igual aos campos do resto do checkout.
+export const PAYMENT_BRICK_VISUAL = {
+  font: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap',
+  style: {
+    theme: 'default' as const,
+    customVariables: {
+      baseColor: '#7b34b0',
+      baseColorFirstVariant: '#9b3fd6',
+      baseColorSecondVariant: '#5b247f',
+      buttonTextColor: '#ffffff',
+      textPrimaryColor: '#2a0f3d',
+      textSecondaryColor: '#6b665f',
+      formBackgroundColor: '#ffffff',
+      inputBackgroundColor: '#fbf7fd',
+      outlinePrimaryColor: '#ddc7ea',
+      outlineSecondaryColor: '#efe3f6',
+      successColor: '#0f8a5f',
+      errorColor: '#c0392b',
+      fontWeightSemiBold: '700',
+      inputVerticalPadding: '12px',
+      inputHorizontalPadding: '16px',
+      inputFocusedBoxShadow: '0 0 0 4px rgba(155, 63, 214, 0.18)',
+      borderRadiusSmall: '10px',
+      borderRadiusMedium: '16px',
+      borderRadiusLarge: '22px',
+      borderRadiusFull: '9999px',
+    },
+  },
+}
+
 /** Telefone salvo sem DDI (so DDD+numero) ganha o 55 do Brasil pro link do wa.me funcionar. */
 export function toWhatsappDigits(phone: string): string {
   const digits = phone.replace(/\D/g, '')

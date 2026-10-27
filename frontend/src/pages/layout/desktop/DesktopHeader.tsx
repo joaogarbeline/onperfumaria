@@ -76,7 +76,7 @@ export function DesktopHeader() {
   return (
     <header
       className={[
-        'sticky top-0 z-30 border-b bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] transition duration-300',
+        'sticky top-0 z-30 border-b bg-brand-live transition duration-300',
         scrolled
           ? 'border-[#5b247f]/40 shadow-[0_18px_40px_-30px_rgba(58,22,79,0.45)]'
           : 'border-[#3a164f]/40',
@@ -151,7 +151,7 @@ export function DesktopHeader() {
                   <div
                     role="menu"
                     aria-label="Menu da conta"
-                    className={`absolute right-0 top-full z-40 mt-2 w-52 origin-top overflow-hidden rounded-[18px] border border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] shadow-[0_20px_50px_-15px_rgba(42,15,61,0.6)] transition-[transform,opacity] duration-200 ease-out ${
+                    className={`absolute right-0 top-full z-40 mt-2 w-52 origin-top overflow-hidden rounded-[18px] border border-[#3a164f]/40 bg-brand-live shadow-[0_20px_50px_-15px_rgba(42,15,61,0.6)] transition-[transform,opacity] duration-200 ease-out ${
                       accountMenuOpen ? 'scale-y-100 opacity-100' : 'pointer-events-none scale-y-0 opacity-0'
                     }`}
                   >
@@ -223,7 +223,7 @@ export function DesktopHeader() {
                 >
                   <Bell
                     strokeWidth={1.5}
-                    className="h-6 w-6 shrink-0 text-[#d89a28] lg:h-7 lg:w-7 xl:h-8 xl:w-8"
+                    className="icon-hover h-6 w-6 shrink-0 text-[#d89a28] lg:h-7 lg:w-7 xl:h-8 xl:w-8"
                   />
                   {unread > 0 ? (
                     <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d89a28] px-1 text-[9px] font-bold text-[#3a164f]">
@@ -243,7 +243,7 @@ export function DesktopHeader() {
                 <img
                   src={pedidosIcon}
                   alt=""
-                  className="h-9 w-9 shrink-0 object-contain lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
+                  className="icon-hover h-9 w-9 shrink-0 object-contain lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
                 />
                 <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#2a0f3d] px-2.5 py-1.5 text-xs font-medium text-[#fafaf8] opacity-0 shadow-lg transition duration-200 group-hover:opacity-100">
                   Pedidos
@@ -259,7 +259,7 @@ export function DesktopHeader() {
                 <img
                   src={atendimentoIcon}
                   alt=""
-                  className="h-9 w-9 shrink-0 lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
+                  className="icon-hover h-9 w-9 shrink-0 lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
                 />
                 <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#2a0f3d] px-2.5 py-1.5 text-xs font-medium text-[#fafaf8] opacity-0 shadow-lg transition duration-200 group-hover:opacity-100">
                   Atendimento
@@ -276,7 +276,7 @@ export function DesktopHeader() {
                 <img
                   src={favoritoIcon}
                   alt=""
-                  className="h-9 w-9 shrink-0 object-contain lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
+                  className="icon-hover h-9 w-9 shrink-0 object-contain lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
                 />
                 <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#2a0f3d] px-2.5 py-1.5 text-xs font-medium text-[#fafaf8] opacity-0 shadow-lg transition duration-200 group-hover:opacity-100">
                   Favoritos
@@ -290,9 +290,12 @@ export function DesktopHeader() {
                 <img
                   src={sacolaIcon}
                   alt=""
-                  className="h-9 w-9 shrink-0 lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
+                  className="icon-hover h-9 w-9 shrink-0 lg:h-11 lg:w-11 xl:h-[50px] xl:w-[50px]"
                 />
-                <span className="pointer-events-none absolute -right-1 -top-1 text-xs font-bold text-white">
+                <span
+                  key={count}
+                  className="badge-bump pointer-events-none absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[image:var(--grad-gold)] px-1 text-[10px] font-extrabold text-[#3a164f] shadow-[var(--glow-gold)]"
+                >
                   {count}
                 </span>
                 <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#2a0f3d] px-2.5 py-1.5 text-xs font-medium text-[#fafaf8] opacity-0 shadow-lg transition duration-200 group-hover:opacity-100">

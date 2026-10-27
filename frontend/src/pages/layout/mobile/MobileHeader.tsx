@@ -115,7 +115,7 @@ export function MobileHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)]">
+      <header className="sticky top-0 z-30 border-b border-[#3a164f]/40 bg-brand-live">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-4 px-4 py-3">
           <div className="flex items-center justify-start">
             <button
@@ -241,7 +241,7 @@ export function MobileHeader() {
 
         <div
           className={[
-            'fixed inset-x-0 top-[61px] bottom-0 z-20 border-t border-[#3a164f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] transition-opacity duration-300 ease-in-out',
+            'fixed inset-x-0 top-[61px] bottom-0 z-20 border-t border-[#3a164f]/40 bg-brand-live transition-opacity duration-300 ease-in-out',
             open ? 'opacity-100' : 'pointer-events-none opacity-0',
           ].join(' ')}
         >

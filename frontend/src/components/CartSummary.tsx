@@ -39,7 +39,10 @@ export function CartSummary({
       <div className="mt-5 border-t border-[#e3cfee] pt-4">
         <div className="flex items-center justify-between gap-4">
           <span className="font-semibold text-[#2a0f3d]">Total</span>
-          <span className="text-2xl font-semibold text-[#2a0f3d]">{format(total)}</span>
+          {/* A chave faz o valor "pular" quando muda (quantidade, cupom, frete). */}
+          <span key={total} className="badge-bump text-gradient-brand text-3xl font-extrabold">
+            {format(total)}
+          </span>
         </div>
         <p className="mt-1 text-right text-xs text-[#6b665f]">
           ou {INSTALLMENTS}x de {format(total / INSTALLMENTS)} sem juros

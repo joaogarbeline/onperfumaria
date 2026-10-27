@@ -25,10 +25,10 @@ export function MainLayout() {
           : undefined
       }
     >
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(216,154,40,0.12),_transparent_30%),linear-gradient(180deg,_#f8f5f9_0%,_#eadcf0_45%,_#f8f5f9_100%)]" />
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_10%_0%,_rgba(165,77,230,0.18),_transparent_35%),radial-gradient(circle_at_90%_10%,_rgba(242,179,61,0.18),_transparent_32%),linear-gradient(180deg,_#fbf6fe_0%,_#f0e1f8_50%,_#fbf6fe_100%)]" />
       <div
         aria-hidden="true"
-        className="mesh-field pointer-events-none fixed inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(circle_at_18%_18%,_rgba(216,154,40,0.15),_transparent_28%),radial-gradient(circle_at_82%_0%,_rgba(91,36,127,0.1),_transparent_30%)]"
+        className="mesh-field pointer-events-none fixed inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(circle_at_18%_18%,_rgba(242,179,61,0.22),_transparent_30%),radial-gradient(circle_at_82%_0%,_rgba(165,77,230,0.2),_transparent_32%)]"
       />
       {isStandaloneProductPage ? null : <Header />}
       <div

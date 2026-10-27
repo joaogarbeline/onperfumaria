@@ -1,21 +1,10 @@
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react'
-import {
-  Check,
-  ChevronLeft,
-  Copy,
-  CreditCard,
-  MapPin,
-  MessageCircle,
-  Minus,
-  Plus,
-  ShoppingBag,
-  Trash2,
-  Truck,
-} from 'lucide-react'
+import { Check, ChevronLeft, CreditCard, MapPin, Minus, Plus, ShoppingBag, Trash2, Truck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { CartSummary } from '../components/CartSummary'
+import { OrderSuccess, PixWaiting } from '../components/checkout/OrderConfirmation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { EmptyState } from '../components/EmptyState'
 import { InputField } from '../components/Field'
@@ -34,6 +23,7 @@ import type {
 import {
   CHECKOUT_INITIAL_FORM,
   isCampoGrandeAddress,
+  PAYMENT_BRICK_VISUAL,
   PAYMENT_METHODS_CONFIG,
   paymentReturnMessage,
   rejectionMessage,
@@ -54,7 +44,6 @@ export function CheckoutPage() {
   const format = useCurrency()
   const navigate = useNavigate()
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
-  const [message, setMessage] = useState('')
   const [itemToRemove, setItemToRemove] = useState<{ id: string; name: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState<CheckoutConfig>({
@@ -72,16 +61,22 @@ export function CheckoutPage() {
   const [correiosOptions, setCorreiosOptions] = useState<CorreiosOption[]>([])
   const [selectedCorreios, setSelectedCorreios] = useState<string>('')
   const [searchParams] = useSearchParams()
-  const [pixData, setPixData] = useState<{ orderId: string; qrCode: string; qrCodeBase64: string } | null>(
+  const [pixData, setPixData] = useState<{
+    orderId: string
+    total: number
+    qrCode: string
+    qrCodeBase64: string
+  } | null>(null)
+  const [pixPaid, setPixPaid] = useState(false)
+  const [paymentError, setPaymentError] = useState('')
+  // Pedido finalizado no cartao (aprovado ou em analise): mostra a tela de
+  // confirmacao no lugar do checkout.
+  const [placedOrder, setPlacedOrder] = useState<{ orderId: string; total: number; pending: boolean } | null>(
     null,
   )
-  const [pixPaid, setPixPaid] = useState(false)
-  const [pixCopied, setPixCopied] = useState(false)
-  const [paymentError, setPaymentError] = useState('')
-  const [approvedOrderId, setApprovedOrderId] = useState('')
   const [readyBrickKey, setReadyBrickKey] = useState('')
   const [timedOutBrickKey, setTimedOutBrickKey] = useState('')
-  const displayMessage = message || paymentReturnMessage(searchParams.get('status'))
+  const displayMessage = paymentReturnMessage(searchParams.get('status'))
   // Sem conta o checkout nao passa do carrinho, mesmo se o cliente sair da
   // conta no meio do processo.
   const activeStep: 1 | 2 | 3 | 4 = isCustomer ? step : 1
@@ -307,6 +302,7 @@ export function CheckoutPage() {
       if (response.qrCode) {
         setPixData({
           orderId: response.orderId,
+          total: response.total,
           qrCode: response.qrCode,
           qrCodeBase64: response.qrCodeBase64 ?? '',
         })
@@ -319,14 +315,12 @@ export function CheckoutPage() {
       }
 
       clearCart()
-      if (response.paymentStatus === 'approved') {
-        setApprovedOrderId(response.orderId)
-      }
-      setMessage(
-        response.paymentStatus === 'approved'
-          ? 'Pagamento aprovado! Seu pedido foi confirmado.'
-          : 'Pagamento em analise. Voce recebera a confirmacao em breve.',
-      )
+      setPlacedOrder({
+        orderId: response.orderId,
+        total: response.total,
+        pending: response.paymentStatus !== 'approved',
+      })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro ao processar pagamento'
       setPaymentError(msg)
@@ -337,62 +331,31 @@ export function CheckoutPage() {
   }
 
   if (pixData) {
+    return pixPaid ? (
+      <OrderSuccess
+        orderId={pixData.orderId}
+        total={pixData.total}
+        storeWhatsapp={config.storeWhatsapp}
+        whatsappMessage={storeWhatsappMessage(deliveryMode, pixData.orderId)}
+      />
+    ) : (
+      <PixWaiting
+        orderId={pixData.orderId}
+        total={pixData.total}
+        qrCode={pixData.qrCode}
+        qrCodeBase64={pixData.qrCodeBase64}
+      />
+    )
+  }
+
+  if (placedOrder) {
     return (
-      <EmptyState
-        fullPage
-        eyebrow="Pix"
-        title={pixPaid ? 'Pagamento confirmado!' : 'Escaneie o QR Code para pagar'}
-        description={
-          pixPaid
-            ? 'Recebemos a confirmacao do seu Pix. Seu pedido ja esta sendo processado.'
-            : 'Abra o app do seu banco, escolha pagar com Pix e escaneie o codigo abaixo, ou copie o codigo e cole no app.'
-        }
-        action={
-          pixPaid ? (
-            <div className="flex flex-col items-center gap-3">
-              {config.storeWhatsapp ? (
-                <a
-                  href={`https://wa.me/${config.storeWhatsapp}?text=${encodeURIComponent(
-                    storeWhatsappMessage(deliveryMode, pixData.orderId),
-                  )}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Button type="button" variant="secondary">
-                    <MessageCircle size={16} /> Falar no WhatsApp
-                  </Button>
-                </a>
-              ) : null}
-              <Link to="/">
-                <Button>Voltar ao início</Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4">
-              {pixData.qrCodeBase64 ? (
-                <img
-                  src={`data:image/png;base64,${pixData.qrCodeBase64}`}
-                  alt="QR Code Pix"
-                  className="h-56 w-56 rounded-[24px] border border-stone-200 bg-white p-3"
-                />
-              ) : null}
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  navigator.clipboard.writeText(pixData.qrCode).then(() => {
-                    setPixCopied(true)
-                    window.setTimeout(() => setPixCopied(false), 2000)
-                  })
-                }}
-              >
-                <Copy size={16} />
-                {pixCopied ? 'Codigo copiado!' : 'Copiar codigo Pix'}
-              </Button>
-              <p className="text-xs text-[#6b665f]">Aguardando confirmacao do pagamento...</p>
-            </div>
-          )
-        }
+      <OrderSuccess
+        orderId={placedOrder.orderId}
+        total={placedOrder.total}
+        pending={placedOrder.pending}
+        storeWhatsapp={config.storeWhatsapp}
+        whatsappMessage={storeWhatsappMessage(deliveryMode, placedOrder.orderId)}
       />
     )
   }
@@ -409,19 +372,6 @@ export function CheckoutPage() {
         }
         action={
           <div className="flex flex-col items-center gap-3">
-            {approvedOrderId && config.storeWhatsapp ? (
-              <a
-                href={`https://wa.me/${config.storeWhatsapp}?text=${encodeURIComponent(
-                  storeWhatsappMessage(deliveryMode, approvedOrderId),
-                )}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <Button type="button" variant="secondary">
-                  <MessageCircle size={16} /> Falar no WhatsApp
-                </Button>
-              </a>
-            ) : null}
             <Link to="/">
               <Button>Voltar ao início</Button>
             </Link>
@@ -449,7 +399,7 @@ export function CheckoutPage() {
                   {items.map((item) => (
                     <div
                       key={item.id}
-                      className="surface-soft flex flex-col gap-4 p-4 sm:flex-row sm:items-center"
+                      className="surface-soft rise-in flex flex-col gap-4 p-4 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-26px_rgba(106,42,148,0.55)] sm:flex-row sm:items-center"
                     >
                       <img
                         src={item.imageUrl}
@@ -466,18 +416,25 @@ export function CheckoutPage() {
                         ) : null}
                       </div>
                       <div className="flex items-center justify-between gap-3 sm:justify-end">
-                        <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-2 py-2">
+                        <div className="flex items-center gap-1 rounded-full border border-[#ddc7ea] bg-white p-1 shadow-sm">
                           <button
                             type="button"
                             aria-label={`Diminuir quantidade de ${item.name}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-[#5b247f] transition hover:bg-[#f3e3fb] active:scale-90"
                             onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
                           >
                             <Minus size={16} />
                           </button>
-                          <span className="min-w-8 text-center text-sm font-semibold">{item.quantity}</span>
+                          <span
+                            key={item.quantity}
+                            className="badge-bump min-w-8 text-center text-sm font-bold text-[#2a0f3d]"
+                          >
+                            {item.quantity}
+                          </span>
                           <button
                             type="button"
                             aria-label={`Aumentar quantidade de ${item.name}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-[#5b247f] transition hover:bg-[#f3e3fb] active:scale-90"
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
                           >
                             <Plus size={16} />
@@ -487,7 +444,7 @@ export function CheckoutPage() {
                           type="button"
                           aria-label={`Remover ${item.name}`}
                           onClick={() => setItemToRemove({ id: item.id, name: item.name })}
-                          className="rounded-full border border-rose-200 p-2 text-rose-600"
+                          className="rounded-full border border-rose-200 bg-white p-2.5 text-rose-600 transition hover:-translate-y-0.5 hover:bg-rose-50 hover:shadow-[0_10px_20px_-12px_rgba(225,29,72,0.6)]"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -555,14 +512,14 @@ export function CheckoutPage() {
                       return (
                         <label
                           key={address.id || `${address.cep}-${index}`}
-                          className={`flex cursor-pointer items-center gap-3 rounded-[18px] border p-3.5 transition ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
+                          className={`choice-card flex cursor-pointer items-center gap-3 rounded-[18px] border p-3.5 ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
                         >
                           <input
                             type="radio"
                             name="savedAddress"
                             checked={isSelected}
                             onChange={() => applyAddress(address.id || '')}
-                            className="h-4 w-4 shrink-0 accent-[#5b247f]"
+                            className="radio-fx"
                           />
                           <span className="text-sm text-[#2a0f3d]">
                             {address.street}
@@ -591,7 +548,7 @@ export function CheckoutPage() {
                     return (
                       <label
                         key={option.value}
-                        className={`flex cursor-pointer items-center justify-between gap-4 rounded-[22px] border p-4 transition ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
+                        className={`choice-card flex cursor-pointer items-center justify-between gap-4 rounded-[22px] border p-4 ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
                       >
                         <span className="flex items-center gap-3">
                           <input
@@ -602,7 +559,7 @@ export function CheckoutPage() {
                             onChange={(event) =>
                               setForm((current) => ({ ...current, deliveryMode: event.target.value }))
                             }
-                            className="h-4 w-4 accent-[#5b247f]"
+                            className="radio-fx"
                           />
                           <span className="text-sm font-semibold text-[#2a0f3d]">{option.label}</span>
                         </span>
@@ -628,7 +585,7 @@ export function CheckoutPage() {
                       return (
                         <label
                           key={option.code}
-                          className={`flex cursor-pointer items-center justify-between gap-4 rounded-[22px] border p-4 transition ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
+                          className={`choice-card flex cursor-pointer items-center justify-between gap-4 rounded-[22px] border p-4 ${isSelected ? 'border-[#5b247f] bg-[#eadcf0]/50' : 'border-stone-200 bg-white hover:border-[#ddc7ea]'}`}
                         >
                           <span className="flex items-center gap-3">
                             <input
@@ -637,7 +594,7 @@ export function CheckoutPage() {
                               value={option.code}
                               checked={isSelected}
                               onChange={() => setSelectedCorreios(option.code)}
-                              className="h-4 w-4 accent-[#5b247f]"
+                              className="radio-fx"
                             />
                             <span className="text-sm font-semibold text-[#2a0f3d]">{option.label}</span>
                           </span>
@@ -730,7 +687,7 @@ export function CheckoutPage() {
                     <Payment
                       key={brickKey}
                       initialization={{ amount: total }}
-                      customization={{ paymentMethods: PAYMENT_METHODS_CONFIG }}
+                      customization={{ paymentMethods: PAYMENT_METHODS_CONFIG, visual: PAYMENT_BRICK_VISUAL }}
                       onSubmit={handlePayment}
                       onReady={() => setReadyBrickKey(brickKey)}
                       onError={(error) =>
@@ -823,24 +780,29 @@ function StepBar({ step }: { step: 1 | 2 | 3 | 4 }) {
         return (
           <li key={item} className="flex items-center gap-2 sm:gap-4">
             {index > 0 ? (
-              <span
-                className={`h-0.5 w-6 rounded-full sm:w-12 ${isDone || isActive ? 'bg-[#5b247f]' : 'bg-stone-200'}`}
-              />
+              // Trilho que se preenche com o degrade quando a etapa e alcancada.
+              <span className="step-track h-1 w-6 rounded-full sm:w-12">
+                <span style={{ transform: `scaleX(${isDone || isActive ? 1 : 0})` }} />
+              </span>
             ) : null}
             <div className="flex flex-col items-center gap-1.5">
               <span
-                className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition ${
+                className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-500 ${
                   isActive
-                    ? 'border-[#5b247f] bg-[#5b247f] text-white'
+                    ? 'step-active scale-110 border-transparent text-white'
                     : isDone
-                      ? 'border-[#5b247f] bg-[#eadcf0] text-[#5b247f]'
+                      ? 'border-[#9b3fd6] bg-[#f3e3fb] text-[#6a2a94]'
                       : 'border-stone-200 bg-white text-stone-400'
                 }`}
               >
-                {isDone ? <Check size={16} /> : <Icon size={16} />}
+                {isDone ? (
+                  <Check key="done" size={18} strokeWidth={3} className="badge-bump" />
+                ) : (
+                  <Icon size={17} />
+                )}
               </span>
               <span
-                className={`text-[10px] font-semibold uppercase tracking-wide ${isActive || isDone ? 'text-[#3a164f]' : 'text-stone-400'}`}
+                className={`text-[10px] font-semibold uppercase tracking-wide transition-colors duration-500 ${isActive ? 'text-[#6a2a94]' : isDone ? 'text-[#3a164f]' : 'text-stone-400'}`}
               >
                 {STEP_LABELS[item]}
               </span>

@@ -319,7 +319,7 @@ a:active {
   }
 
   .surface-trust {
-    @apply rounded-[28px] border border-[#5b247f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-[#eadcf0] shadow-[var(--shadow-trust)];
+    @apply rounded-[28px] border border-[#5b247f]/40 bg-[linear-gradient(120deg,#a54de6_0%,#6a2a94_45%,#3a164f_100%)] text-[#eadcf0] shadow-[var(--shadow-trust)];
   }
 
   .eyebrow-trust {
@@ -398,5 +398,471 @@ a:active {
 @container organizer (min-width: 1100px) {
   .organizer-grid-actions {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------------------
+   Visual vivo: cores mais saturadas, movimento ao tocar e checkout interativo.
+   Tudo aqui respeita o prefers-reduced-motion la de cima (as duracoes caem
+   para ~0 e as animacoes rodam uma vez so).
+   ------------------------------------------------------------------------ */
+
+:root {
+  --vivid-violet: #9b3fd6;
+  --vivid-purple: #6a2a94;
+  --vivid-plum: #3a164f;
+  --vivid-gold: #f2b33d;
+  --vivid-gold-deep: #d89a28;
+  --grad-brand: linear-gradient(120deg, #a54de6 0%, #6a2a94 45%, #3a164f 100%);
+  --grad-gold: linear-gradient(120deg, #ffd27a 0%, #f2b33d 45%, #d89a28 100%);
+  --glow-violet: 0 18px 44px -16px rgba(155, 63, 214, 0.65);
+  --glow-gold: 0 14px 34px -14px rgba(242, 179, 61, 0.75);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(165, 77, 230, 0.16), transparent 32%),
+    radial-gradient(circle at 88% 18%, rgba(242, 179, 61, 0.16), transparent 30%),
+    linear-gradient(180deg, #faf6fc 0%, #efe0f7 48%, #faf6fc 100%);
+}
+
+button:active,
+a:active {
+  transform: scale(0.97);
+}
+
+@layer components {
+  /* Botoes (Button.tsx): degrade que desliza no hover, brilho que atravessa e
+   onda a partir do ponto tocado (ver utils/tapFeedback.ts). */
+  .btn-fx {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    transition:
+      transform 260ms var(--ease-spring),
+      box-shadow 260ms ease,
+      background-position 600ms ease,
+      background-color 220ms ease,
+      border-color 220ms ease,
+      color 220ms ease;
+  }
+
+  .btn-fx:not(:disabled):hover {
+    transform: translateY(-2px);
+  }
+
+  .btn-fx:not(:disabled):active {
+    transform: translateY(0) scale(0.96);
+  }
+
+  .btn-primary-fx {
+    background-image: var(--grad-brand);
+    background-size: 200% 100%;
+    background-position: 0% 0;
+  }
+
+  .btn-primary-fx:not(:disabled):hover {
+    background-position: 100% 0;
+    box-shadow: var(--glow-violet);
+  }
+
+  .btn-primary-fx::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+    transform: translateX(-120%);
+    pointer-events: none;
+  }
+
+  .btn-primary-fx:not(:disabled):hover::after {
+    animation: shineSweep 900ms ease;
+  }
+
+  .btn-primary-fx:disabled {
+    background-image: none;
+  }
+}
+
+@keyframes shineSweep {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+.tap-ripple {
+  position: absolute;
+  z-index: -1;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.22;
+  transform: scale(0);
+  pointer-events: none;
+  animation: tapRipple 620ms ease-out forwards;
+}
+
+@keyframes tapRipple {
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* Icones: "pulinho" com mola ao tocar. Aplicado pelo tapFeedback.ts no
+   primeiro img/svg do botao ou link tocado. */
+.icon-pop {
+  animation: iconPop 520ms var(--ease-spring);
+}
+
+@keyframes iconPop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(0.78) rotate(-6deg);
+  }
+  65% {
+    transform: scale(1.18) rotate(4deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+/* Icones grandes do cabecalho: sobem e brilham no hover. */
+.icon-hover {
+  transition:
+    transform 320ms var(--ease-spring),
+    filter 320ms ease;
+}
+
+.group:hover .icon-hover,
+.icon-hover:hover {
+  transform: translateY(-3px) scale(1.06);
+  filter: drop-shadow(0 8px 14px rgba(242, 179, 61, 0.45));
+}
+
+/* Contador da sacola: "pula" quando muda (a chave do elemento e o numero). */
+.badge-bump {
+  animation: badgeBump 560ms var(--ease-spring);
+}
+
+@keyframes badgeBump {
+  0% {
+    transform: scale(0.4);
+  }
+  60% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Cards de produto */
+.product-card {
+  transition:
+    transform 380ms var(--ease-spring),
+    box-shadow 380ms ease,
+    border-color 300ms ease;
+}
+
+.product-card:hover {
+  transform: translateY(-6px);
+  border-color: #d6b3ec;
+  box-shadow: 0 28px 60px -30px rgba(106, 42, 148, 0.55);
+}
+
+.product-card .product-card-image {
+  transition: transform 700ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.product-card:hover .product-card-image {
+  transform: scale(1.07);
+}
+
+.added-burst {
+  animation: addedBurst 700ms var(--ease-spring);
+}
+
+@keyframes addedBurst {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@layer components {
+  /* Campos */
+  .field-base {
+    transition:
+      border-color 220ms ease,
+      box-shadow 260ms ease,
+      background-color 220ms ease;
+  }
+
+  .field-base:hover:not(:focus) {
+    border-color: #c9a4e2;
+  }
+
+  .field-base:focus {
+    border-color: var(--vivid-violet);
+    box-shadow:
+      0 0 0 4px rgba(155, 63, 214, 0.16),
+      0 10px 24px -14px rgba(155, 63, 214, 0.5);
+  }
+}
+
+/* Opcoes clicaveis do checkout (endereco salvo, entrega, Correios). */
+.choice-card {
+  position: relative;
+  transition:
+    transform 300ms var(--ease-spring),
+    box-shadow 300ms ease,
+    border-color 220ms ease,
+    background-color 220ms ease;
+}
+
+.choice-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px -22px rgba(106, 42, 148, 0.5);
+}
+
+.choice-card:active {
+  transform: scale(0.98);
+}
+
+.choice-card:has(input:checked) {
+  border-color: var(--vivid-violet);
+  background-color: #f6ecfc;
+  box-shadow:
+    0 0 0 3px rgba(155, 63, 214, 0.14),
+    0 18px 40px -24px rgba(106, 42, 148, 0.6);
+}
+
+.radio-fx {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  border: 2px solid #c9a4e2;
+  border-radius: 9999px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.radio-fx::before {
+  content: '';
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 9999px;
+  background: var(--grad-brand);
+  transform: scale(0);
+  transition: transform 320ms var(--ease-spring);
+}
+
+.radio-fx:checked {
+  border-color: var(--vivid-violet);
+  box-shadow: 0 0 0 4px rgba(155, 63, 214, 0.15);
+}
+
+.radio-fx:checked::before {
+  transform: scale(1);
+}
+
+/* Etapas do checkout */
+.step-active {
+  background-image: var(--grad-brand);
+  box-shadow: var(--glow-violet);
+  animation: stepPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes stepPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(155, 63, 214, 0.45),
+      var(--glow-violet);
+  }
+  50% {
+    box-shadow:
+      0 0 0 10px rgba(155, 63, 214, 0),
+      var(--glow-violet);
+  }
+}
+
+.step-track {
+  position: relative;
+  overflow: hidden;
+  background: #e7e0ea;
+}
+
+.step-track > span {
+  position: absolute;
+  inset: 0;
+  background: var(--grad-brand);
+  transform-origin: left;
+  transition: transform 600ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+/* Confirmacao do pedido */
+.success-badge {
+  animation: successBadge 700ms var(--ease-spring) both;
+}
+
+@keyframes successBadge {
+  0% {
+    transform: scale(0);
+  }
+  70% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.check-draw {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: checkDraw 560ms 320ms ease-out forwards;
+}
+
+@keyframes checkDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.success-ring {
+  animation: successRing 1.6s ease-out 400ms infinite;
+}
+
+@keyframes successRing {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+.confetti-piece {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 14px;
+  border-radius: 3px;
+  opacity: 0;
+  animation: confettiBurst 1.6s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes confettiBurst {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(0) scale(0.6);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 60px))
+      rotate(calc(var(--rot) + 120deg)) scale(0.9);
+  }
+}
+
+.rise-in {
+  animation: riseIn 620ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.live-dot {
+  position: relative;
+  display: inline-flex;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 9999px;
+  background: var(--vivid-gold);
+}
+
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: successRing 1.4s ease-out infinite;
+}
+
+.qr-glow {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 30px;
+  padding: 4px;
+}
+
+.qr-glow::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  z-index: -1;
+  background: conic-gradient(from 0deg, #a54de6, #f2b33d, #6a2a94, #a54de6);
+  animation: qrSpin 4s linear infinite;
+}
+
+@keyframes qrSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.text-gradient-brand {
+  background-image: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Faixas da marca (cabecalho, rodape, menus): degrade vivo que "respira". */
+.bg-brand-live {
+  background-image: linear-gradient(120deg, #a54de6 0%, #6a2a94 35%, #3a164f 70%, #7b34b0 100%);
+  background-size: 220% 220%;
+  animation: brandDrift 16s ease-in-out infinite;
+}
+
+@keyframes brandDrift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
   }
 }

@@ -12,7 +12,7 @@ const trustSeals = [
 export function Footer() {
   const storeWhatsapp = useStoreWhatsapp()
   return (
-    <footer className="relative mt-16 overflow-hidden border-t border-[#5b247f]/40 bg-[linear-gradient(160deg,#5b247f_0%,#3a164f_100%)] text-[#eadcf0]">
+    <footer className="relative mt-16 overflow-hidden border-t border-[#5b247f]/40 bg-brand-live text-[#eadcf0]">
       <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#5b247f]/40 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-0 h-64 w-64 rounded-full bg-[#d89a28]/15 blur-3xl" />
 

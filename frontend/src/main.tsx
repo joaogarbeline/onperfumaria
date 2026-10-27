@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { API_URL } from './services/api'
 import { ORGANIZER_READY_EVENT } from './hooks/useOrganizerStore'
+import { installTapFeedback } from './utils/tapFeedback'
 
 // Mantem a rodinha da aba girando ate o Organizador (itens, precos) chegar.
 // O navegador so encerra o carregamento quando as imagens da pagina terminam,
@@ -18,6 +19,8 @@ window.addEventListener(
   },
   { once: true },
 )
+
+installTapFeedback()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

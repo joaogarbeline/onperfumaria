@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { Check } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useCart } from '../../contexts/CartContext'
@@ -29,6 +30,10 @@ export function ItemCard({ className = '', item }: { className?: string; item: I
   const { addItem } = useCart()
   const { token } = useAuth()
   const [favorited, setFavorited] = useState(false)
+  // Muda a cada clique em "colocar na sacola": a chave remonta o aviso e a
+  // animacao roda de novo mesmo em cliques seguidos.
+  const [addedTick, setAddedTick] = useState(0)
+  const addedTimer = useRef<number | undefined>(undefined)
   const productName = item.name
   const productPrice = item.price || 0
   const displayPrice = productPrice
@@ -43,15 +48,15 @@ export function ItemCard({ className = '', item }: { className?: string; item: I
       to={`/produto/${item.id}`}
       onClick={() => trackProductEvent(item.id, 'click', token)}
       draggable={false}
-      className={`flex h-full flex-col overflow-hidden rounded-[24px] border border-[#e3cfee] bg-white ${statusPresentation.grayscale ? 'grayscale' : ''} ${className}`}
+      className={`product-card flex h-full flex-col overflow-hidden rounded-[24px] border border-[#e3cfee] bg-white ${statusPresentation.grayscale ? 'grayscale' : ''} ${className}`}
     >
-      <div className="relative flex aspect-[3/4] shrink-0 items-center justify-center bg-[#eadcf0] text-[#d89a28]">
+      <div className="relative flex aspect-[3/4] shrink-0 items-center justify-center overflow-hidden bg-[#eadcf0] text-[#d89a28]">
         {item.imageUrl ? (
           <img
             src={item.imageUrl}
             alt={productName}
             draggable={false}
-            className="h-full w-full object-cover"
+            className="product-card-image h-full w-full object-cover"
           />
         ) : (
           <img
@@ -71,7 +76,7 @@ export function ItemCard({ className = '', item }: { className?: string; item: I
           onKeyDown={(event) => event.stopPropagation()}
           aria-label={favorited ? 'Remover dos favoritos' : 'Favoritar'}
           aria-pressed={favorited}
-          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center"
+          className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/70 backdrop-blur transition hover:scale-110 hover:bg-white"
         >
           <img
             src={favorited ? itemIcons.coracaoPreenchido : itemIcons.coracaoContornado}
@@ -118,16 +123,29 @@ export function ItemCard({ className = '', item }: { className?: string; item: I
                 event.preventDefault()
                 event.stopPropagation()
                 addItem(itemCardToProduct(item))
+                setAddedTick((tick) => tick + 1)
+                window.clearTimeout(addedTimer.current)
+                addedTimer.current = window.setTimeout(() => setAddedTick(0), 1600)
               }}
               onKeyDown={(event) => event.stopPropagation()}
               aria-label="Colocar na sacola"
-              className="flex h-9 w-9 items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-110 hover:bg-[#fff1d6] hover:shadow-[var(--glow-gold)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <img src={itemIcons.compra} alt="" className="h-7 w-7 object-contain" />
             </button>
-            <span className="pointer-events-none absolute -top-8 right-0 whitespace-nowrap rounded-[8px] bg-[#2a0f3d] px-2 py-1 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-              Colocar na sacola
-            </span>
+            {addedTick ? (
+              <span
+                key={addedTick}
+                role="status"
+                className="added-burst pointer-events-none absolute -top-9 right-0 inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[#0f8a5f] px-2.5 py-1 text-[10px] font-bold text-white shadow-lg"
+              >
+                <Check size={12} strokeWidth={3} /> Na sacola!
+              </span>
+            ) : (
+              <span className="pointer-events-none absolute -top-8 right-0 whitespace-nowrap rounded-[8px] bg-[#2a0f3d] px-2 py-1 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                Colocar na sacola
+              </span>
+            )}
           </div>
         </div>
       </div>
