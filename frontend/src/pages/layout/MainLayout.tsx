@@ -1,16 +1,33 @@
-import { Outlet, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
+import { LayoutDashboard } from 'lucide-react'
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AuthModal } from '../../components/auth/AuthModal'
 import { Footer } from '../../components/Footer'
 import { useAuth } from '../../contexts/AuthContext'
 import { Header } from './Header'
 import { MobileBottomNav } from './mobile/MobileBottomNav'
 import { useIsMobile } from './useIsMobile'
+import { isOrganizerPreviewMode } from '../../types/organizer'
+import { isAdminVisitorMode, setAdminVisitorMode, VISITOR_PARAM } from '../../utils/adminVisitor'
 
 export function MainLayout() {
   const location = useLocation()
   const isMobile = useIsMobile()
-  const { modal } = useAuth()
+  const navigate = useNavigate()
+  const { modal, isAdmin } = useAuth()
   const isStandaloneProductPage = location.pathname === '/admin'
+  const visitorParam = new URLSearchParams(location.search).get(VISITOR_PARAM) === '1'
+  // A previa do editor avancado abre a loja num iframe: la nao redireciona
+  // nem mostra o botao de voltar (o editor ja tem o seu).
+  const embedded = window.self !== window.top || isOrganizerPreviewMode(location.search)
+  const visitorMode = visitorParam || isAdminVisitorMode()
+
+  useEffect(() => {
+    if (visitorParam) setAdminVisitorMode(true)
+  }, [visitorParam])
+
+  // Admin logado fica no painel; a loja so no modo visitante.
+  if (isAdmin && !visitorMode && !embedded) return <Navigate to="/admin" replace />
 
   return (
     <div
@@ -44,6 +61,26 @@ export function MainLayout() {
       </div>
       {isStandaloneProductPage ? null : <Footer />}
       {isMobile && !isStandaloneProductPage ? <MobileBottomNav /> : null}
+      {isAdmin && !embedded ? (
+        <button
+          type="button"
+          onClick={() => {
+            setAdminVisitorMode(false)
+            navigate('/admin')
+          }}
+          className="btn-fx fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-[#2a0f3d]/90 py-2 pl-2 pr-4 text-xs font-bold text-white shadow-[0_18px_40px_-18px_rgba(42,15,61,0.8)] ring-1 ring-white/15 backdrop-blur"
+          style={{
+            bottom: isMobile
+              ? 'calc(var(--mobile-nav-height, 64px) + var(--mobile-action-bar-height, 0px) + 10px)'
+              : '24px',
+          }}
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[image:var(--grad-gold)] text-[#3a164f]">
+            <LayoutDashboard size={15} />
+          </span>
+          Modo visitante · Voltar ao admin
+        </button>
+      ) : null}
       {/* A chave remonta a janela zerada a cada nova abertura. */}
       {modal ? <AuthModal key={modal.id} /> : null}
     </div>

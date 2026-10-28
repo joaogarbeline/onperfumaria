@@ -23,6 +23,7 @@ import type { CreateOrganizerNodeInput } from '../../hooks/useOrganizerStore'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { itemIcons } from '../item/icons'
+import { visitorUrl } from '../../utils/adminVisitor'
 
 /** Categorias = paginas do site. A tag com o mesmo nome coloca o produto la. */
 const CATEGORIES = [
@@ -652,7 +653,7 @@ function ProductEditor({
           {product ? (
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#f3e9f7] pt-4">
               <a
-                href={`/produto/${product.id}`}
+                href={visitorUrl(`/produto/${product.id}`)}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-1.5 text-sm font-semibold text-[#6a2a94]"

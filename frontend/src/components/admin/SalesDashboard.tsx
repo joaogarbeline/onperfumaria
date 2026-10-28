@@ -1,6 +1,6 @@
 import {
   AlertTriangle,
-  ExternalLink,
+  Eye,
   LogOut,
   Menu,
   PackageSearch,
@@ -31,6 +31,7 @@ import { toWhatsappDigits } from '../../utils/checkout'
 import { getOrderStatusPresentation } from '../../utils/orders'
 import { disablePush, enablePush, getPushState, sendTestPush, type PushState } from '../../utils/push'
 import { Button } from '../Button'
+import { visitorUrl } from '../../utils/adminVisitor'
 import { PosTerminal } from './PosTerminal'
 import { ProductsManager } from './ProductsManager'
 import { SalesReports } from './SalesReports'
@@ -342,6 +343,13 @@ export function SalesDashboard({
           >
             <RefreshCw size={18} />
           </button>
+          <a
+            href={visitorUrl('/')}
+            title="Navegar pela loja como um cliente"
+            className="hidden h-10 items-center gap-1.5 rounded-full bg-white/10 px-4 text-sm font-semibold hover:bg-white/20 lg:flex"
+          >
+            <Eye size={17} /> Ver como visitante
+          </a>
           <button
             type="button"
             onClick={onClose}
@@ -504,12 +512,10 @@ export function SalesDashboard({
             </ul>
             <div className="mt-2 grid grid-cols-3 gap-2 border-t border-[#f3e9f7] pt-3">
               <a
-                href="/"
-                target="_blank"
-                rel="noreferrer"
-                className="flex flex-col items-center gap-1 rounded-2xl bg-[#fbf7fd] py-3 text-[11px] font-bold text-[#5b247f]"
+                href={visitorUrl('/')}
+                className="flex flex-col items-center gap-1 rounded-2xl bg-[#fbf7fd] py-3 text-center text-[11px] font-bold text-[#5b247f]"
               >
-                <ExternalLink size={18} /> Ver loja
+                <Eye size={18} /> Ver como visitante
               </a>
               <button
                 type="button"
