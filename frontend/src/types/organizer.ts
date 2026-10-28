@@ -15,8 +15,9 @@ export type OrganizerAutoFill = {
   enabled: boolean
   /** Produtos com QUALQUER uma destas tags. Vazio = todos os produtos. */
   tagIds: string[]
-  /** Filtro extra: so com desconto (tag com %) ou so "pouco no estoque". */
-  filter: 'all' | 'discounted' | 'low-stock'
+  /** Filtro extra. Os ultimos tres usam o que o celular do cliente conta:
+   * o que ele viu, parecidos com o que ele viu e o que mais se procura na loja. */
+  filter: 'all' | 'discounted' | 'low-stock' | 'featured' | 'recently-viewed' | 'recommended' | 'popular'
   sort: 'newest' | 'price-asc' | 'price-desc' | 'discount' | 'name'
   /** Maximo de produtos no bloco (0 = todos). */
   limit: number
@@ -56,6 +57,8 @@ export type OrganizerNode = {
    * feitas enquanto a tela estava aberta. Nao editar nem remover.
    */
   stockSold?: number
+  /** So "item": aparece no carrossel "Destaques" do topo da home. */
+  featured?: boolean
   /** Desconto no Pix em %, especifico do item. Sem valor, a pagina usa o padrao do site. */
   pixDiscountPercent?: number
   route?: string

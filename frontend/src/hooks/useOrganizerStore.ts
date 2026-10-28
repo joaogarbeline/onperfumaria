@@ -168,6 +168,7 @@ export type CreateOrganizerNodeInput = {
   volumeMl?: number
   stock?: number
   pixDiscountPercent?: number
+  featured?: boolean
 }
 
 export function useOrganizerStore(token?: string) {
@@ -403,6 +404,7 @@ export function useOrganizerStore(token?: string) {
       volumeMl: input.volumeMl,
       stock: input.stock,
       pixDiscountPercent: input.pixDiscountPercent,
+      featured: input.featured,
     }
 
     setLocalStore((current) =>

@@ -24,8 +24,10 @@ export function CategoryWindow({ title }: { title: string }) {
   const previewMode = isOrganizerPreviewMode(location.search)
   const pageId = pageIds[normalizeOrganizerSearch(title)] ?? normalizeOrganizerSearch(title)
   const page = store.nodes.find((node) => node.id === pageId && node.type === 'page')
+  // Pagina de categoria = catalogo com todos os produtos da categoria (pela tag).
   const modules = getOrganizerPageModules(store.nodes, pageId).filter(
     (node) =>
+      node.type === 'catalog' &&
       isOrganizerNodeAvailable(node, previewMode) &&
       isSiteModuleRenderable(node, store.nodes, [], previewMode, store.tags),
   )

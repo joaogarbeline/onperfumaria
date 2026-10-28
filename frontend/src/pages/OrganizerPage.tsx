@@ -182,7 +182,9 @@ export function OrganizerPage() {
   // (/admin?painel=pedidos&pedido=<id>) e pelo atalho do app instalado.
   const [salesPanel, setSalesPanel] = useState<{ orderId: string | null } | null>(() => {
     const params = new URLSearchParams(window.location.search)
-    return params.get('painel') === 'pedidos' ? { orderId: params.get('pedido') } : null
+    // O painel e a tela principal do admin; o editor avancado so com ?editor.
+    if (params.has('editor')) return null
+    return { orderId: params.get('painel') === 'pedidos' ? params.get('pedido') : null }
   })
   const closeSalesPanel = useCallback(() => {
     setSalesPanel(null)
@@ -1072,7 +1074,10 @@ export function OrganizerPage() {
           nodes={store.nodes}
           tags={store.tags}
           onUpdateNode={(id, updates) => updateNode(id, updates)}
+          onCreateNode={(input) => createNode(input)}
+          onDeleteNode={(id) => moveNodeToTrash(id)}
           onCreateTag={(name, color) => createTag(name, color)}
+          onLogout={handleLogoff}
         />
       )}
       <NotificationsDrawer

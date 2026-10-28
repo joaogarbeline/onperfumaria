@@ -2,6 +2,7 @@ import { isOrganizerNodeAvailable } from '../../types/organizer'
 import type { OrganizerNode, OrganizerTag } from '../../types/organizer'
 import type { ItemCardContent } from '../item/ItemCard'
 import { autoFillItems, effectiveAutoFill } from './autoFill'
+import { emptySignals, type CustomerSignals } from './customerSignals'
 
 export function toItemContent(node: OrganizerNode, tags: OrganizerTag[]): ItemCardContent {
   const firstTag = tags.find((tag) => node.tagIds.includes(tag.id))
@@ -32,6 +33,7 @@ export function getRenderableOrganizerItems(
   nodes: OrganizerNode[],
   previewMode: boolean,
   tags: OrganizerTag[] = [],
+  signals: CustomerSignals = emptySignals,
 ) {
   const manual = module.itemIds
     .map((id) =>
@@ -46,7 +48,7 @@ export function getRenderableOrganizerItems(
   const manualIds = new Set(manual.map((node) => node.id))
   return [
     ...manual,
-    ...autoFillItems(rule, nodes, tags, previewMode).filter((node) => !manualIds.has(node.id)),
+    ...autoFillItems(rule, nodes, tags, previewMode, signals).filter((node) => !manualIds.has(node.id)),
   ]
 }
 
@@ -56,6 +58,7 @@ export function isSiteModuleRenderable(
   brands: string[] = [],
   previewMode = false,
   tags: OrganizerTag[] = [],
+  signals: CustomerSignals = emptySignals,
 ) {
   // Um item só aparece na página quando está vinculado a um Carrossel ou
   // Catálogo (via itemIds) - um item solto na página, sem estar dentro de
@@ -66,7 +69,7 @@ export function isSiteModuleRenderable(
     return Boolean(module.imageUrl.trim())
   }
 
-  const hasSelectedItems = getRenderableOrganizerItems(module, nodes, previewMode, tags).length > 0
+  const hasSelectedItems = getRenderableOrganizerItems(module, nodes, previewMode, tags, signals).length > 0
   if (module.variant === 'banner-carousel') {
     return hasSelectedItems || Boolean(module.imageUrl.trim())
   }

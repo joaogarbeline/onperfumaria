@@ -5,6 +5,7 @@ import {
   type OrganizerNode,
   type OrganizerTag,
 } from '../../types/organizer'
+import { emptySignals, type CustomerSignals } from './customerSignals'
 
 export const AUTO_FILL_SORT_LABELS: Record<OrganizerAutoFill['sort'], string> = {
   newest: 'Mais novos primeiro',
@@ -18,7 +19,14 @@ export const AUTO_FILL_FILTER_LABELS: Record<OrganizerAutoFill['filter'], string
   all: 'Todos',
   discounted: 'Só com desconto',
   'low-stock': 'Só pouco estoque',
+  featured: 'Só os em destaque',
+  'recently-viewed': 'Vistos pelo cliente',
+  recommended: 'Parecidos com o que o cliente viu',
+  popular: 'Mais procurados da loja',
 }
+
+/** Filtros que ja trazem a propria ordem (a do cliente ou a do ranking). */
+export const SELF_ORDERED_FILTERS: OrganizerAutoFill['filter'][] = ['recently-viewed', 'popular']
 
 export function bestDiscountPercent(node: OrganizerNode, tags: OrganizerTag[]) {
   return node.tagIds.reduce((best, tagId) => {
@@ -50,10 +58,15 @@ function defaultCategoryAutoFill(module: OrganizerNode, tags: OrganizerTag[]): O
 
 /** Regras padrao dos carrosseis fixos da home (antes ficavam escondidas no
  * codigo; agora aparecem e podem ser trocadas na aba Vitrines do painel). */
-const HOME_DEFAULTS: Record<string, OrganizerAutoFill> = {
-  'home-products-2': { enabled: true, tagIds: [], filter: 'all', sort: 'newest', limit: 6 },
-  'home-products-4': { enabled: true, tagIds: [], filter: 'discounted', sort: 'discount', limit: 6 },
-  'home-products-6': { enabled: true, tagIds: [], filter: 'low-stock', sort: 'newest', limit: 6 },
+export const HOME_DEFAULTS: Record<string, OrganizerAutoFill> = {
+  'home-featured': { enabled: true, tagIds: [], filter: 'featured', sort: 'newest', limit: 0 },
+  'home-products-1': { enabled: true, tagIds: [], filter: 'recently-viewed', sort: 'newest', limit: 10 },
+  'home-products-2': { enabled: true, tagIds: [], filter: 'all', sort: 'newest', limit: 10 },
+  'home-products-3': { enabled: true, tagIds: [], filter: 'recommended', sort: 'newest', limit: 10 },
+  'home-products-4': { enabled: true, tagIds: [], filter: 'discounted', sort: 'discount', limit: 10 },
+  'home-products-5': { enabled: true, tagIds: [], filter: 'popular', sort: 'newest', limit: 10 },
+  'home-products-6': { enabled: true, tagIds: [], filter: 'low-stock', sort: 'newest', limit: 10 },
+  'home-products-7': { enabled: true, tagIds: [], filter: 'all', sort: 'price-asc', limit: 10 },
 }
 
 /** Regra em uso no bloco: a configurada nele ou a padrao (home/categoria). */
@@ -70,6 +83,7 @@ export function autoFillItems(
   nodes: OrganizerNode[],
   tags: OrganizerTag[],
   previewMode: boolean,
+  signals: CustomerSignals = emptySignals,
 ) {
   let items = nodes.filter(
     (node) =>
@@ -79,6 +93,26 @@ export function autoFillItems(
   )
   if (rule.filter === 'discounted') items = items.filter((node) => bestDiscountPercent(node, tags) > 0)
   if (rule.filter === 'low-stock') items = items.filter((node) => node.status === 'low-stock')
+  if (rule.filter === 'featured') items = items.filter((node) => node.featured)
+
+  const limit = (list: OrganizerNode[]) => (rule.limit > 0 ? list.slice(0, rule.limit) : list)
+  if (rule.filter === 'recently-viewed' || rule.filter === 'popular') {
+    const ids = rule.filter === 'popular' ? signals.popularIds : signals.recentIds
+    const byId = new Map(items.map((node) => [node.id, node]))
+    return limit(ids.map((id) => byId.get(id)).filter((node): node is OrganizerNode => Boolean(node)))
+  }
+  if (rule.filter === 'recommended') {
+    // Mesmas categorias/marcas do que o cliente abriu, sem repetir o que ele ja viu.
+    const seen = new Set(signals.recentIds)
+    const viewed = nodes.filter((node) => seen.has(node.id))
+    const seenTags = new Set(viewed.flatMap((node) => node.tagIds))
+    const seenBrands = new Set(viewed.map((node) => node.brand?.trim().toLowerCase()).filter(Boolean))
+    const score = (node: OrganizerNode) =>
+      node.tagIds.filter((id) => seenTags.has(id)).length +
+      (node.brand && seenBrands.has(node.brand.trim().toLowerCase()) ? 2 : 0)
+    items = items.filter((node) => !seen.has(node.id) && score(node) > 0)
+    return limit(items.sort((a, b) => score(b) - score(a) || b.createdAt.localeCompare(a.createdAt)))
+  }
 
   const sorted = [...items]
   switch (rule.sort) {
@@ -97,5 +131,5 @@ export function autoFillItems(
     default:
       sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   }
-  return rule.limit > 0 ? sorted.slice(0, rule.limit) : sorted
+  return limit(sorted)
 }

@@ -66,6 +66,12 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			}
 			c.Status(http.StatusNoContent)
 		})
+		api.GET("/store/popular", func(c *gin.Context) {
+			ids, err := service.PopularProducts(c.Request.Context(), 20)
+			// O ranking muda devagar: deixa o navegador reaproveitar por 10 min.
+			c.Header("Cache-Control", "public, max-age=600")
+			respond(c, gin.H{"ids": ids}, err)
+		})
 		api.GET("/store/config", func(c *gin.Context) {
 			data, err := service.StoreConfig(c.Request.Context())
 			respond(c, data, err)

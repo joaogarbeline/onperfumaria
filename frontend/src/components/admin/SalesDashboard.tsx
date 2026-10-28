@@ -1,5 +1,10 @@
 import {
   AlertTriangle,
+  ExternalLink,
+  LogOut,
+  Menu,
+  PackageSearch,
+  Settings2,
   CheckCircle2,
   LayoutGrid,
   Store,
@@ -27,8 +32,10 @@ import { getOrderStatusPresentation } from '../../utils/orders'
 import { disablePush, enablePush, getPushState, sendTestPush, type PushState } from '../../utils/push'
 import { Button } from '../Button'
 import { PosTerminal } from './PosTerminal'
+import { ProductsManager } from './ProductsManager'
 import { SalesReports } from './SalesReports'
 import { ShowcaseManager } from './ShowcaseManager'
+import type { CreateOrganizerNodeInput } from '../../hooks/useOrganizerStore'
 import type { OrganizerNode, OrganizerTag } from '../../types/organizer'
 
 type Dashboard = {
@@ -74,15 +81,19 @@ type OrderDetail = {
   address: { street: string; number: string; neighborhood: string; city: string; state: string; cep: string }
 }
 
-type View = 'overview' | 'orders' | 'pos' | 'showcase' | 'finance'
+type View = 'overview' | 'orders' | 'products' | 'pos' | 'showcase' | 'finance'
 
-const VIEWS: Array<{ key: View; label: string; icon: typeof ShoppingBag }> = [
-  { key: 'overview', label: 'Início', icon: LayoutDashboard },
-  { key: 'orders', label: 'Pedidos', icon: ShoppingBag },
-  { key: 'pos', label: 'PDV', icon: Store },
-  { key: 'showcase', label: 'Vitrines', icon: LayoutGrid },
-  { key: 'finance', label: 'Financeiro', icon: Wallet },
+const VIEWS: Array<{ key: View; label: string; detail: string; icon: typeof ShoppingBag }> = [
+  { key: 'overview', label: 'Início', detail: 'Vendas de hoje e do mês', icon: LayoutDashboard },
+  { key: 'orders', label: 'Pedidos', detail: 'Separar, enviar e entregar', icon: ShoppingBag },
+  { key: 'products', label: 'Produtos', detail: 'Cadastrar, preço, estoque e destaque', icon: PackageSearch },
+  { key: 'pos', label: 'PDV', detail: 'Vender no balcão', icon: Store },
+  { key: 'showcase', label: 'Vitrines', detail: 'Carrosséis da página inicial', icon: LayoutGrid },
+  { key: 'finance', label: 'Financeiro', detail: 'Relatórios e planilha', icon: Wallet },
 ]
+
+// No celular cabem 4 abas + "Menu"; o resto fica dentro do menu.
+const MOBILE_TABS: View[] = ['overview', 'orders', 'products', 'pos']
 
 type TabKey = 'pago' | 'aguardando_pagamento' | 'enviado' | 'entregue' | 'todos'
 
@@ -139,7 +150,10 @@ export function SalesDashboard({
   nodes,
   tags,
   onUpdateNode,
+  onCreateNode,
+  onDeleteNode,
   onCreateTag,
+  onLogout,
 }: {
   token: string | null
   onClose: () => void
@@ -147,9 +161,17 @@ export function SalesDashboard({
   nodes: OrganizerNode[]
   tags: OrganizerTag[]
   onUpdateNode: (id: string, updates: Partial<OrganizerNode>) => void
+  onCreateNode: (input: CreateOrganizerNodeInput) => string
+  onDeleteNode: (id: string) => void
   onCreateTag: (name: string, color: string) => string
+  onLogout: () => void
 }) {
-  const [view, setView] = useState<View>(initialOrderId ? 'orders' : 'overview')
+  const [view, setViewState] = useState<View>(initialOrderId ? 'orders' : 'overview')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const setView = (next: View) => {
+    setViewState(next)
+    setMenuOpen(false)
+  }
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [tab, setTab] = useState<TabKey>('pago')
   const [search, setSearch] = useState('')
@@ -323,10 +345,20 @@ export function SalesDashboard({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fechar painel"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+            aria-label="Editor avançado"
+            title="Editor avançado"
+            className="hidden h-10 items-center gap-1.5 rounded-full bg-white/10 px-4 text-sm font-semibold hover:bg-white/20 lg:flex"
           >
-            <X size={20} />
+            <Settings2 size={17} /> Editor avançado
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Sair"
+            title="Sair"
+            className="hidden h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 lg:flex"
+          >
+            <LogOut size={18} />
           </button>
         </div>
       </header>
@@ -369,9 +401,9 @@ export function SalesDashboard({
         aria-label="Seções do painel"
         className="bg-brand-live fixed inset-x-0 bottom-0 z-[61] flex h-16 items-stretch shadow-[0_-12px_30px_-18px_rgba(58,22,79,0.6)] lg:hidden"
       >
-        {VIEWS.map((item) => {
+        {VIEWS.filter((item) => MOBILE_TABS.includes(item.key)).map((item) => {
           const Icon = item.icon
-          const active = view === item.key
+          const active = view === item.key && !menuOpen
           return (
             <button
               key={item.key}
@@ -403,7 +435,100 @@ export function SalesDashboard({
             </button>
           )
         })}
+        <button
+          type="button"
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-expanded={menuOpen}
+          className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors ${
+            menuOpen || !MOBILE_TABS.includes(view) ? 'text-white' : 'text-white/65'
+          }`}
+        >
+          <span
+            aria-hidden="true"
+            className={`absolute top-0 h-1 rounded-b-full bg-[image:var(--grad-gold)] transition-all duration-500 ${
+              menuOpen || !MOBILE_TABS.includes(view) ? 'w-8 opacity-100' : 'w-0 opacity-0'
+            }`}
+          />
+          {menuOpen ? <X size={21} /> : <Menu size={21} />}
+          Menu
+        </button>
       </nav>
+
+      {menuOpen ? (
+        <div className="fixed inset-0 z-[60] lg:hidden" role="presentation">
+          <button
+            type="button"
+            aria-label="Fechar menu"
+            onClick={() => setMenuOpen(false)}
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+          />
+          <nav
+            aria-label="Menu do admin"
+            className="rise-in absolute inset-x-0 bottom-16 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-t-[28px] bg-white p-3 pb-4 shadow-2xl"
+          >
+            <p className="organizer-eyebrow px-3 pb-2 pt-1">Menu do admin</p>
+            <ul className="space-y-1">
+              {VIEWS.map((item) => {
+                const Icon = item.icon
+                const active = view === item.key
+                return (
+                  <li key={item.key}>
+                    <button
+                      type="button"
+                      onClick={() => setView(item.key)}
+                      aria-current={active ? 'page' : undefined}
+                      className={`flex w-full items-center gap-3 rounded-[18px] px-3 py-2.5 text-left transition ${
+                        active ? 'bg-[#f6ecfc]' : 'hover:bg-[#fbf7fd]'
+                      }`}
+                    >
+                      <span
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                          active ? 'bg-[image:var(--grad-brand)] text-white' : 'bg-[#f6ecfc] text-[#6a2a94]'
+                        }`}
+                      >
+                        <Icon size={19} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-[#2a0f3d]">{item.label}</span>
+                        <span className="block text-xs text-[#6b665f]">{item.detail}</span>
+                      </span>
+                      {item.key === 'orders' && dashboard?.toShip ? (
+                        <span className="rounded-full bg-[#fff1d6] px-2 py-0.5 text-[11px] font-bold text-[#8a5a0b]">
+                          {dashboard.toShip} a enviar
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="mt-2 grid grid-cols-3 gap-2 border-t border-[#f3e9f7] pt-3">
+              <a
+                href="/"
+                target="_blank"
+                rel="noreferrer"
+                className="flex flex-col items-center gap-1 rounded-2xl bg-[#fbf7fd] py-3 text-[11px] font-bold text-[#5b247f]"
+              >
+                <ExternalLink size={18} /> Ver loja
+              </a>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex flex-col items-center gap-1 rounded-2xl bg-[#fbf7fd] py-3 text-[11px] font-bold text-[#5b247f]"
+              >
+                <Settings2 size={18} /> Editor avançado
+              </button>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="flex flex-col items-center gap-1 rounded-2xl bg-rose-50 py-3 text-[11px] font-bold text-rose-600"
+              >
+                <LogOut size={18} /> Sair
+              </button>
+            </div>
+          </nav>
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-24 pt-5 sm:px-6 lg:pb-8">
@@ -416,10 +541,15 @@ export function SalesDashboard({
           {view === 'finance' ? <SalesReports token={token} /> : null}
           {view === 'pos' ? <PosTerminal token={token} nodes={nodes} tags={tags} /> : null}
           {view === 'showcase' ? (
-            <ShowcaseManager
+            <ShowcaseManager nodes={nodes} tags={tags} onUpdateNode={onUpdateNode} />
+          ) : null}
+          {view === 'products' ? (
+            <ProductsManager
               nodes={nodes}
               tags={tags}
+              onCreateNode={onCreateNode}
               onUpdateNode={onUpdateNode}
+              onDeleteNode={onDeleteNode}
               onCreateTag={onCreateTag}
             />
           ) : null}

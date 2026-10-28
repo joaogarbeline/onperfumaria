@@ -1,5 +1,6 @@
 import type { OrganizerNode, OrganizerTag } from '../../types/organizer'
 import { BrandMarquee } from '../BrandMarquee'
+import type { CustomerSignals } from './customerSignals'
 import { getRenderableOrganizerItems, isSiteModuleRenderable, toItemContent } from './moduleContent'
 import { CarouselModule } from '../../pages/modelos/CarouselModule'
 import { CatalogModule } from '../../pages/modelos/CatalogModule'
@@ -11,6 +12,7 @@ type SiteModuleRendererProps = {
   tags: OrganizerTag[]
   brands?: string[]
   previewMode?: boolean
+  signals?: CustomerSignals
 }
 
 export function SiteModuleRenderer({
@@ -19,11 +21,12 @@ export function SiteModuleRenderer({
   tags,
   brands = [],
   previewMode = false,
+  signals,
 }: SiteModuleRendererProps) {
-  if (!isSiteModuleRenderable(module, nodes, brands, previewMode, tags)) return null
+  if (!isSiteModuleRenderable(module, nodes, brands, previewMode, tags, signals)) return null
 
   // Escolhidos a mao + os que entram sozinhos pela regra de tags do bloco.
-  const itemCards = getRenderableOrganizerItems(module, nodes, previewMode, tags).map((node) =>
+  const itemCards = getRenderableOrganizerItems(module, nodes, previewMode, tags, signals).map((node) =>
     toItemContent(node, tags),
   )
 

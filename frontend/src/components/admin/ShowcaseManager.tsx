@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Eye, EyeOff, LayoutGrid, Plus, Search, Sparkles, Tag, X } from 'lucide-react'
+import { Check, ChevronRight, Eye, EyeOff, LayoutGrid, Sparkles, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import {
   getOrganizerPageModules,
@@ -12,10 +12,10 @@ import {
   AUTO_FILL_SORT_LABELS,
   autoFillItems,
   effectiveAutoFill,
+  SELF_ORDERED_FILTERS,
 } from '../site/autoFill'
 
 const LIMITS = [0, 4, 6, 8, 12, 20]
-const TAG_COLORS = ['#9b3fd6', '#d89a28', '#0f8a5f', '#e11d48', '#2563eb', '#3a164f']
 
 const DEFAULT_RULE: OrganizerAutoFill = { enabled: true, tagIds: [], filter: 'all', sort: 'newest', limit: 0 }
 
@@ -23,58 +23,30 @@ type Props = {
   nodes: OrganizerNode[]
   tags: OrganizerTag[]
   onUpdateNode: (id: string, updates: Partial<OrganizerNode>) => void
-  onCreateTag: (name: string, color: string) => string
 }
 
-/** Vitrines simples para o dono: carrosseis/catalogos se preenchem por tag. */
+/** Vitrines do dono: so os carrosseis de produto da home, cada um com a
+ * sua regra (novidades, ofertas, mais procurados...). */
 export function ShowcaseManager(props: Props) {
-  const [view, setView] = useState<'blocks' | 'products'>('blocks')
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-center">
-        <div className="flex rounded-full bg-white p-1 shadow-sm ring-1 ring-[#efe3f6]">
-          {(
-            [
-              ['blocks', 'Vitrines das páginas', LayoutGrid],
-              ['products', 'Tags dos produtos', Tag],
-            ] as const
-          ).map(([key, label, Icon]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setView(key)}
-              className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition sm:text-sm ${
-                view === key
-                  ? 'bg-[image:var(--grad-brand)] text-white shadow-[var(--glow-violet)]'
-                  : 'text-[#5b247f]'
-              }`}
-            >
-              <Icon size={15} /> {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {view === 'blocks' ? <BlocksView {...props} /> : <ProductTagsView {...props} />}
-    </div>
-  )
+  return <BlocksView {...props} />
 }
 
 function isProductBlock(node: OrganizerNode) {
-  return (node.type === 'carousel' || node.type === 'catalog') && node.variant !== 'banner-carousel'
+  return node.variant === 'product-carousel'
 }
 
 function BlocksView({ nodes, tags, onUpdateNode }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
-  const pages = nodes.filter((node) => node.type === 'page' && node.route)
+  const pages = nodes.filter((node) => node.id === 'home')
   const editing = editingId ? nodes.find((node) => node.id === editingId) : undefined
 
   return (
     <div className="space-y-4">
       <p className="rounded-[18px] bg-[#fff6e3] px-4 py-3 text-xs leading-5 text-[#8a5a0b]">
         <Sparkles size={13} className="mr-1 inline" />
-        Cada vitrine pode se encher sozinha com os produtos de uma ou mais <b>tags</b>. As páginas de
-        categoria já mostram automaticamente os produtos com a tag de mesmo nome (ex.: tag <b>Árabes</b> →
-        página Árabes).
+        Os carrosséis da página inicial se enchem sozinhos. O <b>Destaques</b> do topo mostra os produtos com
+        a chave “Destaque” ligada na área Produtos. “Visto recentemente”, “Recomendado” e “Mais procurados”
+        usam o que cada cliente abriu no celular e o que a loja mais vende.
       </p>
 
       {pages.map((page) => {
@@ -110,7 +82,9 @@ function BlocksView({ nodes, tags, onUpdateNode }: Props) {
                         </span>
                         <span className="block truncate text-xs text-[#6b665f]">
                           {rule
-                            ? `Automático · ${ruleSummary(rule, tags)} · ${count} produto(s)`
+                            ? isPerCustomer(rule)
+                              ? `Automático · ${ruleSummary(rule, tags)}`
+                              : `Automático · ${ruleSummary(rule, tags)} · ${count} produto(s)`
                             : `Manual · ${block.itemIds.length} escolhido(s)`}
                         </span>
                       </span>
@@ -150,7 +124,12 @@ function BlocksView({ nodes, tags, onUpdateNode }: Props) {
   )
 }
 
+function isPerCustomer(rule: OrganizerAutoFill) {
+  return SELF_ORDERED_FILTERS.includes(rule.filter) || rule.filter === 'recommended'
+}
+
 function ruleSummary(rule: OrganizerAutoFill, tags: OrganizerTag[]) {
+  if (isPerCustomer(rule)) return AUTO_FILL_FILTER_LABELS[rule.filter]
   const names = rule.tagIds.map((id) => tags.find((tag) => tag.id === id)?.name).filter(Boolean)
   const base = names.length ? names.join(', ') : 'todos os produtos'
   return rule.filter === 'all' ? base : `${base} (${AUTO_FILL_FILTER_LABELS[rule.filter].toLowerCase()})`
@@ -227,7 +206,7 @@ function BlockEditor({
                   Mostrar produtos com as tags
                 </p>
                 {tags.length === 0 ? (
-                  <p className="text-xs text-[#9b86a8]">Crie tags na aba “Tags dos produtos”.</p>
+                  <p className="text-xs text-[#9b86a8]">Crie categorias na área Produtos.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {tags.map((tag) => {
@@ -292,7 +271,9 @@ function BlockEditor({
 
               <div className="rounded-[18px] bg-[#fbf7fd] p-3">
                 <p className="text-xs font-bold text-[#2a0f3d]">
-                  Prévia: {preview.length} produto(s) vão aparecer
+                  {isPerCustomer(rule)
+                    ? 'Muda para cada cliente, conforme o que ele abriu e o que mais se procura na loja.'
+                    : `Prévia: ${preview.length} produto(s) vão aparecer`}
                 </p>
                 <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto">
                   {preview.slice(0, 12).map((item) => (
@@ -367,161 +348,5 @@ function EditorSelect<T extends string>({
         ))}
       </select>
     </label>
-  )
-}
-
-function ProductTagsView({ nodes, tags, onUpdateNode, onCreateTag }: Props) {
-  const [query, setQuery] = useState('')
-  const [newTag, setNewTag] = useState('')
-  const [filterTag, setFilterTag] = useState<string | 'none' | null>(null)
-
-  const products = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase('pt-BR')
-    return nodes
-      .filter((node) => node.type === 'item')
-      .filter((node) => !term || `${node.name} ${node.brand ?? ''}`.toLocaleLowerCase('pt-BR').includes(term))
-      .filter((node) =>
-        filterTag === null
-          ? true
-          : filterTag === 'none'
-            ? node.tagIds.length === 0
-            : node.tagIds.includes(filterTag),
-      )
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-  }, [nodes, query, filterTag])
-
-  const untagged = nodes.filter((node) => node.type === 'item' && node.tagIds.length === 0).length
-
-  const addTag = () => {
-    const name = newTag.trim()
-    if (!name || tags.some((tag) => tag.name.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR')))
-      return
-    onCreateTag(name, TAG_COLORS[tags.length % TAG_COLORS.length])
-    setNewTag('')
-  }
-
-  return (
-    <div className="space-y-4">
-      <section className="organizer-surface space-y-3 bg-white p-4">
-        <div className="flex gap-2">
-          <input
-            value={newTag}
-            onChange={(event) => setNewTag(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && addTag()}
-            placeholder="Nova tag (ex.: Árabes, Lançamento, Kit)"
-            className="pos-input"
-          />
-          <Button onClick={addTag} disabled={!newTag.trim()}>
-            <Plus size={16} /> Criar
-          </Button>
-        </div>
-        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
-          <FilterChip active={filterTag === null} onClick={() => setFilterTag(null)}>
-            Todos
-          </FilterChip>
-          {untagged > 0 ? (
-            <FilterChip active={filterTag === 'none'} onClick={() => setFilterTag('none')}>
-              Sem tag ({untagged})
-            </FilterChip>
-          ) : null}
-          {tags.map((tag) => (
-            <FilterChip key={tag.id} active={filterTag === tag.id} onClick={() => setFilterTag(tag.id)}>
-              {tag.name} (
-              {nodes.filter((node) => node.type === 'item' && node.tagIds.includes(tag.id)).length})
-            </FilterChip>
-          ))}
-        </div>
-        <label className="flex h-11 items-center gap-2 rounded-full border border-[#ddc7ea] bg-[#fbf7fd] px-4 focus-within:border-[#9b3fd6]">
-          <Search size={16} className="text-[#9b86a8]" />
-          <span className="sr-only">Buscar produto</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar produto"
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#9b86a8]"
-          />
-        </label>
-      </section>
-
-      <p className="px-1 text-xs text-[#6b665f]">
-        Toque numa tag para colocar ou tirar do produto. As vitrines se atualizam na hora.
-      </p>
-
-      <ul className="space-y-2.5">
-        {products.map((product) => (
-          <li key={product.id} className="organizer-surface bg-white p-3">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-[#efe3f6]">
-                {product.imageUrl ? (
-                  <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
-                ) : null}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-[#2a0f3d]">{product.name}</p>
-                <p className="text-xs text-[#6b665f]">
-                  {product.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  {typeof product.stock === 'number' ? ` · ${product.stock} em estoque` : ''}
-                  {product.status === 'draft' ? ' · rascunho' : ''}
-                </p>
-              </div>
-            </div>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {tags.map((tag) => {
-                const active = product.tagIds.includes(tag.id)
-                return (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() =>
-                      onUpdateNode(product.id, {
-                        tagIds: active
-                          ? product.tagIds.filter((id) => id !== tag.id)
-                          : [...product.tagIds, tag.id],
-                      })
-                    }
-                    aria-pressed={active}
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
-                      active
-                        ? 'bg-[image:var(--grad-brand)] text-white shadow-sm'
-                        : 'border border-dashed border-[#d9c2e8] text-[#9b86a8] hover:border-[#9b3fd6] hover:text-[#6a2a94]'
-                    }`}
-                  >
-                    {active ? '✓ ' : '+ '}
-                    {tag.name}
-                  </button>
-                )
-              })}
-            </div>
-          </li>
-        ))}
-        {products.length === 0 ? (
-          <li className="rounded-[22px] bg-white p-6 text-center text-sm text-[#9b86a8]">
-            Nenhum produto aqui.
-          </li>
-        ) : null}
-      </ul>
-    </div>
-  )
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-        active ? 'bg-[#2a0f3d] text-white' : 'bg-[#f6ecfc] text-[#5b247f] hover:bg-[#efdcf9]'
-      }`}
-    >
-      {children}
-    </button>
   )
 }

@@ -14,6 +14,7 @@ import { useOrganizerStore } from '../hooks/useOrganizerStore'
 import { useFixedHeightVar } from './layout/useFixedHeightVar'
 import { useIsMobile } from './layout/useIsMobile'
 import { trackProductEvent } from '../services/productEvents'
+import { recordRecentlyViewed } from '../components/site/customerSignals'
 import type { Product } from '../types'
 import { getItemStatusPresentation } from '../utils/itemStatus'
 import { itemCardToProduct } from '../utils/productModel'
@@ -59,9 +60,14 @@ export function ProductPage() {
   const loading = !node && !remoteLoaded
   const loadFailed = loading && remoteFailures >= MAX_LOAD_FAILURES
 
+  // Pelo id, e nao pelo node: o polling do Organizador troca o objeto e isso
+  // contaria a mesma visita varias vezes no ranking de "Mais procurados".
+  const viewedId = node?.id
   useEffect(() => {
-    if (node) trackProductEvent(node.id, 'view', tokenRef.current)
-  }, [node])
+    if (!viewedId) return
+    trackProductEvent(viewedId, 'view', tokenRef.current)
+    recordRecentlyViewed(viewedId)
+  }, [viewedId])
 
   const allImages = product
     ? product.images?.length
