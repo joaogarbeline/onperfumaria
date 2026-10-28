@@ -31,6 +31,7 @@ import {
   withOrganizerPreview,
 } from '../../../types/organizer'
 import { Carousel } from '../../../components/Carousel'
+import { useStableHeaderSpace } from '../useStableHeaderSpace'
 
 const shortcutLinks: { label: string; icon: LucideIcon }[] = [
   { label: 'Cupons', icon: Tag },
@@ -75,6 +76,7 @@ export function MobileHeader() {
     token,
   )
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const { headerRef, collapsibleRef, space } = useStableHeaderSpace()
   const previewMode = isOrganizerPreviewMode(location.search)
   const homePath = withOrganizerPreview('/', previewMode)
   const currentPath = location.pathname.length > 1 ? location.pathname.replace(/\/+$/, '') : '/'
@@ -117,7 +119,11 @@ export function MobileHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-[#3a164f]/40 bg-brand-live">
+      <div aria-hidden="true" style={{ height: space }} />
+      <header
+        ref={headerRef}
+        className="fixed inset-x-0 top-0 z-30 border-b border-[#3a164f]/40 bg-brand-live"
+      >
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-4 px-4 py-3">
           <div className="flex items-center justify-start">
             <button
@@ -196,6 +202,7 @@ export function MobileHeader() {
         </div>
 
         <div
+          ref={collapsibleRef}
           className={[
             'overflow-hidden transition-all duration-300 ease-in-out',
             scrolled || open ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100',
