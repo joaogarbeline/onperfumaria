@@ -27,7 +27,7 @@ export function CategoryWindow({ title }: { title: string }) {
   const modules = getOrganizerPageModules(store.nodes, pageId).filter(
     (node) =>
       isOrganizerNodeAvailable(node, previewMode) &&
-      isSiteModuleRenderable(node, store.nodes, [], previewMode),
+      isSiteModuleRenderable(node, store.nodes, [], previewMode, store.tags),
   )
 
   if (!page || !isOrganizerNodeAvailable(page, previewMode)) {

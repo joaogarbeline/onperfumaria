@@ -28,7 +28,7 @@ export function ManagedPage() {
   const modules = getOrganizerPageModules(store.nodes, page.id).filter(
     (node) =>
       isOrganizerNodeAvailable(node, previewMode) &&
-      isSiteModuleRenderable(node, store.nodes, [], previewMode),
+      isSiteModuleRenderable(node, store.nodes, [], previewMode, store.tags),
   )
 
   return (

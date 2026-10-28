@@ -1,4 +1,3 @@
-import type { ItemCardContent } from '../item/ItemCard'
 import type { OrganizerNode, OrganizerTag } from '../../types/organizer'
 import { BrandMarquee } from '../BrandMarquee'
 import { getRenderableOrganizerItems, isSiteModuleRenderable, toItemContent } from './moduleContent'
@@ -12,12 +11,6 @@ type SiteModuleRendererProps = {
   tags: OrganizerTag[]
   brands?: string[]
   previewMode?: boolean
-  /**
-   * Itens calculados automaticamente por regra (ex.: Produtos em oferta,
-   * Pouco no estoque) para carrosseis da home. Entram sempre depois dos
-   * itens escolhidos manualmente no Organizador.
-   */
-  autoItems?: ItemCardContent[]
 }
 
 export function SiteModuleRenderer({
@@ -26,17 +19,13 @@ export function SiteModuleRenderer({
   tags,
   brands = [],
   previewMode = false,
-  autoItems,
 }: SiteModuleRendererProps) {
-  const hasAutoItems = Boolean(autoItems?.length)
-  if (!isSiteModuleRenderable(module, nodes, brands, previewMode) && !hasAutoItems) return null
+  if (!isSiteModuleRenderable(module, nodes, brands, previewMode, tags)) return null
 
-  const selectedItems = getRenderableOrganizerItems(module, nodes, previewMode)
-  const manualItemCards = selectedItems.map((node) => toItemContent(node, tags))
-  const manualIds = new Set(manualItemCards.map((item) => item.id))
-  const itemCards = autoItems
-    ? [...manualItemCards, ...autoItems.filter((item) => !manualIds.has(item.id))]
-    : manualItemCards
+  // Escolhidos a mao + os que entram sozinhos pela regra de tags do bloco.
+  const itemCards = getRenderableOrganizerItems(module, nodes, previewMode, tags).map((node) =>
+    toItemContent(node, tags),
+  )
 
   if (module.variant === 'brand-marquee') {
     return <BrandMarquee brands={brands} />

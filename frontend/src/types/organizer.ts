@@ -9,6 +9,19 @@ export type OrganizerVariant =
   | 'product-grid'
   | 'brand-marquee'
 
+/** Preenchimento automatico de carrossel/catalogo: os produtos entram
+ * sozinhos pelas tags, sem marcar item por item em "Aparece em". */
+export type OrganizerAutoFill = {
+  enabled: boolean
+  /** Produtos com QUALQUER uma destas tags. Vazio = todos os produtos. */
+  tagIds: string[]
+  /** Filtro extra: so com desconto (tag com %) ou so "pouco no estoque". */
+  filter: 'all' | 'discounted' | 'low-stock'
+  sort: 'newest' | 'price-asc' | 'price-desc' | 'discount' | 'name'
+  /** Maximo de produtos no bloco (0 = todos). */
+  limit: number
+}
+
 export type OrganizerNode = {
   id: string
   name: string
@@ -47,6 +60,8 @@ export type OrganizerNode = {
   pixDiscountPercent?: number
   route?: string
   variant?: OrganizerVariant
+  /** So carrossel/catalogo: ver OrganizerAutoFill. */
+  autoFill?: OrganizerAutoFill
   builtin?: boolean
   immutable?: boolean
   createdAt: string
