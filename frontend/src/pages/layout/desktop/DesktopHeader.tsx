@@ -37,7 +37,6 @@ export function DesktopHeader() {
   const location = useLocation()
   const previewMode = isOrganizerPreviewMode(location.search)
   const homePath = withOrganizerPreview('/', previewMode)
-  const currentPath = location.pathname.length > 1 ? location.pathname.replace(/\/+$/, '') : '/'
 
   useEffect(() => {
     // Limiares diferentes pra recolher (40) e pra expandir de volta (8): com
@@ -57,20 +56,22 @@ export function DesktopHeader() {
 
   const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
     [
-      'relative text-sm font-medium after:absolute after:-bottom-2 after:left-0 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-[#d89a28] after:transition-transform hover:after:scale-x-100',
-      `text-[#FAF6EF]/70 hover:text-[#FAF6EF] ${isActive ? 'text-[#FAF6EF] after:scale-x-100' : ''}`,
+      'relative pb-1.5 text-sm font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:origin-left after:rounded-full after:bg-[#f2b33d] after:transition-transform hover:after:scale-x-100',
+      isActive
+        ? 'text-[#FAF6EF] after:scale-x-100'
+        : 'text-[#FAF6EF]/70 after:scale-x-0 hover:text-[#FAF6EF]',
     ].join(' ')
 
+  // Menu fixo: sempre as mesmas paginas, na mesma ordem. A pagina atual so
+  // ganha destaque (sublinhado dourado) - antes ela sumia da lista e os
+  // outros itens mudavam de lugar a cada clique.
   const customerLinks = store.nodes
-    .filter((node) => {
-      if (node.type !== 'page' || !node.route || !isOrganizerNodeAvailable(node, previewMode)) return false
-      const nodePath = node.route.length > 1 ? node.route.replace(/\/+$/, '') : '/'
-      return nodePath !== currentPath
-    })
+    .filter((node) => node.type === 'page' && node.route && isOrganizerNodeAvailable(node, previewMode))
     .map((node) => ({
       id: node.id,
       label: node.id === 'home' ? 'Início' : node.name,
       path: withOrganizerPreview(node.route as string, previewMode),
+      end: node.route === '/',
     }))
 
   return (
@@ -320,6 +321,7 @@ export function DesktopHeader() {
               <NavLink
                 key={item.id}
                 to={item.path}
+                end={item.end}
                 className={({ isActive }) => `${navLinkClassName({ isActive })} shrink-0`}
               >
                 {item.label}

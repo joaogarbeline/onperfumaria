@@ -78,18 +78,20 @@ export function MobileHeader() {
   const previewMode = isOrganizerPreviewMode(location.search)
   const homePath = withOrganizerPreview('/', previewMode)
   const currentPath = location.pathname.length > 1 ? location.pathname.replace(/\/+$/, '') : '/'
+  // Menu fixo: sempre todas as categorias, na mesma ordem; a atual so fica
+  // destacada (antes ela sumia e o carrossel inteiro mudava a cada clique).
   const categoryLinks = store.nodes
     .filter(
       (node) =>
         node.type === 'page' &&
         node.id !== 'home' &&
         node.route &&
-        isOrganizerNodeAvailable(node, previewMode) &&
-        (node.route.length > 1 ? node.route.replace(/\/+$/, '') : '/') !== currentPath,
+        isOrganizerNodeAvailable(node, previewMode),
     )
     .map((node) => ({
       label: node.name,
       path: withOrganizerPreview(node.route as string, previewMode),
+      active: node.route!.replace(/\/+$/, '') === currentPath,
     }))
 
   useEffect(() => {
@@ -229,7 +231,12 @@ export function MobileHeader() {
                 renderItem={(category) => (
                   <Link
                     to={category.path}
-                    className="block text-sm font-medium text-[#FAF6EF]/70 hover:text-[#FAF6EF]"
+                    aria-current={category.active ? 'page' : undefined}
+                    className={`relative block pb-1 text-sm font-medium transition-colors after:absolute after:bottom-0 after:left-1/2 after:h-0.5 after:w-6 after:-translate-x-1/2 after:rounded-full after:bg-[#f2b33d] after:transition-transform ${
+                      category.active
+                        ? 'text-[#FAF6EF] after:scale-x-100'
+                        : 'text-[#FAF6EF]/70 after:scale-x-0 hover:text-[#FAF6EF]'
+                    }`}
                   >
                     {category.label}
                   </Link>
