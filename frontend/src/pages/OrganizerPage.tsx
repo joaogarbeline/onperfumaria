@@ -601,7 +601,7 @@ export function OrganizerPage() {
               onClick={() => setSalesPanel({ orderId: null })}
               className="relative inline-flex items-center gap-1.5 rounded-full bg-[image:var(--grad-gold)] px-3.5 py-1.5 text-xs font-bold text-[#3a164f] shadow-[var(--glow-gold)] transition hover:-translate-y-0.5"
             >
-              <ShoppingBag size={14} /> Pedidos
+              <ShoppingBag size={14} /> Painel da loja
               {unread > 0 ? (
                 <span
                   key={unread}
@@ -1065,7 +1065,15 @@ export function OrganizerPage() {
       )}
       {customersOpen && <CustomersModal token={token} onClose={() => setCustomersOpen(false)} />}
       {salesPanel && (
-        <SalesDashboard token={token} initialOrderId={salesPanel.orderId} onClose={closeSalesPanel} />
+        <SalesDashboard
+          token={token}
+          initialOrderId={salesPanel.orderId}
+          onClose={closeSalesPanel}
+          nodes={store.nodes}
+          tags={store.tags}
+          onUpdateNode={(id, updates) => updateNode(id, updates)}
+          onCreateTag={(name, color) => createTag(name, color)}
+        />
       )}
       <NotificationsDrawer
         open={notificationsOpen}

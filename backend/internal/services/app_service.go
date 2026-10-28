@@ -1246,7 +1246,9 @@ func (s *Service) Orders(ctx context.Context, filter OrderFilter) (map[string]in
 		SELECT o.id, COALESCE(c.name, 'Consumidor Final') as customer_name, o.total_amount, o.payment_status, o.order_status, o.created_at, COALESCE(o.origin, 'online') as origin
 		FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
 		UNION ALL
-		SELECT ps.id, ps.customer_name, ps.total_amount, 'paid', 'pago', ps.created_at, 'pdv'
+		SELECT ps.id, ps.customer_name, ps.total_amount,
+				CASE WHEN ps.status = 'cancelada' THEN 'cancelled' ELSE 'paid' END,
+				CASE WHEN ps.status = 'cancelada' THEN 'cancelado' ELSE 'entregue' END, ps.created_at, 'pdv'
 		FROM pos_sales ps
 	) combined ` + whereClause
 	var total int
@@ -1263,7 +1265,9 @@ func (s *Service) Orders(ctx context.Context, filter OrderFilter) (map[string]in
 				COALESCE((SELECT SUM(oi.quantity) FROM order_items oi WHERE oi.order_id = o.id), 0)::int as items_count
 			FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
 			UNION ALL
-			SELECT ps.id, ps.customer_name, ps.total_amount, 'paid', 'pago', ps.created_at, 'pdv',
+			SELECT ps.id, ps.customer_name, ps.total_amount,
+				CASE WHEN ps.status = 'cancelada' THEN 'cancelled' ELSE 'paid' END,
+				CASE WHEN ps.status = 'cancelada' THEN 'cancelado' ELSE 'entregue' END, ps.created_at, 'pdv',
 				ps.payment_method, '', 0
 			FROM pos_sales ps
 		) combined

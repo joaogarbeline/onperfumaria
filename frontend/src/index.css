@@ -866,3 +866,47 @@ a:active {
     background-position: 100% 50%;
   }
 }
+
+@layer components {
+  /* Campos do PDV: grandes e com 16px para o iPhone nao dar zoom ao tocar. */
+  .pos-input {
+    @apply w-full rounded-[16px] border border-[#ddc7ea] bg-white px-4 py-3 text-base font-semibold text-[#2a0f3d] outline-none placeholder:font-normal placeholder:text-[#9b86a8] focus:border-[#9b3fd6] focus:ring-4 focus:ring-[#9b3fd6]/15;
+  }
+}
+
+/* No celular, campo com fonte menor que 16px faz o Safari dar zoom na pagina
+   toda ao tocar nele (e nao volta sozinho). */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Impressao do comprovante do PDV: so o cupom, na largura de bobina (80mm). */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .pos-receipt,
+  .pos-receipt * {
+    visibility: visible;
+  }
+
+  .pos-receipt {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 80mm;
+    max-height: none;
+    overflow: visible;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .pos-receipt-actions {
+    display: none;
+  }
+}

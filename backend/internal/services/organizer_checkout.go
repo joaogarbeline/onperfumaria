@@ -163,6 +163,10 @@ func (s *Service) decrementOrganizerStock(ctx context.Context, decrements map[st
 		nodes[i]["stock"] = next
 		if next <= 0 {
 			nodes[i]["status"] = "coming-soon"
+		} else if qty < 0 && node["status"] == "coming-soon" {
+			// Quantidade negativa = estorno (venda do PDV cancelada): o item que
+			// tinha saido do ar so por falta de estoque volta a ser vendido.
+			nodes[i]["status"] = "published"
 		}
 		// Contador acumulado de vendas: e por ele que SaveOrganizerStore
 		// descobre as baixas que a tela do admin nao viu.

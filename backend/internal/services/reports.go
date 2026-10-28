@@ -99,12 +99,32 @@ func (r ReportRange) Previous() ReportRange {
 func (r ReportRange) fromDate() string { return r.From.Format("2006-01-02") }
 func (r ReportRange) toDate() string   { return r.To.Format("2006-01-02") }
 
-// Pedidos do periodo no fuso da loja. $1 = fuso, $2 = de, $3 = ate.
-const reportOrdersCTE = `
-	WITH period_orders AS (
-		SELECT o.*, (o.created_at AT TIME ZONE $1)::date AS local_date
+// Vendas confirmadas do periodo nos dois canais, no fuso da loja:
+// "online" (pedidos do site pagos) e "loja" (PDV, menos as canceladas).
+// $1 = fuso, $2 = de, $3 = ate.
+const reportSalesCTE = `
+	WITH sales AS (
+		SELECT o.id, 'online' AS channel, o.total_amount AS total, o.discount_amount AS discount,
+			o.shipping_amount AS shipping, o.customer_id,
+			CASE WHEN o.payment_method = 'pix' THEN 'pix' WHEN o.payment_method = '' THEN 'outros' ELSE 'cartao' END AS payment_group,
+			CASE WHEN o.delivery_mode = '' THEN 'outros' ELSE o.delivery_mode END AS delivery_group,
+			(o.created_at AT TIME ZONE $1)::date AS local_date
 		FROM orders o
-		WHERE (o.created_at AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date
+		WHERE o.order_status IN ('pago', 'enviado', 'entregue')
+		  AND (o.created_at AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date
+		UNION ALL
+		SELECT ps.id, 'loja', ps.total_amount, ps.discount_amount, 0, NULL,
+			'loja-' || ps.payment_method, 'loja',
+			(ps.created_at AT TIME ZONE $1)::date
+		FROM pos_sales ps
+		WHERE ps.status <> 'cancelada'
+		  AND (ps.created_at AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date
+	), sale_items AS (
+		SELECT oi.product_name, oi.quantity, oi.line_total
+		FROM order_items oi JOIN sales s ON s.id = oi.order_id AND s.channel = 'online'
+		UNION ALL
+		SELECT pi.product_name, pi.quantity, pi.line_total
+		FROM pos_sale_items pi JOIN sales s ON s.id = pi.pos_sale_id AND s.channel = 'loja'
 	)`
 
 type reportSummary struct {
@@ -114,37 +134,54 @@ type reportSummary struct {
 	Items         int     `json:"items"`
 	Discount      float64 `json:"discount"`
 	Shipping      float64 `json:"shipping"`
+	OnlineRevenue float64 `json:"onlineRevenue"`
+	OnlineOrders  int     `json:"onlineOrders"`
+	StoreRevenue  float64 `json:"storeRevenue"`
+	StoreSales    int     `json:"storeSales"`
 	Customers     int     `json:"customers"`
 	NewCustomers  int     `json:"newCustomers"`
 	Cancelled     int     `json:"cancelled"`
 	Pending       int     `json:"pending"`
+	// Pedidos do site ainda sem pagamento confirmado (Pix gerado, cartao em
+	// analise): dinheiro que pode entrar.
+	Receivable float64 `json:"receivable"`
 }
 
 func (s *Service) reportSummary(ctx context.Context, r ReportRange) (reportSummary, error) {
 	var summary reportSummary
-	err := s.db.QueryRow(ctx, reportOrdersCTE+`
+	err := s.db.QueryRow(ctx, reportSalesCTE+`
 		SELECT
-			COALESCE(SUM(o.total_amount) FILTER (WHERE `+paidOrderCondition+`), 0),
-			COUNT(*) FILTER (WHERE `+paidOrderCondition+`),
-			COALESCE((SELECT SUM(oi.quantity) FROM order_items oi
-				JOIN period_orders po ON po.id = oi.order_id
-				WHERE po.order_status IN ('pago', 'enviado', 'entregue')), 0),
-			COALESCE(SUM(o.discount_amount) FILTER (WHERE `+paidOrderCondition+`), 0),
-			COALESCE(SUM(o.shipping_amount) FILTER (WHERE `+paidOrderCondition+`), 0),
-			COUNT(DISTINCT o.customer_id) FILTER (WHERE `+paidOrderCondition+`),
-			COUNT(*) FILTER (WHERE o.payment_status IN ('rejected', 'cancelled') OR o.order_status = 'cancelado'),
-			COUNT(*) FILTER (WHERE o.order_status = 'aguardando_pagamento'
-				AND o.payment_status NOT IN ('rejected', 'cancelled'))
-		FROM period_orders o`,
+			COALESCE(SUM(total), 0), COUNT(*),
+			COALESCE((SELECT SUM(quantity) FROM sale_items), 0),
+			COALESCE(SUM(discount), 0), COALESCE(SUM(shipping), 0),
+			COALESCE(SUM(total) FILTER (WHERE channel = 'online'), 0), COUNT(*) FILTER (WHERE channel = 'online'),
+			COALESCE(SUM(total) FILTER (WHERE channel = 'loja'), 0), COUNT(*) FILTER (WHERE channel = 'loja'),
+			COUNT(DISTINCT customer_id)
+		FROM sales`,
 		storeTimeZone, r.fromDate(), r.toDate(),
 	).Scan(&summary.Revenue, &summary.Orders, &summary.Items, &summary.Discount, &summary.Shipping,
-		&summary.Customers, &summary.Cancelled, &summary.Pending)
+		&summary.OnlineRevenue, &summary.OnlineOrders, &summary.StoreRevenue, &summary.StoreSales, &summary.Customers)
 	if err != nil {
 		return summary, err
 	}
 	if summary.Orders > 0 {
 		summary.AverageTicket = summary.Revenue / float64(summary.Orders)
 	}
+
+	err = s.db.QueryRow(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE o.payment_status IN ('rejected', 'cancelled') OR o.order_status = 'cancelado'),
+			COUNT(*) FILTER (WHERE o.order_status = 'aguardando_pagamento' AND o.payment_status NOT IN ('rejected', 'cancelled')),
+			COALESCE(SUM(o.total_amount) FILTER (WHERE o.order_status = 'aguardando_pagamento'
+				AND o.payment_status NOT IN ('rejected', 'cancelled')), 0)
+		FROM orders o
+		WHERE (o.created_at AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date`,
+		storeTimeZone, r.fromDate(), r.toDate(),
+	).Scan(&summary.Cancelled, &summary.Pending, &summary.Receivable)
+	if err != nil {
+		return summary, err
+	}
+
 	err = s.db.QueryRow(ctx, `
 		SELECT COUNT(*) FROM customers
 		WHERE is_fixed_admin = false
@@ -154,7 +191,8 @@ func (s *Service) reportSummary(ctx context.Context, r ReportRange) (reportSumma
 	return summary, err
 }
 
-// reportSeries quebra o periodo em dias (ate ~3 meses) ou em meses.
+// reportSeries quebra o periodo em dias (ate ~3 meses) ou em meses, com o
+// site e a loja separados.
 func (s *Service) reportSeries(ctx context.Context, r ReportRange) ([]map[string]interface{}, error) {
 	byMonth := r.Period == "year" || r.To.Sub(r.From) > 93*24*time.Hour
 	step, bucket, layout := "1 day", "day", "2006-01-02"
@@ -162,13 +200,15 @@ func (s *Service) reportSeries(ctx context.Context, r ReportRange) ([]map[string
 		step, bucket, layout = "1 month", "month", "2006-01"
 	}
 
-	rows, err := s.db.Query(ctx, reportOrdersCTE+`, buckets AS (
+	rows, err := s.db.Query(ctx, reportSalesCTE+`, buckets AS (
 			SELECT generate_series(date_trunc('`+bucket+`', $2::date), $3::date, INTERVAL '`+step+`')::date AS bucket
 		)
-		SELECT b.bucket, COALESCE(SUM(o.total_amount), 0), COUNT(o.id)
+		SELECT b.bucket,
+			COALESCE(SUM(s.total), 0), COUNT(s.id),
+			COALESCE(SUM(s.total) FILTER (WHERE s.channel = 'online'), 0),
+			COALESCE(SUM(s.total) FILTER (WHERE s.channel = 'loja'), 0)
 		FROM buckets b
-		LEFT JOIN period_orders o
-			ON date_trunc('`+bucket+`', o.local_date)::date = b.bucket AND `+paidOrderCondition+`
+		LEFT JOIN sales s ON date_trunc('`+bucket+`', s.local_date)::date = b.bucket
 		GROUP BY b.bucket
 		ORDER BY b.bucket`,
 		storeTimeZone, r.fromDate(), r.toDate())
@@ -180,23 +220,24 @@ func (s *Service) reportSeries(ctx context.Context, r ReportRange) ([]map[string
 	series := []map[string]interface{}{}
 	for rows.Next() {
 		var day time.Time
-		var revenue float64
+		var revenue, online, store float64
 		var orders int
-		if err := rows.Scan(&day, &revenue, &orders); err != nil {
+		if err := rows.Scan(&day, &revenue, &orders, &online, &store); err != nil {
 			return nil, err
 		}
-		series = append(series, map[string]interface{}{"key": day.Format(layout), "revenue": revenue, "orders": orders})
+		series = append(series, map[string]interface{}{
+			"key": day.Format(layout), "revenue": revenue, "orders": orders, "online": online, "store": store,
+		})
 	}
 	return series, rows.Err()
 }
 
-// reportBreakdown soma as vendas pagas agrupadas por uma expressao SQL
-// (forma de pagamento, forma de entrega).
-func (s *Service) reportBreakdown(ctx context.Context, r ReportRange, groupExpr string) ([]map[string]interface{}, error) {
-	rows, err := s.db.Query(ctx, reportOrdersCTE+`
-		SELECT `+groupExpr+` AS grp, COALESCE(SUM(o.total_amount), 0), COUNT(*)
-		FROM period_orders o
-		WHERE `+paidOrderCondition+`
+// reportBreakdown soma as vendas agrupadas por uma coluna de "sales"
+// (payment_group, delivery_group, channel).
+func (s *Service) reportBreakdown(ctx context.Context, r ReportRange, column string) ([]map[string]interface{}, error) {
+	rows, err := s.db.Query(ctx, reportSalesCTE+`
+		SELECT `+column+` AS grp, COALESCE(SUM(total), 0), COUNT(*)
+		FROM sales
 		GROUP BY grp
 		ORDER BY 2 DESC`,
 		storeTimeZone, r.fromDate(), r.toDate())
@@ -219,13 +260,11 @@ func (s *Service) reportBreakdown(ctx context.Context, r ReportRange, groupExpr 
 }
 
 func (s *Service) reportTopProducts(ctx context.Context, r ReportRange) ([]map[string]interface{}, error) {
-	rows, err := s.db.Query(ctx, reportOrdersCTE+`
-		SELECT oi.product_name, COALESCE(MAX(oi.product_image_url), ''), SUM(oi.quantity), SUM(oi.line_total)
-		FROM order_items oi
-		JOIN period_orders o ON o.id = oi.order_id
-		WHERE `+paidOrderCondition+`
-		GROUP BY oi.product_name
-		ORDER BY SUM(oi.line_total) DESC, SUM(oi.quantity) DESC
+	rows, err := s.db.Query(ctx, reportSalesCTE+`
+		SELECT product_name, SUM(quantity), SUM(line_total)
+		FROM sale_items
+		GROUP BY product_name
+		ORDER BY SUM(line_total) DESC, SUM(quantity) DESC
 		LIMIT 10`,
 		storeTimeZone, r.fromDate(), r.toDate())
 	if err != nil {
@@ -235,25 +274,24 @@ func (s *Service) reportTopProducts(ctx context.Context, r ReportRange) ([]map[s
 
 	products := []map[string]interface{}{}
 	for rows.Next() {
-		var name, imageURL string
+		var name string
 		var quantity int
 		var revenue float64
-		if err := rows.Scan(&name, &imageURL, &quantity, &revenue); err != nil {
+		if err := rows.Scan(&name, &quantity, &revenue); err != nil {
 			return nil, err
 		}
-		products = append(products, map[string]interface{}{"name": name, "imageUrl": imageURL, "quantity": quantity, "revenue": revenue})
+		products = append(products, map[string]interface{}{"name": name, "quantity": quantity, "revenue": revenue})
 	}
 	return products, rows.Err()
 }
 
 func (s *Service) reportTopCustomers(ctx context.Context, r ReportRange) ([]map[string]interface{}, error) {
-	rows, err := s.db.Query(ctx, reportOrdersCTE+`
-		SELECT c.id::text, COALESCE(c.name, 'Cliente'), COUNT(o.id), SUM(o.total_amount)
-		FROM period_orders o
-		JOIN customers c ON c.id = o.customer_id
-		WHERE `+paidOrderCondition+`
+	rows, err := s.db.Query(ctx, reportSalesCTE+`
+		SELECT c.id::text, COALESCE(c.name, 'Cliente'), COUNT(s.id), SUM(s.total)
+		FROM sales s
+		JOIN customers c ON c.id = s.customer_id
 		GROUP BY c.id, c.name
-		ORDER BY SUM(o.total_amount) DESC
+		ORDER BY SUM(s.total) DESC
 		LIMIT 10`,
 		storeTimeZone, r.fromDate(), r.toDate())
 	if err != nil {
@@ -274,13 +312,6 @@ func (s *Service) reportTopCustomers(ctx context.Context, r ReportRange) ([]map[
 	return customers, rows.Err()
 }
 
-// Agrupamentos usados nos relatorios. Cartao vem com a bandeira (visa,
-// master...) em payment_method; tudo que nao e Pix vira "cartao".
-const (
-	paymentGroupExpr  = `CASE WHEN o.payment_method = 'pix' THEN 'pix' WHEN o.payment_method = '' THEN 'outros' ELSE 'cartao' END`
-	deliveryGroupExpr = `CASE WHEN o.delivery_mode = '' THEN 'outros' ELSE o.delivery_mode END`
-)
-
 // SalesReport e o relatorio completo do periodo, com o periodo anterior ao
 // lado para comparacao.
 func (s *Service) SalesReport(ctx context.Context, r ReportRange) (map[string]interface{}, error) {
@@ -297,11 +328,11 @@ func (s *Service) SalesReport(ctx context.Context, r ReportRange) (map[string]in
 	if err != nil {
 		return nil, err
 	}
-	byPayment, err := s.reportBreakdown(ctx, r, paymentGroupExpr)
+	byPayment, err := s.reportBreakdown(ctx, r, "payment_group")
 	if err != nil {
 		return nil, err
 	}
-	byDelivery, err := s.reportBreakdown(ctx, r, deliveryGroupExpr)
+	byDelivery, err := s.reportBreakdown(ctx, r, "delivery_group")
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +363,11 @@ func (s *Service) SalesReport(ctx context.Context, r ReportRange) (map[string]in
 // SalesReportCSV e a planilha do periodo: um pedido por linha, com os itens,
 // no formato do Excel em portugues (ver ExportOrdersCSV).
 func (s *Service) SalesReportCSV(ctx context.Context, r ReportRange) ([]byte, error) {
-	rows, err := s.db.Query(ctx, reportOrdersCTE+`
+	rows, err := s.db.Query(ctx, `
+		WITH period_orders AS (
+			SELECT o.* FROM orders o
+			WHERE (o.created_at AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date
+		)
 		SELECT o.id::text, o.created_at, COALESCE(c.name, 'Consumidor Final'), COALESCE(c.email, ''), COALESCE(c.phone, ''),
 			o.payment_method, o.delivery_mode, o.order_status, o.payment_status,
 			o.subtotal, o.discount_amount, o.shipping_amount, o.total_amount,
@@ -354,7 +389,7 @@ func (s *Service) SalesReportCSV(ctx context.Context, r ReportRange) ([]byte, er
 	buf.WriteString("\ufeff")
 	writer := csv.NewWriter(&buf)
 	writer.Comma = ';'
-	header := []string{"Data", "Pedido", "Cliente", "E-mail", "Telefone", "Pagamento", "Entrega", "Status",
+	header := []string{"Data", "Canal", "Pedido", "Cliente", "E-mail", "Telefone", "Pagamento", "Entrega", "Status",
 		"Pago", "Subtotal", "Desconto", "Frete", "Total", "Itens"}
 	if err := writer.Write(header); err != nil {
 		return nil, err
@@ -373,6 +408,7 @@ func (s *Service) SalesReportCSV(ctx context.Context, r ReportRange) ([]byte, er
 		}
 		if err := writer.Write([]string{
 			createdAt.In(location).Format("02/01/2006 15:04"),
+			"Site",
 			strings.ToUpper(id[:8]),
 			spreadsheetSafe(name),
 			spreadsheetSafe(email),
@@ -391,6 +427,56 @@ func (s *Service) SalesReportCSV(ctx context.Context, r ReportRange) ([]byte, er
 		}
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	// Vendas de balcao (PDV) do mesmo periodo, depois dos pedidos do site.
+	posRows, err := s.db.Query(ctx, `
+		SELECT ps.id::text, ps.created_at, ps.customer_name, ps.customer_phone, ps.payment_method, ps.status,
+			ps.subtotal, ps.discount_amount, ps.total_amount,
+			COALESCE((SELECT string_agg(pi.quantity || 'x ' || pi.product_name, ' | ' ORDER BY pi.product_name)
+				FROM pos_sale_items pi WHERE pi.pos_sale_id = ps.id), '')
+		FROM pos_sales ps
+		WHERE (ps.created_at AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date
+		ORDER BY ps.created_at`,
+		storeTimeZone, r.fromDate(), r.toDate())
+	if err != nil {
+		return nil, err
+	}
+	defer posRows.Close()
+	for posRows.Next() {
+		var id, name, phone, method, status, items string
+		var createdAt time.Time
+		var subtotal, discount, total float64
+		if err := posRows.Scan(&id, &createdAt, &name, &phone, &method, &status, &subtotal, &discount, &total, &items); err != nil {
+			return nil, err
+		}
+		statusLabel, paid := "Concluída", "Sim"
+		if status == "cancelada" {
+			statusLabel, paid = "Cancelada", "Não"
+		}
+		if err := writer.Write([]string{
+			createdAt.In(location).Format("02/01/2006 15:04"),
+			"Loja (PDV)",
+			strings.ToUpper(id[:8]),
+			spreadsheetSafe(name),
+			"",
+			spreadsheetSafe(phone),
+			posPaymentMethods[method],
+			"Balcão",
+			statusLabel,
+			paid,
+			money(subtotal),
+			money(discount),
+			money(0),
+			money(total),
+			spreadsheetSafe(items),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if err := posRows.Err(); err != nil {
 		return nil, err
 	}
 	writer.Flush()

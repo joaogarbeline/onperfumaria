@@ -9,49 +9,48 @@ import (
 // hora local, nao por UTC - senao uma venda das 21h ja cairia no dia seguinte.
 const storeTimeZone = "America/Campo_Grande"
 
-// Pedido conta como venda quando o pagamento foi confirmado, esteja ele ainda
-// a enviar, enviado ou entregue.
-const paidOrderCondition = `o.order_status IN ('pago', 'enviado', 'entregue')`
-
-// AdminDashboard resume as vendas online para o painel de pedidos do admin.
+// AdminDashboard resume as vendas (site + balcao) para a visao geral do
+// painel do admin, reaproveitando as contas dos relatorios.
 func (s *Service) AdminDashboard(ctx context.Context) (map[string]interface{}, error) {
-	var todayRevenue, monthRevenue float64
-	var todayOrders, monthOrders, awaitingPayment, toShip, shipped int
-	err := s.db.QueryRow(ctx, `
-		WITH local AS (
-			SELECT o.*, (o.created_at AT TIME ZONE $1)::date AS local_date
-			FROM orders o
-		), bounds AS (
-			SELECT (NOW() AT TIME ZONE $1)::date AS today,
-			       date_trunc('month', NOW() AT TIME ZONE $1)::date AS month_start
-		)
+	location := storeLocation()
+	now := time.Now().In(location)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
+
+	todayRange := ReportRange{Period: "custom", From: today, To: today}
+	monthRange := ReportRange{Period: "month", From: today.AddDate(0, 0, 1-today.Day()), To: today}
+	weekRange := ReportRange{Period: "custom", From: today.AddDate(0, 0, -6), To: today}
+
+	todaySummary, err := s.reportSummary(ctx, todayRange)
+	if err != nil {
+		return nil, err
+	}
+	monthSummary, err := s.reportSummary(ctx, monthRange)
+	if err != nil {
+		return nil, err
+	}
+	days, err := s.reportSeries(ctx, weekRange)
+	if err != nil {
+		return nil, err
+	}
+	topProducts, err := s.reportTopProducts(ctx, monthRange)
+	if err != nil {
+		return nil, err
+	}
+
+	var awaitingPayment, toShip, shipped, deliveredToday int
+	var oldestToShip *time.Time
+	if err := s.db.QueryRow(ctx, `
 		SELECT
-			COALESCE(SUM(o.total_amount) FILTER (WHERE `+paidOrderCondition+` AND o.local_date = b.today), 0),
-			COUNT(*) FILTER (WHERE `+paidOrderCondition+` AND o.local_date = b.today),
-			COALESCE(SUM(o.total_amount) FILTER (WHERE `+paidOrderCondition+` AND o.local_date >= b.month_start), 0),
-			COUNT(*) FILTER (WHERE `+paidOrderCondition+` AND o.local_date >= b.month_start),
-			COUNT(*) FILTER (WHERE o.order_status = 'aguardando_pagamento'
-				AND o.payment_status NOT IN ('rejected', 'cancelled')
-				AND o.created_at > NOW() - INTERVAL '3 days'),
-			COUNT(*) FILTER (WHERE o.order_status = 'pago'),
-			COUNT(*) FILTER (WHERE o.order_status = 'enviado')
-		FROM local o CROSS JOIN bounds b`, storeTimeZone,
-	).Scan(&todayRevenue, &todayOrders, &monthRevenue, &monthOrders, &awaitingPayment, &toShip, &shipped)
-	if err != nil {
-		return nil, err
-	}
-
-	averageTicket := 0.0
-	if monthOrders > 0 {
-		averageTicket = monthRevenue / float64(monthOrders)
-	}
-
-	days, err := s.dashboardLastDays(ctx, 7)
-	if err != nil {
-		return nil, err
-	}
-	topProducts, err := s.dashboardTopProducts(ctx)
-	if err != nil {
+			COUNT(*) FILTER (WHERE order_status = 'aguardando_pagamento'
+				AND payment_status NOT IN ('rejected', 'cancelled')
+				AND created_at > NOW() - INTERVAL '3 days'),
+			COUNT(*) FILTER (WHERE order_status = 'pago'),
+			COUNT(*) FILTER (WHERE order_status = 'enviado'),
+			COUNT(*) FILTER (WHERE order_status = 'entregue'
+				AND (created_at AT TIME ZONE $1)::date = (NOW() AT TIME ZONE $1)::date),
+			MIN(created_at) FILTER (WHERE order_status = 'pago')
+		FROM orders`, storeTimeZone,
+	).Scan(&awaitingPayment, &toShip, &shipped, &deliveredToday, &oldestToShip); err != nil {
 		return nil, err
 	}
 
@@ -64,73 +63,29 @@ func (s *Service) AdminDashboard(ctx context.Context) (map[string]interface{}, e
 		return nil, err
 	}
 
+	// Dias que o pedido pago mais antigo esta esperando envio (alerta do painel).
+	oldestToShipDays := 0
+	if oldestToShip != nil {
+		oldestToShipDays = int(time.Since(*oldestToShip).Hours() / 24)
+	}
+
 	return map[string]interface{}{
-		"today":           map[string]interface{}{"revenue": todayRevenue, "orders": todayOrders},
-		"month":           map[string]interface{}{"revenue": monthRevenue, "orders": monthOrders, "averageTicket": averageTicket},
-		"awaitingPayment": awaitingPayment,
-		"toShip":          toShip,
-		"shipped":         shipped,
-		"lastDays":        days,
-		"topProducts":     topProducts,
-		"customers":       map[string]interface{}{"total": customersTotal, "newThisMonth": customersNew},
+		"today": map[string]interface{}{
+			"revenue": todaySummary.Revenue, "orders": todaySummary.Orders,
+			"online": todaySummary.OnlineRevenue, "store": todaySummary.StoreRevenue,
+		},
+		"month": map[string]interface{}{
+			"revenue": monthSummary.Revenue, "orders": monthSummary.Orders, "averageTicket": monthSummary.AverageTicket,
+			"online": monthSummary.OnlineRevenue, "store": monthSummary.StoreRevenue,
+			"receivable": monthSummary.Receivable,
+		},
+		"awaitingPayment":  awaitingPayment,
+		"toShip":           toShip,
+		"shipped":          shipped,
+		"deliveredToday":   deliveredToday,
+		"oldestToShipDays": oldestToShipDays,
+		"lastDays":         days,
+		"topProducts":      topProducts,
+		"customers":        map[string]interface{}{"total": customersTotal, "newThisMonth": customersNew},
 	}, nil
-}
-
-func (s *Service) dashboardLastDays(ctx context.Context, count int) ([]map[string]interface{}, error) {
-	rows, err := s.db.Query(ctx, `
-		WITH days AS (
-			SELECT generate_series(
-				(NOW() AT TIME ZONE $1)::date - ($2::int - 1),
-				(NOW() AT TIME ZONE $1)::date,
-				INTERVAL '1 day')::date AS day
-		)
-		SELECT d.day, COALESCE(SUM(o.total_amount), 0), COUNT(o.id)
-		FROM days d
-		LEFT JOIN orders o ON (o.created_at AT TIME ZONE $1)::date = d.day AND `+paidOrderCondition+`
-		GROUP BY d.day
-		ORDER BY d.day`, storeTimeZone, count)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	days := []map[string]interface{}{}
-	for rows.Next() {
-		var day time.Time
-		var revenue float64
-		var orders int
-		if err := rows.Scan(&day, &revenue, &orders); err != nil {
-			return nil, err
-		}
-		days = append(days, map[string]interface{}{"date": day.Format("2006-01-02"), "revenue": revenue, "orders": orders})
-	}
-	return days, rows.Err()
-}
-
-func (s *Service) dashboardTopProducts(ctx context.Context) ([]map[string]interface{}, error) {
-	rows, err := s.db.Query(ctx, `
-		SELECT oi.product_name, COALESCE(MAX(oi.product_image_url), ''), SUM(oi.quantity), SUM(oi.line_total)
-		FROM order_items oi
-		JOIN orders o ON o.id = oi.order_id
-		WHERE `+paidOrderCondition+`
-		  AND (o.created_at AT TIME ZONE $1)::date >= date_trunc('month', NOW() AT TIME ZONE $1)::date
-		GROUP BY oi.product_name
-		ORDER BY SUM(oi.quantity) DESC, SUM(oi.line_total) DESC
-		LIMIT 5`, storeTimeZone)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	products := []map[string]interface{}{}
-	for rows.Next() {
-		var name, imageURL string
-		var quantity int
-		var revenue float64
-		if err := rows.Scan(&name, &imageURL, &quantity, &revenue); err != nil {
-			return nil, err
-		}
-		products = append(products, map[string]interface{}{"name": name, "imageUrl": imageURL, "quantity": quantity, "revenue": revenue})
-	}
-	return products, rows.Err()
 }

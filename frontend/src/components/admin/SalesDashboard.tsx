@@ -1,5 +1,9 @@
 import {
-  BarChart3,
+  AlertTriangle,
+  CheckCircle2,
+  LayoutGrid,
+  Store,
+  Wallet,
   BellRing,
   LayoutDashboard,
   ChevronDown,
@@ -22,15 +26,27 @@ import { toWhatsappDigits } from '../../utils/checkout'
 import { getOrderStatusPresentation } from '../../utils/orders'
 import { disablePush, enablePush, getPushState, sendTestPush, type PushState } from '../../utils/push'
 import { Button } from '../Button'
+import { PosTerminal } from './PosTerminal'
 import { SalesReports } from './SalesReports'
+import { ShowcaseManager } from './ShowcaseManager'
+import type { OrganizerNode, OrganizerTag } from '../../types/organizer'
 
 type Dashboard = {
-  today: { revenue: number; orders: number }
-  month: { revenue: number; orders: number; averageTicket: number }
+  today: { revenue: number; orders: number; online: number; store: number }
+  month: {
+    revenue: number
+    orders: number
+    averageTicket: number
+    online: number
+    store: number
+    receivable: number
+  }
   awaitingPayment: number
   toShip: number
   shipped: number
-  lastDays: Array<{ date: string; revenue: number; orders: number }>
+  deliveredToday: number
+  oldestToShipDays: number
+  lastDays: Array<{ key: string; revenue: number; orders: number; online: number; store: number }>
   topProducts: Array<{ name: string; imageUrl: string; quantity: number; revenue: number }>
   customers: { total: number; newThisMonth: number }
 }
@@ -58,12 +74,14 @@ type OrderDetail = {
   address: { street: string; number: string; neighborhood: string; city: string; state: string; cep: string }
 }
 
-type View = 'overview' | 'orders' | 'reports'
+type View = 'overview' | 'orders' | 'pos' | 'showcase' | 'finance'
 
 const VIEWS: Array<{ key: View; label: string; icon: typeof ShoppingBag }> = [
-  { key: 'overview', label: 'Visão geral', icon: LayoutDashboard },
+  { key: 'overview', label: 'Início', icon: LayoutDashboard },
   { key: 'orders', label: 'Pedidos', icon: ShoppingBag },
-  { key: 'reports', label: 'Relatórios', icon: BarChart3 },
+  { key: 'pos', label: 'PDV', icon: Store },
+  { key: 'showcase', label: 'Vitrines', icon: LayoutGrid },
+  { key: 'finance', label: 'Financeiro', icon: Wallet },
 ]
 
 type TabKey = 'pago' | 'aguardando_pagamento' | 'enviado' | 'entregue' | 'todos'
@@ -113,15 +131,23 @@ function deliveryLabel(mode: string) {
   return mode ? 'Entrega' : ''
 }
 
-/** Painel de vendas do admin: resumo, grafico, mais vendidos e pedidos. */
+/** Painel da loja: inicio, pedidos, PDV, vitrines e financeiro. */
 export function SalesDashboard({
   token,
   onClose,
   initialOrderId,
+  nodes,
+  tags,
+  onUpdateNode,
+  onCreateTag,
 }: {
   token: string | null
   onClose: () => void
   initialOrderId?: string | null
+  nodes: OrganizerNode[]
+  tags: OrganizerTag[]
+  onUpdateNode: (id: string, updates: Partial<OrganizerNode>) => void
+  onCreateTag: (name: string, color: string) => string
 }) {
   const [view, setView] = useState<View>(initialOrderId ? 'orders' : 'overview')
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
@@ -213,11 +239,66 @@ export function SalesDashboard({
     ? { pago: dashboard.toShip, aguardando_pagamento: dashboard.awaitingPayment, enviado: dashboard.shipped }
     : {}
 
+  const goToOrders = (next: TabKey) => {
+    changeTab(next)
+    setView('orders')
+  }
+  const oldestDays = dashboard?.oldestToShipDays ?? 0
+
+  // Quadro de status dos pedidos (inicio e aba Pedidos): quanto ha em cada
+  // etapa, com alerta quando tem pedido pago esperando envio ha dias.
+  const statusBoard = (
+    <section className="space-y-3">
+      {oldestDays >= 2 ? (
+        <button
+          type="button"
+          onClick={() => goToOrders('pago')}
+          className="rise-in flex w-full items-center gap-3 rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-left text-sm text-rose-800"
+        >
+          <AlertTriangle size={18} className="shrink-0" />
+          <span>
+            Tem pedido pago esperando envio há <b>{oldestDays} dias</b>. Toque para ver.
+          </span>
+        </button>
+      ) : null}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <AlertCard
+          icon={<Clock size={18} />}
+          label="Aguardando pagamento"
+          value={dashboard?.awaitingPayment}
+          tone="violet"
+          onClick={() => goToOrders('aguardando_pagamento')}
+        />
+        <AlertCard
+          icon={<Truck size={18} />}
+          label="A enviar"
+          value={dashboard?.toShip}
+          tone="gold"
+          onClick={() => goToOrders('pago')}
+        />
+        <AlertCard
+          icon={<Package size={18} />}
+          label="Em trânsito"
+          value={dashboard?.shipped}
+          tone="green"
+          onClick={() => goToOrders('enviado')}
+        />
+        <AlertCard
+          icon={<CheckCircle2 size={18} />}
+          label="Entregues hoje"
+          value={dashboard?.deliveredToday}
+          tone="violet"
+          onClick={() => goToOrders('entregue')}
+        />
+      </div>
+    </section>
+  )
+
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Pedidos e vendas"
+      aria-label="Painel da loja"
       className="fixed inset-0 z-[60] flex flex-col bg-[var(--color-organizer-bg)]"
     >
       <header className="bg-brand-live flex shrink-0 items-center justify-between gap-3 px-4 py-3 text-white shadow-[var(--shadow-organizer)] sm:px-6">
@@ -226,8 +307,8 @@ export function SalesDashboard({
             <ShoppingBag size={20} className="text-[#ffd27a]" />
           </span>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#ffd27a]">Admin</p>
-            <h2 className="text-xl font-semibold leading-tight text-white">Painel de vendas</h2>
+            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#ffd27a]">On Perfumaria</p>
+            <h2 className="text-xl font-semibold leading-tight text-white">Painel da loja</h2>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -252,7 +333,7 @@ export function SalesDashboard({
 
       <nav
         aria-label="Seções do painel"
-        className="flex shrink-0 justify-center gap-1 border-b border-[#efe3f6] bg-white px-2 py-2 sm:gap-2"
+        className="hidden shrink-0 justify-center gap-1 border-b border-[#efe3f6] bg-white px-2 py-2 lg:flex lg:gap-2"
       >
         {VIEWS.map((item) => {
           const Icon = item.icon
@@ -263,7 +344,7 @@ export function SalesDashboard({
               type="button"
               onClick={() => setView(item.key)}
               aria-current={active ? 'page' : undefined}
-              className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition sm:px-5 sm:text-sm ${
+              className={`flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-bold transition ${
                 active
                   ? 'bg-[image:var(--grad-brand)] text-white shadow-[var(--glow-violet)]'
                   : 'text-[#5b247f] hover:bg-[#f6ecfc]'
@@ -283,15 +364,65 @@ export function SalesDashboard({
         })}
       </nav>
 
+      {/* Celular/tablet: abas embaixo, no alcance do polegar, como num app. */}
+      <nav
+        aria-label="Seções do painel"
+        className="bg-brand-live fixed inset-x-0 bottom-0 z-[61] flex h-16 items-stretch shadow-[0_-12px_30px_-18px_rgba(58,22,79,0.6)] lg:hidden"
+      >
+        {VIEWS.map((item) => {
+          const Icon = item.icon
+          const active = view === item.key
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setView(item.key)}
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors ${
+                active ? 'text-white' : 'text-white/65'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`absolute top-0 h-1 rounded-b-full bg-[image:var(--grad-gold)] transition-all duration-500 ${
+                  active ? 'w-8 opacity-100' : 'w-0 opacity-0'
+                }`}
+              />
+              <span className="relative">
+                <Icon size={21} />
+                {item.key === 'orders' && dashboard?.toShip ? (
+                  <span
+                    key={dashboard.toShip}
+                    className="badge-bump absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[image:var(--grad-gold)] px-1 text-[9px] font-extrabold text-[#3a164f]"
+                  >
+                    {dashboard.toShip}
+                  </span>
+                ) : null}
+              </span>
+              {item.label}
+            </button>
+          )
+        })}
+      </nav>
+
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 sm:px-6">
+        <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-24 pt-5 sm:px-6 lg:pb-8">
           {error ? (
             <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {error}
             </p>
           ) : null}
 
-          {view === 'reports' ? <SalesReports token={token} /> : null}
+          {view === 'finance' ? <SalesReports token={token} /> : null}
+          {view === 'pos' ? <PosTerminal token={token} nodes={nodes} tags={tags} /> : null}
+          {view === 'showcase' ? (
+            <ShowcaseManager
+              nodes={nodes}
+              tags={tags}
+              onUpdateNode={onUpdateNode}
+              onCreateTag={onCreateTag}
+            />
+          ) : null}
 
           {view === 'overview' ? (
             <>
@@ -302,14 +433,18 @@ export function SalesDashboard({
                   icon={<TrendingUp size={18} />}
                   label="Vendas hoje"
                   value={dashboard ? money(dashboard.today.revenue) : null}
-                  detail={dashboard ? `${dashboard.today.orders} pedido(s)` : ''}
+                  detail={
+                    dashboard
+                      ? `Site ${money(dashboard.today.online)} · Loja ${money(dashboard.today.store)}`
+                      : ''
+                  }
                   highlight
                 />
                 <Kpi
                   icon={<ShoppingBag size={18} />}
                   label="Vendas no mês"
                   value={dashboard ? money(dashboard.month.revenue) : null}
-                  detail={dashboard ? `${dashboard.month.orders} pedido(s)` : ''}
+                  detail={dashboard ? `${dashboard.month.orders} venda(s) · site + loja` : ''}
                 />
                 <Kpi
                   icon={<Package size={18} />}
@@ -325,38 +460,7 @@ export function SalesDashboard({
                 />
               </section>
 
-              <section className="grid gap-3 sm:grid-cols-3">
-                <AlertCard
-                  icon={<Truck size={18} />}
-                  label="A enviar"
-                  value={dashboard?.toShip}
-                  tone="gold"
-                  onClick={() => {
-                    changeTab('pago')
-                    setView('orders')
-                  }}
-                />
-                <AlertCard
-                  icon={<Clock size={18} />}
-                  label="Aguardando pagamento"
-                  value={dashboard?.awaitingPayment}
-                  tone="violet"
-                  onClick={() => {
-                    changeTab('aguardando_pagamento')
-                    setView('orders')
-                  }}
-                />
-                <AlertCard
-                  icon={<Package size={18} />}
-                  label="Em trânsito"
-                  value={dashboard?.shipped}
-                  tone="green"
-                  onClick={() => {
-                    changeTab('enviado')
-                    setView('orders')
-                  }}
-                />
-              </section>
+              {statusBoard}
 
               <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
                 <div className="organizer-surface bg-white p-4 sm:p-5">
@@ -370,6 +474,8 @@ export function SalesDashboard({
               </section>
             </>
           ) : null}
+
+          {view === 'orders' ? statusBoard : null}
 
           {view === 'orders' ? (
             <section className="organizer-surface overflow-hidden bg-white">
@@ -523,13 +629,15 @@ function AlertCard({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center justify-between gap-3 rounded-[20px] px-4 py-3 text-left ring-1 ring-inset transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-float)] ${tones[tone]}`}
+      className={`flex flex-col items-start gap-1 rounded-[20px] px-4 py-3 text-left ring-1 ring-inset transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-float)] ${tones[tone]}`}
     >
-      <span className="flex items-center gap-2 text-sm font-semibold">
+      <span className="flex w-full items-center justify-between gap-2">
         {icon}
-        {label}
+        <span key={value} className="badge-bump text-2xl font-extrabold leading-none">
+          {value ?? '–'}
+        </span>
       </span>
-      <span className="text-2xl font-extrabold">{value ?? '–'}</span>
+      <span className="text-xs font-semibold leading-4 sm:text-sm">{label}</span>
     </button>
   )
 }
@@ -541,10 +649,10 @@ function WeekChart({ days }: { days: Dashboard['lastDays'] }) {
     <div className="mt-4 flex h-44 items-end gap-2">
       {days.map((day, index) => {
         const height = Math.max((day.revenue / max) * 100, day.revenue > 0 ? 6 : 2)
-        const weekday = new Date(`${day.date}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'short' })
+        const weekday = new Date(`${day.key}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'short' })
         const isToday = index === days.length - 1
         return (
-          <div key={day.date} className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5">
+          <div key={day.key} className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5">
             <span className="text-[10px] font-semibold text-[#6a2a94] opacity-0 transition group-hover:opacity-100">
               {day.revenue > 0 ? money(day.revenue) : ''}
             </span>

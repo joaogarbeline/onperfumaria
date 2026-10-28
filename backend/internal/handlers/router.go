@@ -280,6 +280,40 @@ func NewRouter(cfg config.Config, db *pgxpool.Pool) *gin.Engine {
 			c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
 			c.Data(http.StatusOK, "text/csv; charset=utf-8", data)
 		})
+		// PDV: venda presencial no balcao (ver services/pos.go).
+		api.POST("/admin/pos/sales", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			var input services.POSSaleInput
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			data, err := service.CreatePOSSale(c.Request.Context(), c.GetString("userID"), input)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			respond(c, data, nil)
+		})
+		api.GET("/admin/pos/day", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			data, err := service.POSDay(c.Request.Context(), c.Query("date"))
+			respond(c, data, err)
+		})
+		api.GET("/admin/pos/sales/:id", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			data, err := service.POSSale(c.Request.Context(), c.Param("id"))
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"message": "venda nao encontrada"})
+				return
+			}
+			respond(c, data, nil)
+		})
+		api.POST("/admin/pos/sales/:id/cancel", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
+			data, err := service.CancelPOSSale(c.Request.Context(), c.Param("id"))
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+				return
+			}
+			respond(c, data, nil)
+		})
 		// Notificacao de venda no celular (Web Push do app instalado).
 		api.GET("/admin/push/key", middlewares.RequireAdmin(cfg), func(c *gin.Context) {
 			key, err := service.PushPublicKey(c.Request.Context())

@@ -9,6 +9,8 @@ import {
   Package,
   Percent,
   ShoppingBag,
+  Store,
+  Clock,
   TrendingUp,
   Truck,
   UserPlus,
@@ -28,13 +30,18 @@ type Summary = {
   items: number
   discount: number
   shipping: number
+  onlineRevenue: number
+  onlineOrders: number
+  storeRevenue: number
+  storeSales: number
+  receivable: number
   customers: number
   newCustomers: number
   cancelled: number
   pending: number
 }
 
-type Breakdown = Array<{ key: string; revenue: number; orders: number }>
+type Breakdown = Array<{ key: string; revenue: number; orders: number; online?: number; store?: number }>
 
 type Report = {
   period: Period
@@ -57,13 +64,22 @@ const PERIODS: Array<{ key: Period; label: string }> = [
   { key: 'custom', label: 'Personalizado' },
 ]
 
-const PAYMENT_LABELS: Record<string, string> = { pix: 'Pix', cartao: 'Cartão de crédito', outros: 'Outros' }
+const PAYMENT_LABELS: Record<string, string> = {
+  pix: 'Site · Pix',
+  cartao: 'Site · Cartão',
+  outros: 'Site · Outros',
+  'loja-dinheiro': 'Loja · Dinheiro',
+  'loja-pix': 'Loja · Pix',
+  'loja-debito': 'Loja · Débito',
+  'loja-credito': 'Loja · Crédito',
+}
 const DELIVERY_LABELS: Record<string, string> = {
   pickup: 'Retirada na loja',
   local: 'Entrega local',
   correios: 'Correios',
   fixed: 'Frete fixo',
   manual: 'A combinar',
+  loja: 'Balcão (loja física)',
   outros: 'Outros',
 }
 
@@ -275,7 +291,7 @@ export function SalesReports({ token }: { token: string | null }) {
           />
           <Metric
             icon={<ShoppingBag size={17} />}
-            label="Pedidos pagos"
+            label="Vendas"
             value={summary ? String(summary.orders) : null}
             change={summary && previous ? delta(summary.orders, previous.orders) : undefined}
           />
@@ -317,10 +333,46 @@ export function SalesReports({ token }: { token: string | null }) {
           />
         </section>
 
+        <section className="grid gap-3 sm:grid-cols-3">
+          <ChannelCard
+            icon={<ShoppingBag size={17} />}
+            label="Site"
+            value={summary?.onlineRevenue}
+            detail={summary ? `${summary.onlineOrders} pedido(s)` : ''}
+            share={summary && summary.revenue > 0 ? summary.onlineRevenue / summary.revenue : 0}
+            tone="violet"
+          />
+          <ChannelCard
+            icon={<Store size={17} />}
+            label="Loja física (PDV)"
+            value={summary?.storeRevenue}
+            detail={summary ? `${summary.storeSales} venda(s) no balcão` : ''}
+            share={summary && summary.revenue > 0 ? summary.storeRevenue / summary.revenue : 0}
+            tone="gold"
+          />
+          <ChannelCard
+            icon={<Clock size={17} />}
+            label="A receber"
+            value={summary?.receivable}
+            detail={summary ? `${summary.pending} pedido(s) aguardando pagamento` : ''}
+            tone="muted"
+          />
+        </section>
+
         <section className="organizer-surface bg-white p-4 sm:p-5">
-          <p className="organizer-eyebrow">
-            Faturamento por {report && report.series[0]?.key.length === 7 ? 'mês' : 'dia'}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="organizer-eyebrow">
+              Faturamento por {report && report.series[0]?.key.length === 7 ? 'mês' : 'dia'}
+            </p>
+            <span className="flex items-center gap-3 text-[11px] text-[#6b665f]">
+              <span className="flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-full bg-[image:var(--grad-brand)]" /> Site
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-full bg-[image:var(--grad-gold)]" /> Loja
+              </span>
+            </span>
+          </div>
           <SeriesChart series={report?.series} />
         </section>
 
@@ -463,6 +515,46 @@ function ChangeBadge({ change, inverted }: { change: number | null; inverted: bo
   )
 }
 
+function ChannelCard({
+  icon,
+  label,
+  value,
+  detail,
+  share,
+  tone,
+}: {
+  icon: ReactNode
+  label: string
+  value: number | undefined
+  detail: string
+  share?: number
+  tone: 'violet' | 'gold' | 'muted'
+}) {
+  const bar = tone === 'gold' ? 'bg-[image:var(--grad-gold)]' : 'bg-[image:var(--grad-brand)]'
+  return (
+    <div className="rounded-[22px] border border-[#efe3f6] bg-white p-4 shadow-[var(--shadow-float)]">
+      <p className="flex items-center gap-2 text-xs font-semibold text-[#9b3fd6]">
+        {icon}
+        {label}
+      </p>
+      {value === undefined ? (
+        <div className="skeleton-wave mt-3 h-7 w-24 rounded-lg" />
+      ) : (
+        <p className="mt-2 text-xl font-extrabold text-[#2a0f3d] sm:text-2xl">{money(value)}</p>
+      )}
+      <p className="mt-1 text-[11px] text-[#9b86a8]">{detail}</p>
+      {share !== undefined && tone !== 'muted' ? (
+        <div className="mt-2 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f3e9f7]">
+            <div className={`h-full rounded-full ${bar}`} style={{ width: `${share * 100}%` }} />
+          </div>
+          <span className="text-[11px] font-bold text-[#6a2a94]">{Math.round(share * 100)}%</span>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function SeriesChart({ series }: { series: Breakdown | undefined }) {
   if (!series) return <div className="skeleton-wave mt-4 h-48 rounded-2xl" />
   const max = Math.max(...series.map((point) => point.revenue), 1)
@@ -487,15 +579,25 @@ function SeriesChart({ series }: { series: Breakdown | undefined }) {
           >
             <div className="relative flex w-full flex-1 items-end justify-center">
               <span className="pointer-events-none absolute -top-1 z-10 hidden -translate-y-full whitespace-nowrap rounded-lg bg-[#2a0f3d] px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block">
-                {money(point.revenue)} · {point.orders} ped.
+                {money(point.revenue)} · {point.orders} venda(s)
+                {point.store ? ` · loja ${money(point.store)}` : ''}
               </span>
+              {/* Barra empilhada: loja (dourado) em cima do site (roxo). */}
               <div
-                className="rise-in w-full max-w-12 rounded-t-md bg-[image:var(--grad-brand)] transition group-hover:brightness-125"
+                className="rise-in flex w-full max-w-12 flex-col overflow-hidden rounded-t-md transition group-hover:brightness-125"
                 style={{
                   height: `${Math.max((point.revenue / max) * 100, point.revenue > 0 ? 4 : 1)}%`,
                   animationDelay: `${Math.min(index * 25, 600)}ms`,
                 }}
-              />
+              >
+                <div
+                  className="bg-[image:var(--grad-gold)]"
+                  style={{
+                    height: point.revenue > 0 ? `${((point.store ?? 0) / point.revenue) * 100}%` : '0%',
+                  }}
+                />
+                <div className="flex-1 bg-[image:var(--grad-brand)]" />
+              </div>
             </div>
             <span className="h-3 text-[9px] uppercase text-[#9b86a8] sm:text-[10px]">
               {showLabel ? label : ''}
